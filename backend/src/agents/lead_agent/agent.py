@@ -8,7 +8,7 @@ from src.agents.lead_agent.prompt import apply_prompt_template
 from src.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from src.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
 from src.agents.middlewares.memory_middleware import MemoryMiddleware
-from src.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
+from src.agents.middlewares.decomposer_scheduler_middleware import DecomposerSchedulerMiddleware
 from src.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
 from src.agents.middlewares.title_middleware import TitleMiddleware
 from src.agents.middlewares.todo_middleware import TodoMiddleware
@@ -19,9 +19,22 @@ from src.config.agents_config import load_agent_config
 from src.config.app_config import get_app_config
 from src.config.summarization_config import get_summarization_config
 from src.models import create_chat_model
+from src.models.routing import is_rate_limited_model
 from src.sandbox.middleware import SandboxMiddleware
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_max_concurrent_subagents(model_name: str | None, requested_limit: int) -> int:
+    if is_rate_limited_model(model_name):
+        if requested_limit != 1:
+            logger.info(
+                "Capping max_concurrent_subagents=%s to 1 for rate-limited model '%s'",
+                requested_limit,
+                model_name,
+            )
+        return 1
+    return requested_limit
 
 
 def _resolve_model_name(requested_model_name: str | None = None) -> str:
@@ -241,11 +254,12 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     if model_config is not None and model_config.supports_vision:
         middlewares.append(ViewImageMiddleware())
 
-    # Add SubagentLimitMiddleware to truncate excess parallel task calls
+    # Add DecomposerSchedulerMiddleware: queues excess task() calls across turns
+    # instead of silently truncating them (replaces SubagentLimitMiddleware).
     subagent_enabled = config.get("configurable", {}).get("subagent_enabled", False)
     if subagent_enabled:
         max_concurrent_subagents = config.get("configurable", {}).get("max_concurrent_subagents", 3)
-        middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
+        middlewares.append(DecomposerSchedulerMiddleware(max_concurrent=max_concurrent_subagents))
 
     # ClarificationMiddleware should always be last
     middlewares.append(ClarificationMiddleware())
@@ -283,6 +297,9 @@ def make_lead_agent(config: RunnableConfig):
     if thinking_enabled and not model_config.supports_thinking:
         logger.warning(f"Thinking mode is enabled but model '{model_name}' does not support it; fallback to non-thinking mode.")
         thinking_enabled = False
+    if subagent_enabled:
+        max_concurrent_subagents = _resolve_max_concurrent_subagents(model_name, max_concurrent_subagents)
+        cfg["max_concurrent_subagents"] = max_concurrent_subagents
 
     logger.info(
         "Create Agent(%s) -> thinking_enabled: %s, reasoning_effort: %s, model_name: %s, is_plan_mode: %s, subagent_enabled: %s, max_concurrent_subagents: %s",
