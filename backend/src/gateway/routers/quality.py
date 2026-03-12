@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads/{thread_id}/quality", tags=["quality"])
 
 
-@router.get("/")
+@router.get("")
 async def get_thread_quality(thread_id: str) -> dict:
     """Return quality scores for all subagent tasks in a thread.
 

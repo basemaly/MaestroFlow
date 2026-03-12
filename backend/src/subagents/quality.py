@@ -363,6 +363,7 @@ def get_scores_for_thread(thread_id: str) -> list[dict]:
         db_path = _get_db_path()
         if not db_path.exists():
             return []
+        _ensure_schema(db_path)
         with _db_conn(db_path) as conn:
             rows = conn.execute(
                 """

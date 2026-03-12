@@ -76,12 +76,20 @@ def _maybe_attach_rate_limit_fallback(
     if not fallback_name or fallback_name == name:
         return model_instance
 
+    try:
+        fallback_model = create_chat_model(name=fallback_name, thinking_enabled=False)
+    except ValueError:
+        logger.debug(
+            "Rate-limit fallback model '%s' not found in config — skipping fallback for '%s'",
+            fallback_name,
+            name,
+        )
+        return model_instance
     logger.info(
         "Attaching rate-limit fallback model '%s' for primary model '%s'",
         fallback_name,
         name,
     )
-    fallback_model = create_chat_model(name=fallback_name, thinking_enabled=False)
     return model_instance.with_fallbacks(
         [fallback_model],
         exceptions_to_handle=(OpenAIRateLimitError,),

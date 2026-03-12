@@ -16,7 +16,6 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
-from src.agents.decomposer import complexity_score
 from src.subagents.executor import MAX_CONCURRENT_SUBAGENTS
 
 logger = logging.getLogger(__name__)
