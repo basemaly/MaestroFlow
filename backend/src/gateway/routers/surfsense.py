@@ -171,10 +171,16 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
         logger.error("SurfSense escalation failed for thread %s", thread_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"MaestroFlow research failed: {exc}") from exc
 
+    final_answer = response.strip() if isinstance(response, str) else ""
+    if not final_answer:
+        final_answer = (
+            "Research launched in MaestroFlow. Open the linked thread to review the live result and continue the investigation."
+        )
+
     return {
         "thread_id": thread_id,
         "search_space_id": search_space_id,
-        "final_answer": response,
+        "final_answer": final_answer,
         "provenance": {
             "source_system": "maestroflow",
             "thread_id": thread_id,
