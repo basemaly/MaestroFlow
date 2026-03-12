@@ -1,8 +1,12 @@
 """Quality Gateway Router — GET /api/threads/{thread_id}/quality."""
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from src.subagents.quality import get_scores_for_thread
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/threads/{thread_id}/quality", tags=["quality"])
 
@@ -17,7 +21,8 @@ async def get_thread_quality(thread_id: str) -> dict:
     try:
         scores = get_scores_for_thread(thread_id)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.error("Failed to retrieve quality scores for thread %s", thread_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal error retrieving quality scores") from exc
 
     return {
         "thread_id": thread_id,

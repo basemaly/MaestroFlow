@@ -46,6 +46,12 @@ _ERROR_RE = re.compile(
 # Minimum word count for full completeness credit
 _FULL_COMPLETENESS_WORDS = 100
 
+# Maximum content size to score (prevents OOM on huge outputs)
+_MAX_CONTENT_BYTES = 100_000  # 100 KB
+
+# Cache of DB paths whose schema has already been initialised this process
+_schema_initialized: set[str] = set()
+
 
 # ---------------------------------------------------------------------------
 # Score dataclass
@@ -81,6 +87,9 @@ class QualityScore:
 
 def _score(raw_text: str | None, subagent_type: str, task_id: str, thread_id: str | None) -> QualityScore:
     content = raw_text or ""
+    # Truncate before any processing to guard against OOM on huge outputs
+    if len(content) > _MAX_CONTENT_BYTES:
+        content = content[:_MAX_CONTENT_BYTES]
     words = len(content.split()) if content.strip() else 0
 
     # Completeness: sigmoid-like ramp up to _FULL_COMPLETENESS_WORDS
@@ -143,6 +152,9 @@ def _db_conn(db_path: Path):
 
 
 def _ensure_schema(db_path: Path) -> None:
+    key = str(db_path)
+    if key in _schema_initialized:
+        return
     with _db_conn(db_path) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS subagent_quality_scores (
@@ -158,6 +170,7 @@ def _ensure_schema(db_path: Path) -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_thread ON subagent_quality_scores(thread_id)")
+    _schema_initialized.add(key)
 
 
 def _persist(score: QualityScore, db_path: Path) -> None:
@@ -208,7 +221,7 @@ def score_async(
             from src.subagents.mab import record_outcome
             record_outcome(subagent_type, q.composite, task_category=task_category)
         except Exception as exc:
-            logger.warning("Quality scorer failed for task %s: %s", task_id, exc)
+            logger.error("Quality scorer failed for task %s: %s", task_id, exc, exc_info=True)
 
     t = threading.Thread(target=_run, daemon=True, name=f"quality-scorer-{task_id[:8]}")
     t.start()

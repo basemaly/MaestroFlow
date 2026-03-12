@@ -52,7 +52,8 @@ class ResearchTool:
         """Append the tool hint to a subagent prompt when this tool is available."""
         if not self.prompt_hint or not self.is_available():
             return base_prompt
-        return f"{base_prompt}\n\n[Research hint: {self.prompt_hint}]"
+        expanded = os.path.expandvars(self.prompt_hint)
+        return f"{base_prompt}\n\n[Research hint: {expanded}]"
 
 
 # ---------------------------------------------------------------------------

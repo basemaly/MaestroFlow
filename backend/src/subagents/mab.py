@@ -45,6 +45,9 @@ _SUBAGENT_ARMS = ("general-purpose", "bash")
 # Minimum samples before MAB overrides classify_task heuristic
 _MIN_SAMPLES_TO_TRUST = 5
 
+# Cap on alpha/beta parameters to prevent unbounded growth
+_MAX_PARAM = 1000.0
+
 
 # ---------------------------------------------------------------------------
 # SQLite persistence
@@ -163,6 +166,9 @@ def select_subagent(
     if candidates is None:
         candidates = list(_SUBAGENT_ARMS)
 
+    if not candidates:
+        return "general-purpose"
+
     try:
         db_path = _get_db_path()
         with _lock:
@@ -172,15 +178,18 @@ def select_subagent(
         if _total_samples(arms) < _MIN_SAMPLES_TO_TRUST:
             return candidates[0]  # first candidate = classifier's recommendation
 
-        # Thompson sample each arm and pick the best
-        scores = {arm: _thompson_sample(*arms[arm]) for arm in candidates if arm in arms}
+        # Thompson sample each candidate arm; seed missing arms from prior so scores is never empty
+        scores = {
+            arm: _thompson_sample(*arms.get(arm, (_ALPHA_PRIOR, _BETA_PRIOR)))
+            for arm in candidates
+        }
         best = max(scores, key=scores.__getitem__)
         logger.debug("MAB selected '%s' for category '%s' (samples=%d)", best, task_category, _total_samples(arms))
         return best
 
     except Exception as exc:
         logger.warning("MAB select failed, falling back to default: %s", exc)
-        return candidates[0] if candidates else "general-purpose"
+        return candidates[0]
 
 
 def record_outcome(
@@ -199,15 +208,16 @@ def record_outcome(
         task_category: Task category label matching the one used at selection time.
     """
     try:
+        composite_score = max(0.0, min(1.0, composite_score))
         db_path = _get_db_path()
         with _lock:
             arms = _load_arms(db_path, task_category)
             alpha, beta_val = arms.get(subagent_type, (_ALPHA_PRIOR, _BETA_PRIOR))
 
             if composite_score >= _SUCCESS_THRESHOLD:
-                alpha += 1.0
+                alpha = min(alpha + 1.0, _MAX_PARAM)
             else:
-                beta_val += 1.0
+                beta_val = min(beta_val + 1.0, _MAX_PARAM)
 
             _save_arm(db_path, subagent_type, task_category, alpha, beta_val)
 
