@@ -26,6 +26,7 @@ def human_review(state: DocEditState) -> dict:
         "instruction": "Select a version to finalize this run.",
         "suggested_skill": ranked_versions[0]["skill_name"],
         "suggested_version_id": ranked_versions[0]["version_id"],
+        "suggested_model_name": ranked_versions[0].get("model_name"),
         "versions_summary": [
             {
                 "rank": index + 1,

@@ -7,7 +7,7 @@ import uuid
 from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from src.doc_editing.nodes import collector, dispatch_skills, finalizer, human_review, prepare_run, skill_agent
+from src.doc_editing.nodes import collector, dispatch_skills, finalizer, human_review, post_process_versions, prepare_run, skill_agent
 from src.doc_editing.run_tracker import get_doc_edit_checkpoints_db_path
 from src.doc_editing.state import DocEditState
 
@@ -32,13 +32,15 @@ def build_doc_edit_graph(*, checkpointer):
     builder.add_node("prepare_run", prepare_run)
     builder.add_node("skill_agent", skill_agent)
     builder.add_node("collector", collector)
+    builder.add_node("post_process", post_process_versions)
     builder.add_node("human_review", human_review)
     builder.add_node("finalizer", finalizer)
 
     builder.set_entry_point("prepare_run")
     builder.add_conditional_edges("prepare_run", dispatch_skills, ["skill_agent"])
     builder.add_edge("skill_agent", "collector")
-    builder.add_edge("collector", "human_review")
+    builder.add_edge("collector", "post_process")
+    builder.add_edge("post_process", "human_review")
     builder.add_edge("human_review", "finalizer")
     builder.add_edge("finalizer", END)
     return builder.compile(checkpointer=checkpointer)

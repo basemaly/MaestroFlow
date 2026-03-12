@@ -39,8 +39,8 @@ export function useStartDocEditRun() {
 export function useSelectDocEditVersion() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ runId, skillName }: { runId: string; skillName: string }) =>
-      selectDocEditVersion(runId, skillName),
+    mutationFn: ({ runId, versionId }: { runId: string; versionId: string }) =>
+      selectDocEditVersion(runId, versionId),
     onSuccess: (run) => {
       void queryClient.invalidateQueries({ queryKey: ["doc-edit-runs"] });
       void queryClient.setQueryData(["doc-edit-run", run.run_id], run);

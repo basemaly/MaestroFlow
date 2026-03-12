@@ -231,6 +231,18 @@ def _resolve_fuzzy_match_from_candidates(preference: str, candidates: Iterable[s
     return None
 
 
+def _prefer_modern_gpt_models(candidates: list[str]) -> list[str]:
+    normalized = {_normalize(candidate): candidate for candidate in candidates}
+    has_gpt5 = any("gpt 5" in name or "gpt5" in name for name in normalized)
+    if not has_gpt5:
+        return candidates
+    return [
+        candidate
+        for candidate in candidates
+        if "gpt 4" not in _normalize(candidate) and "gpt4" not in _normalize(candidate)
+    ]
+
+
 def resolve_subagent_model_preference(
     preference: str | None,
     *,
@@ -366,7 +378,7 @@ def resolve_doc_edit_candidate_models(
     if default_name not in candidates:
         candidates.append(default_name)
 
-    return list(dict.fromkeys(candidates))
+    return _prefer_modern_gpt_models(list(dict.fromkeys(candidates)))
 
 
 def resolve_doc_edit_selected_models(

@@ -25,6 +25,7 @@ class DocEditState(TypedDict):
 
     document: str
     skills: list[str]
+    workflow_mode: Literal["standard", "consensus", "debate-judge", "critic-loop", "strict-bold"]
     model_location: Literal["local", "remote", "mixed"]
     model_strength: Literal["fast", "cheap", "strong"]
     preferred_model: str | None

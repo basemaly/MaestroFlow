@@ -67,6 +67,7 @@ def save_run_manifest(
         "document_word_count": len(state["document"].split()),
         "document": state["document"],
         "skills": state["skills"],
+        "workflow_mode": state.get("workflow_mode") or "consensus",
         "model_location": state["model_location"],
         "model_strength": state["model_strength"],
         "preferred_model": state.get("preferred_model"),
@@ -93,45 +94,20 @@ def persist_run(state: DocEditState, winner: VersionRecord, final_path: str) -> 
     db_path = get_doc_runs_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     ranked_versions = state.get("ranked_versions", state["versions"])
-    all_scores = {version["skill_name"]: version["score"] for version in ranked_versions}
+    all_scores = {version["version_id"]: version["score"] for version in ranked_versions}
     versions_json = json.dumps(ranked_versions)
     selected_json = json.dumps(winner)
     now = datetime.now().isoformat()
 
     with _db_conn(db_path) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS doc_runs (
-                id TEXT PRIMARY KEY,
-                timestamp TEXT NOT NULL,
-                original_hash TEXT NOT NULL,
-                document_text TEXT NOT NULL DEFAULT '',
-                doc_length INTEGER NOT NULL,
-                skills_used TEXT NOT NULL,
-                skill_sequence TEXT NOT NULL,
-                mode TEXT NOT NULL,
-                selected_skill TEXT NOT NULL,
-                composite_score REAL NOT NULL,
-                all_scores TEXT NOT NULL,
-                token_count INTEGER NOT NULL,
-                model_used TEXT NOT NULL,
-                final_path TEXT NOT NULL,
-                run_dir TEXT NOT NULL,
-                versions_json TEXT NOT NULL,
-                selected_version_json TEXT NOT NULL
-            )
-            """
-        )
-        existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(doc_runs)").fetchall()}
-        if "document_text" not in existing_columns:
-            conn.execute("ALTER TABLE doc_runs ADD COLUMN document_text TEXT NOT NULL DEFAULT ''")
+        _ensure_doc_runs_schema(conn)
         conn.execute(
             """
             INSERT OR REPLACE INTO doc_runs (
                 id, timestamp, original_hash, document_text, doc_length, skills_used,
-                skill_sequence, mode, selected_skill, composite_score, all_scores,
+                skill_sequence, mode, workflow_mode, selected_skill, composite_score, all_scores,
                 token_count, model_used, final_path, run_dir, versions_json, selected_version_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 state["run_id"],
@@ -142,6 +118,7 @@ def persist_run(state: DocEditState, winner: VersionRecord, final_path: str) -> 
                 json.dumps([version["skill_name"] for version in ranked_versions]),
                 json.dumps([version["skill_name"] for version in ranked_versions]),
                 "parallel",
+                state.get("workflow_mode") or "consensus",
                 winner["skill_name"],
                 winner["score"],
                 json.dumps(all_scores),
@@ -155,15 +132,48 @@ def persist_run(state: DocEditState, winner: VersionRecord, final_path: str) -> 
         )
 
 
+def _ensure_doc_runs_schema(conn: sqlite3.Connection) -> None:
+    conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS doc_runs (
+                id TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                original_hash TEXT NOT NULL,
+                document_text TEXT NOT NULL DEFAULT '',
+                doc_length INTEGER NOT NULL,
+                skills_used TEXT NOT NULL,
+                skill_sequence TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                workflow_mode TEXT NOT NULL DEFAULT 'consensus',
+                selected_skill TEXT NOT NULL,
+                composite_score REAL NOT NULL,
+                all_scores TEXT NOT NULL,
+                token_count INTEGER NOT NULL,
+                model_used TEXT NOT NULL,
+                final_path TEXT NOT NULL,
+                run_dir TEXT NOT NULL,
+                versions_json TEXT NOT NULL,
+                selected_version_json TEXT NOT NULL
+            )
+            """
+        )
+    existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(doc_runs)").fetchall()}
+    if "document_text" not in existing_columns:
+        conn.execute("ALTER TABLE doc_runs ADD COLUMN document_text TEXT NOT NULL DEFAULT ''")
+    if "workflow_mode" not in existing_columns:
+        conn.execute("ALTER TABLE doc_runs ADD COLUMN workflow_mode TEXT NOT NULL DEFAULT 'consensus'")
+
+
 def list_runs(limit: int = 25) -> dict[str, list[dict[str, Any]]]:
     runs: list[dict[str, Any]] = []
     limit = max(limit, 1)
     db_path = get_doc_runs_db_path()
     if db_path.exists():
         with _db_conn(db_path) as conn:
+            _ensure_doc_runs_schema(conn)
             rows = conn.execute(
                 """
-                SELECT id, timestamp, document_text, doc_length, skills_used, selected_skill, composite_score, token_count, model_used, final_path
+                SELECT id, timestamp, document_text, doc_length, skills_used, workflow_mode, selected_skill, composite_score, token_count, model_used, final_path
                 FROM doc_runs
                 ORDER BY timestamp DESC
                 LIMIT ?
@@ -177,11 +187,12 @@ def list_runs(limit: int = 25) -> dict[str, list[dict[str, Any]]]:
                 "timestamp": row[1],
                 "doc_length": row[3],
                 "skills_used": json.loads(row[4]),
-                "selected_skill": row[5],
-                "composite_score": row[6],
-                "token_count": row[7],
-                "model_used": row[8],
-                "final_path": row[9],
+                "workflow_mode": row[5],
+                "selected_skill": row[6],
+                "composite_score": row[7],
+                "token_count": row[8],
+                "model_used": row[9],
+                "final_path": row[10],
                 "status": "completed",
             }
             for row in rows
@@ -208,6 +219,7 @@ def list_runs(limit: int = 25) -> dict[str, list[dict[str, Any]]]:
                 "token_count": payload.get("tokens_used", 0),
                 "model_used": payload.get("preferred_model")
                 or f"{payload.get('model_location', 'mixed')}/{payload.get('model_strength', 'fast')}",
+                "workflow_mode": payload.get("workflow_mode") or "consensus",
                 "final_path": payload.get("final_path"),
                 "status": "awaiting_selection",
             }
@@ -220,9 +232,10 @@ def get_run(run_id: str) -> dict[str, Any]:
     db_path = get_doc_runs_db_path()
     if db_path.exists():
         with _db_conn(db_path) as conn:
+            _ensure_doc_runs_schema(conn)
             row = conn.execute(
                 """
-                SELECT id, timestamp, original_hash, document_text, doc_length, skills_used, selected_skill,
+                SELECT id, timestamp, original_hash, document_text, doc_length, skills_used, workflow_mode, selected_skill,
                        composite_score, all_scores, token_count, model_used, final_path,
                        run_dir, versions_json, selected_version_json
                 FROM doc_runs
@@ -239,16 +252,17 @@ def get_run(run_id: str) -> dict[str, Any]:
                 "document": row[3],
                 "doc_length": row[4],
                 "skills_used": json.loads(row[5]),
-                "selected_skill": row[6],
-                "composite_score": row[7],
-                "all_scores": json.loads(row[8]),
-                "token_count": row[9],
-                "model_used": row[10],
-                "final_path": row[11],
-                "run_dir": row[12],
-                "versions": json.loads(row[13]),
-                "selected_version": json.loads(row[14]),
-                "selected_version_id": json.loads(row[14]).get("version_id"),
+                "workflow_mode": row[6],
+                "selected_skill": row[7],
+                "composite_score": row[8],
+                "all_scores": json.loads(row[9]),
+                "token_count": row[10],
+                "model_used": row[11],
+                "final_path": row[12],
+                "run_dir": row[13],
+                "versions": json.loads(row[14]),
+                "selected_version": json.loads(row[15]),
+                "selected_version_id": json.loads(row[15]).get("version_id"),
                 "status": "completed",
             }
 
@@ -257,6 +271,7 @@ def get_run(run_id: str) -> dict[str, Any]:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
         payload["status"] = payload.get("status", "awaiting_selection")
         payload["title"] = payload.get("title") or make_run_title(payload.get("document", ""))
+        payload["workflow_mode"] = payload.get("workflow_mode") or "consensus"
         if "selected_version_id" not in payload:
             payload["selected_version_id"] = (payload.get("selected_version") or {}).get("version_id")
         return payload

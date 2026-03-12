@@ -18,6 +18,7 @@ export interface DocEditReviewPayload {
   instruction?: string;
   suggested_skill?: string;
   suggested_version_id?: string;
+  suggested_model_name?: string;
   versions_summary?: Array<{
     rank: number;
     version_id: string;
@@ -34,6 +35,7 @@ export interface DocEditRun {
   title?: string;
   run_dir: string;
   status: "awaiting_selection" | "completed";
+  workflow_mode?: "standard" | "consensus" | "debate-judge" | "critic-loop" | "strict-bold";
   document?: string;
   final_path: string | null;
   selected_skill: string | null;

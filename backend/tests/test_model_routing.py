@@ -133,7 +133,31 @@ def test_resolve_doc_edit_candidate_models_does_not_downgrade_gpt5_request_to_gp
             preferred_model="gpt-5.2-mini",
         )
         assert candidates[0] == "gpt-5-2-codex"
-        assert "gpt-4-1-mini" in candidates
+        assert "gpt-4-1-mini" not in candidates
+    finally:
+        reset_app_config()
+
+
+def test_resolve_doc_edit_candidate_models_filters_gpt4_when_gpt5_is_available():
+    set_app_config(
+        AppConfig(
+            models=[
+                _make_model("gpt-5-2-codex"),
+                _make_model("gpt-4-1-mini"),
+                _make_model("gemini-2-5-flash"),
+            ],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+
+    try:
+        candidates = resolve_doc_edit_candidate_models(
+            location="mixed",
+            strength="strong",
+            preferred_model=None,
+        )
+        assert "gpt-5-2-codex" in candidates
+        assert "gpt-4-1-mini" not in candidates
     finally:
         reset_app_config()
 

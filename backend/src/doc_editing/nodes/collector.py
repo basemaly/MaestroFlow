@@ -25,6 +25,7 @@ def collector(state: DocEditState) -> dict:
         f"**Skills run:** {len(versions)}  ",
         f"**Total tokens used:** {tokens_used}  ",
         f"**Budget:** {state['token_budget']}  ",
+        f"**Workflow mode:** {state.get('workflow_mode') or 'consensus'}  ",
         f"**Model location:** {state['model_location']}  ",
         f"**Model strength:** {state['model_strength']}  ",
         f"**Requested model:** {state.get('preferred_model') or 'auto'}",
@@ -45,7 +46,7 @@ def collector(state: DocEditState) -> dict:
     lines.extend(
         [
             "",
-            f"**Auto-selected winner:** `{versions[0]['skill_name']}` ({versions[0]['score']:.3f})",
+            f"**Top-ranked version:** `{versions[0]['version_id']}` ({versions[0]['score']:.3f})",
         ]
     )
     (run_dir / "run-report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

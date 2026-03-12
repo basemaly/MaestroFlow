@@ -5,6 +5,7 @@ import type { DocEditRun, DocEditRunsResponse } from "./types";
 export async function startDocEditRun(input: {
   document: string;
   skills: string[];
+  workflow_mode: "standard" | "consensus" | "debate-judge" | "critic-loop" | "strict-bold";
   model_location: "local" | "remote" | "mixed";
   model_strength: "fast" | "cheap" | "strong";
   preferred_model?: string;

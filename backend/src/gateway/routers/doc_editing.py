@@ -20,6 +20,7 @@ class DocEditRequest(BaseModel):
 
     document: str = Field(..., min_length=1, description="Markdown document to edit")
     skills: list[str] = Field(default_factory=lambda: ["writing-refiner", "argument-critic"])
+    workflow_mode: str = Field(default="consensus", pattern="^(standard|consensus|debate-judge|critic-loop|strict-bold)$")
     model_location: str = Field(default="mixed", pattern="^(local|remote|mixed)$")
     model_strength: str = Field(default="fast", pattern="^(fast|cheap|strong)$")
     preferred_model: str | None = Field(default=None, max_length=120)
@@ -34,6 +35,7 @@ class DocEditStartResponse(BaseModel):
     title: str | None = None
     run_dir: str
     status: str
+    workflow_mode: str | None = None
     final_path: str | None
     selected_skill: str | None
     selected_version_id: str | None = None
@@ -56,6 +58,7 @@ def _to_response_payload(run_id: str, run_dir: str, result: dict) -> DocEditStar
         title=result.get("title"),
         run_dir=run_dir,
         status=status,
+        workflow_mode=result.get("workflow_mode") or "consensus",
         final_path=result.get("final_path"),
         selected_skill=selected_version["skill_name"] if selected_version else None,
         selected_version_id=selected_version.get("version_id") if selected_version else None,
@@ -72,6 +75,7 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
     initial_state = {
         "document": req.document,
         "skills": req.skills,
+        "workflow_mode": req.workflow_mode,
         "model_location": req.model_location,
         "model_strength": req.model_strength,
         "preferred_model": req.preferred_model.strip() if req.preferred_model else None,
@@ -96,6 +100,7 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
         pending = get_run(run_id)
         result = {
             "title": pending.get("title"),
+            "workflow_mode": pending.get("workflow_mode"),
             "ranked_versions": pending.get("versions", []),
             "tokens_used": pending.get("tokens_used", 0),
             "review_payload": pending.get("review_payload"),

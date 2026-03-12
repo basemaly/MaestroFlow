@@ -49,6 +49,12 @@ import { cn } from "@/lib/utils";
 
 type ModelLocation = "local" | "remote" | "mixed";
 type ModelStrength = "fast" | "cheap" | "strong";
+type WorkflowMode =
+  | "standard"
+  | "consensus"
+  | "debate-judge"
+  | "critic-loop"
+  | "strict-bold";
 
 const SKILL_OPTIONS = [
   { value: "writing-refiner", label: "Writing Refiner" },
@@ -56,8 +62,75 @@ const SKILL_OPTIONS = [
   { value: "humanizer", label: "Humanizer" },
 ] as const;
 const DEFAULT_SKILLS = ["writing-refiner", "argument-critic"];
+const BASE_SKILL_VALUES = new Set(SKILL_OPTIONS.map((skill) => skill.value));
+const WORKFLOW_MODE_OPTIONS: Array<{
+  value: WorkflowMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "consensus",
+    label: "Consensus",
+    description: "Merge the top two versions into one balanced draft.",
+  },
+  {
+    value: "debate-judge",
+    label: "Debate + Judge",
+    description: "Use a neutral judge pass to synthesize the strongest case from both leading drafts.",
+  },
+  {
+    value: "critic-loop",
+    label: "Critic Loop",
+    description: "Treat the runner-up as critique and revise the best draft once.",
+  },
+  {
+    value: "strict-bold",
+    label: "Strict vs Bold",
+    description: "Produce one conservative pass and one sharper high-impact rewrite.",
+  },
+  {
+    value: "standard",
+    label: "Standard",
+    description: "Skip synthesis and review only the raw skill/model outputs.",
+  },
+];
 const selectedToggleItemClass =
-  "data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-foreground data-[state=on]:shadow-sm";
+  "rounded-full border-2 border-border/80 px-4 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-foreground data-[state=on]:shadow-sm";
+
+function formatSkillLabel(skillName: string) {
+  if (skillName === "writing-refiner") {
+    return "Writing Refiner";
+  }
+  if (skillName === "argument-critic") {
+    return "Argument Critic";
+  }
+  if (skillName === "humanizer") {
+    return "Humanizer";
+  }
+  if (skillName === "consensus") {
+    return "Consensus Merge";
+  }
+  if (skillName === "debate-judge") {
+    return "Debate Judge";
+  }
+  if (skillName === "critic-loop") {
+    return "Critic Loop";
+  }
+  if (skillName === "strict-fidelity") {
+    return "Strict Fidelity";
+  }
+  if (skillName === "bold-rewrite") {
+    return "Bold Rewrite";
+  }
+  return skillName;
+}
+
+function getSelectableSkills(versionSkillNames: string[] | undefined) {
+  const filtered = (versionSkillNames ?? []).filter(
+    (skillName): skillName is string => BASE_SKILL_VALUES.has(skillName as (typeof SKILL_OPTIONS)[number]["value"]),
+  );
+  return filtered.length > 0 ? Array.from(new Set(filtered)) : DEFAULT_SKILLS;
+}
 
 function resolveModelStrength(
   mode: "flash" | "thinking" | "pro" | "ultra" | undefined,
@@ -95,8 +168,10 @@ export function DocEditStudio({
 }) {
   const [document, setDocument] = useState(initialRun?.document ?? "");
   const [skills, setSkills] = useState<string[]>(
-    initialRun?.versions?.map((version) => version.skill_name) ??
-      DEFAULT_SKILLS,
+    getSelectableSkills(initialRun?.versions?.map((version) => version.skill_name)),
+  );
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(
+    initialRun?.workflow_mode ?? "consensus",
   );
   const [modelLocation, setModelLocation] = useState<ModelLocation>("mixed");
   const [modelStrength, setModelStrength] = useState<ModelStrength>(
@@ -126,11 +201,12 @@ export function DocEditStudio({
     }
     setRun(initialRun);
     setDocument(initialRun.document ?? "");
+    setWorkflowMode(initialRun.workflow_mode ?? "consensus");
     if (initialRun.versions.length > 0) {
       setCompareVersionId(
         initialRun.selected_version_id ?? initialRun.versions[0]?.version_id ?? null,
       );
-      setSkills(initialRun.versions.map((version) => version.skill_name));
+      setSkills(getSelectableSkills(initialRun.versions.map((version) => version.skill_name)));
     }
   }, [initialRun]);
 
@@ -172,6 +248,9 @@ export function DocEditStudio({
       (modelA.length > 0 && modelB.length > 0 && modelA !== modelB)) &&
     !uploadFile.isPending &&
     !selectVersion.isPending;
+  const selectedModels = [modelA, modelB].map((value) => value.trim()).filter(Boolean);
+  const modelPassCount = compareModelsEnabled ? selectedModels.length || 1 : 1;
+  const selectedSummary = `${skills.length} skill${skills.length === 1 ? "" : "s"} x ${modelPassCount} model${modelPassCount === 1 ? "" : "s"} · ${WORKFLOW_MODE_OPTIONS.find((option) => option.value === workflowMode)?.label ?? "Consensus"}`;
 
   useEffect(() => {
     if (deferredVersions.length === 0) {
@@ -194,6 +273,7 @@ export function DocEditStudio({
     setCompareVersionId(null);
     setTokenBudget("4000");
     setSkills(DEFAULT_SKILLS);
+    setWorkflowMode("consensus");
     setModelLocation("mixed");
     setModelStrength(resolveModelStrength(mode));
     setPreferredModel("");
@@ -212,10 +292,10 @@ export function DocEditStudio({
         toast.error("Token budget must be at least 250");
         return;
       }
-      const selectedModels = [modelA, modelB].map((value) => value.trim()).filter(Boolean);
       const nextRun = await startRun.mutateAsync({
         document: document.trim(),
         skills,
+        workflow_mode: workflowMode,
         model_location: modelLocation,
         model_strength: modelStrength,
         preferred_model: preferredModel.trim() || undefined,
@@ -243,12 +323,12 @@ export function DocEditStudio({
     try {
       const nextRun = await selectVersion.mutateAsync({
         runId: run.run_id,
-        skillName: versionId,
+        versionId,
       });
       setRun(nextRun);
       setCompareVersionId(versionId);
       const selectedVersion = nextRun.versions.find((version) => version.version_id === versionId);
-      toast.success(`Selected ${selectedVersion?.skill_name ?? versionId} as the final version`);
+      toast.success(`Selected ${formatSkillLabel(selectedVersion?.skill_name ?? versionId)} as the final version`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
@@ -277,7 +357,7 @@ export function DocEditStudio({
         <DocEditStudioHeader title={runTitle} />
 
         <div className="space-y-5">
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-medium">Document</div>
               <Button
@@ -314,7 +394,7 @@ export function DocEditStudio({
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-4">
             <div className="text-sm font-medium">Skills</div>
             <ToggleGroup
               type="multiple"
@@ -327,7 +407,7 @@ export function DocEditStudio({
                 <ToggleGroupItem
                   key={skill.value}
                   value={skill.value}
-                  className={cn("rounded-md border-border/70", selectedToggleItemClass)}
+                  className={selectedToggleItemClass}
                 >
                   {skill.label}
                 </ToggleGroupItem>
@@ -335,7 +415,44 @@ export function DocEditStudio({
             </ToggleGroup>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3 rounded-2xl border border-border/70 bg-background/60 p-4">
+            <div>
+              <div className="text-sm font-medium">Workflow Mode</div>
+              <div className="text-muted-foreground text-xs">
+                Add an optional merge, judge, or divergent pass after the raw skill outputs are generated.
+              </div>
+            </div>
+            <Select
+              value={workflowMode}
+              onValueChange={(value) => {
+                if (
+                  value === "standard" ||
+                  value === "consensus" ||
+                  value === "debate-judge" ||
+                  value === "critic-loop" ||
+                  value === "strict-bold"
+                ) {
+                  setWorkflowMode(value);
+                }
+              }}
+            >
+              <SelectTrigger className="w-full bg-background">
+                <SelectValue placeholder="Choose workflow mode" />
+              </SelectTrigger>
+              <SelectContent>
+                {WORKFLOW_MODE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              {WORKFLOW_MODE_OPTIONS.find((option) => option.value === workflowMode)?.description}
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 rounded-2xl border border-border/70 bg-background/60 p-4">
             <div className="space-y-2">
               <div className="text-sm font-medium">Model Location</div>
               <Select
@@ -379,7 +496,7 @@ export function DocEditStudio({
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-4">
             <div className="text-sm font-medium">Preferred Model</div>
             <Input
               className="bg-background"
@@ -392,7 +509,7 @@ export function DocEditStudio({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-lg border border-border/70 p-4">
+          <div className="space-y-3 rounded-2xl border border-border/70 bg-background/60 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-medium">Two-Model Compare</div>
@@ -403,6 +520,7 @@ export function DocEditStudio({
               <Button
                 size="sm"
                 variant={compareModelsEnabled ? "default" : "outline"}
+                className="rounded-full border-2"
                 onClick={() => setCompareModelsEnabled((value) => !value)}
               >
                 {compareModelsEnabled ? "Enabled" : "Enable"}
@@ -444,7 +562,7 @@ export function DocEditStudio({
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-4">
             <div className="text-sm font-medium">Token Budget</div>
             <Textarea
               className="min-h-0 resize-none bg-background"
@@ -462,7 +580,7 @@ export function DocEditStudio({
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={handleRun} disabled={!canSubmit || startRun.isPending}>
+            <Button className="rounded-full border-2 border-transparent px-5" onClick={handleRun} disabled={!canSubmit || startRun.isPending}>
               {startRun.isPending ? (
                 <Loader2Icon className="size-4 animate-spin" />
               ) : (
@@ -471,12 +589,17 @@ export function DocEditStudio({
               Run Versions
             </Button>
             <Button
-              variant="ghost"
+              variant="outline"
+              className="rounded-full border-2 px-5"
               onClick={resetStudio}
               disabled={startRun.isPending || selectVersion.isPending || uploadFile.isPending}
             >
               Reset
             </Button>
+          </div>
+          <div className="text-muted-foreground text-xs">
+            {selectedSummary}
+            {compareModelsEnabled && modelA && modelB ? `: ${modelA} + ${modelB}` : ""}
           </div>
         </div>
       </div>
@@ -496,6 +619,9 @@ export function DocEditStudio({
             {run && (
               <div className="text-muted-foreground mt-1 text-[11px]">
                 {run.run_id}
+                {run.workflow_mode
+                  ? ` · ${WORKFLOW_MODE_OPTIONS.find((option) => option.value === run.workflow_mode)?.label ?? run.workflow_mode}`
+                  : ""}
               </div>
             )}
           </div>
@@ -531,9 +657,9 @@ export function DocEditStudio({
                 <ToggleGroupItem
                   key={version.version_id ?? version.skill_name}
                   value={version.version_id ?? version.skill_name}
-                  className={cn("border-border/70", selectedToggleItemClass)}
+                  className={selectedToggleItemClass}
                 >
-                  {version.skill_name}
+                  {formatSkillLabel(version.skill_name)}
                   {version.model_name ? ` · ${version.model_name}` : ""}
                 </ToggleGroupItem>
               ))}
@@ -558,7 +684,7 @@ export function DocEditStudio({
             <Card className="gap-3 py-4">
               <CardHeader className="px-4">
                 <CardTitle className="text-base">
-                  {comparedVersion?.skill_name ?? "Compared Version"}
+                  {comparedVersion ? formatSkillLabel(comparedVersion.skill_name) : "Compared Version"}
                   {comparedVersion?.model_name ? ` · ${comparedVersion.model_name}` : ""}
                 </CardTitle>
               </CardHeader>
@@ -609,13 +735,21 @@ export function DocEditStudio({
                           {index === 0 && (
                             <MedalIcon className="size-4 text-amber-600" />
                           )}
-                          {version.skill_name}
+                          {formatSkillLabel(version.skill_name)}
                           {version.model_name ? ` · ${version.model_name}` : ""}
                         </CardTitle>
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="outline">
                             Score {Math.round(version.score * 100)}%
                           </Badge>
+                          {run?.review_payload?.suggested_version_id === version.version_id && (
+                            <Badge variant="secondary">
+                              Suggested
+                              {run?.review_payload?.suggested_model_name
+                                ? ` · ${run.review_payload.suggested_model_name}`
+                                : ""}
+                            </Badge>
+                          )}
                           {version.model_name && (
                             <Badge variant="secondary">{version.model_name}</Badge>
                           )}
@@ -630,6 +764,7 @@ export function DocEditStudio({
                         <Button
                           size="sm"
                           variant="outline"
+                          className="rounded-full border-2"
                           onClick={() => setCompareVersionId(version.version_id ?? null)}
                         >
                           Compare
@@ -637,11 +772,12 @@ export function DocEditStudio({
                         {run?.status === "awaiting_selection" && (
                           <Button
                             size="sm"
+                            className="rounded-full border-2 border-transparent"
                             onClick={() => void handleSelect(version.version_id ?? version.skill_name)}
                             disabled={selectVersion.isPending}
                           >
                             {selectVersion.isPending &&
-                            selectVersion.variables?.skillName === (version.version_id ?? version.skill_name) ? (
+                            selectVersion.variables?.versionId === (version.version_id ?? version.skill_name) ? (
                               <Loader2Icon className="size-4 animate-spin" />
                             ) : null}
                             Select This Version

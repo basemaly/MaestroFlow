@@ -3,8 +3,9 @@ from pathlib import Path
 
 from src.doc_editing.nodes.collector import collector
 from src.doc_editing.nodes.dispatcher import dispatch_skills
-from src.doc_editing.nodes.skill_agent import _sanitize_skill_output
 from src.doc_editing.nodes.finalizer import _resolve_final_path
+from src.doc_editing.nodes.post_process import post_process_versions
+from src.doc_editing.nodes.skill_agent import _sanitize_skill_output
 from src.doc_editing.run_tracker import get_run, list_runs, persist_run
 from src.gateway.routers import doc_editing
 
@@ -14,6 +15,7 @@ def test_dispatch_skills_trims_to_budget():
     state = {
         "document": document,
         "skills": ["writing-refiner", "argument-critic", "humanizer"],
+        "workflow_mode": "consensus",
         "model_location": "mixed",
         "model_strength": "fast",
         "preferred_model": None,
@@ -33,6 +35,7 @@ def test_dispatch_skills_deduplicates_requested_skills():
     state = {
         "document": "word " * 20,
         "skills": ["writing-refiner", "writing-refiner", "argument-critic"],
+        "workflow_mode": "consensus",
         "model_location": "mixed",
         "model_strength": "fast",
         "preferred_model": None,
@@ -51,6 +54,7 @@ def test_dispatch_skills_crosses_selected_models():
     state = {
         "document": "word " * 20,
         "skills": ["writing-refiner", "argument-critic"],
+        "workflow_mode": "consensus",
         "model_location": "mixed",
         "model_strength": "fast",
         "preferred_model": None,
@@ -73,6 +77,7 @@ def test_collector_writes_report_and_selects_top_version(tmp_path: Path):
     state = {
         "document": "Example document",
         "skills": ["writing-refiner", "argument-critic"],
+        "workflow_mode": "consensus",
         "model_location": "mixed",
         "model_strength": "fast",
         "preferred_model": None,
@@ -118,6 +123,160 @@ def test_collector_writes_report_and_selects_top_version(tmp_path: Path):
     assert (run_dir / "run.json").exists()
 
 
+def test_post_process_consensus_appends_best_of_two_version(tmp_path: Path, monkeypatch):
+    class FakeResponse:
+        content = "# Consensus Draft\n\nThis is the merged version."
+
+    class FakeModel:
+        async def ainvoke(self, messages):
+            return FakeResponse()
+
+    monkeypatch.setattr("src.doc_editing.nodes.post_process.create_chat_model", lambda **kwargs: FakeModel())
+    monkeypatch.setattr(
+        "src.doc_editing.nodes.post_process.resolve_doc_edit_candidate_models",
+        lambda **kwargs: ["gpt-5-2-codex"],
+    )
+    monkeypatch.setattr("src.doc_editing.nodes.post_process.score_async", lambda **kwargs: None)
+
+    class FakeQuality:
+        composite = 0.97
+        completeness = 0.96
+        source_quality = 0.92
+        error_rate = 0.01
+        dimensions = {"clarity": 0.95}
+
+    monkeypatch.setattr("src.doc_editing.nodes.post_process.score_result", lambda **kwargs: FakeQuality())
+
+    state = {
+        "document": "Original text",
+        "skills": ["writing-refiner", "argument-critic"],
+        "workflow_mode": "consensus",
+        "model_location": "mixed",
+        "model_strength": "fast",
+        "preferred_model": "gpt-5.2-mini",
+        "token_budget": 4000,
+        "run_id": "run-consensus",
+        "run_dir": str(tmp_path / "run-consensus"),
+        "versions": [],
+        "ranked_versions": [
+            {
+                "version_id": "writing-refiner-gemini-2-5-flash",
+                "skill_name": "writing-refiner",
+                "subagent_type": "writing-refiner",
+                "requested_model": None,
+                "output": "Version A",
+                "score": 0.88,
+                "quality_dims": {"completeness": 0.9, "error_rate": 0.0},
+                "token_count": 100,
+                "latency_ms": 20,
+                "file_path": str(tmp_path / "run-consensus" / "01-a.md"),
+                "model_name": "gemini-2-5-flash",
+            },
+            {
+                "version_id": "argument-critic-gpt-5-2-codex",
+                "skill_name": "argument-critic",
+                "subagent_type": "argument-critic",
+                "requested_model": "gpt-5.2-mini",
+                "output": "Version B",
+                "score": 0.91,
+                "quality_dims": {"completeness": 0.92, "error_rate": 0.0},
+                "token_count": 120,
+                "latency_ms": 24,
+                "file_path": str(tmp_path / "run-consensus" / "02-b.md"),
+                "model_name": "gpt-5-2-codex",
+            },
+        ],
+        "tokens_used": 220,
+    }
+
+    result = asyncio.run(post_process_versions(state))
+
+    assert result["ranked_versions"][0]["version_id"] == "consensus-best-of-two"
+    assert result["tokens_used"] > 220
+    assert (tmp_path / "run-consensus" / "99-consensus-best-of-two.md").exists()
+
+
+def test_post_process_strict_bold_generates_two_versions(tmp_path: Path, monkeypatch):
+    class FakeResponse:
+        def __init__(self, content: str):
+            self.content = content
+
+    class FakeModel:
+        def __init__(self):
+            self.calls = 0
+
+        async def ainvoke(self, messages):
+            self.calls += 1
+            return FakeResponse(f"# Variant {self.calls}\n\nGenerated {self.calls}.")
+
+    fake_model = FakeModel()
+    monkeypatch.setattr("src.doc_editing.nodes.post_process.create_chat_model", lambda **kwargs: fake_model)
+    monkeypatch.setattr(
+        "src.doc_editing.nodes.post_process.resolve_doc_edit_candidate_models",
+        lambda **kwargs: ["gpt-5-2-codex"],
+    )
+    monkeypatch.setattr("src.doc_editing.nodes.post_process.score_async", lambda **kwargs: None)
+
+    class FakeQuality:
+        def __init__(self, composite: float):
+            self.composite = composite
+            self.completeness = composite
+            self.source_quality = composite
+            self.error_rate = 0.0
+            self.dimensions = {}
+
+    scores = iter([FakeQuality(0.83), FakeQuality(0.87)])
+    monkeypatch.setattr("src.doc_editing.nodes.post_process.score_result", lambda **kwargs: next(scores))
+
+    state = {
+        "document": "Original text",
+        "skills": ["writing-refiner", "argument-critic"],
+        "workflow_mode": "strict-bold",
+        "model_location": "mixed",
+        "model_strength": "fast",
+        "preferred_model": "gpt-5.2-mini",
+        "token_budget": 4000,
+        "run_id": "run-strict-bold",
+        "run_dir": str(tmp_path / "run-strict-bold"),
+        "versions": [],
+        "ranked_versions": [
+            {
+                "version_id": "writing-refiner-gemini-2-5-flash",
+                "skill_name": "writing-refiner",
+                "subagent_type": "writing-refiner",
+                "requested_model": None,
+                "output": "Version A",
+                "score": 0.88,
+                "quality_dims": {"completeness": 0.9, "error_rate": 0.0},
+                "token_count": 100,
+                "latency_ms": 20,
+                "file_path": str(tmp_path / "run-strict-bold" / "01-a.md"),
+                "model_name": "gemini-2-5-flash",
+            },
+            {
+                "version_id": "argument-critic-gpt-5-2-codex",
+                "skill_name": "argument-critic",
+                "subagent_type": "argument-critic",
+                "requested_model": "gpt-5.2-mini",
+                "output": "Version B",
+                "score": 0.91,
+                "quality_dims": {"completeness": 0.92, "error_rate": 0.0},
+                "token_count": 120,
+                "latency_ms": 24,
+                "file_path": str(tmp_path / "run-strict-bold" / "02-b.md"),
+                "model_name": "gpt-5-2-codex",
+            },
+        ],
+        "tokens_used": 220,
+    }
+
+    result = asyncio.run(post_process_versions(state))
+
+    ids = [version["version_id"] for version in result["ranked_versions"]]
+    assert "strict-fidelity-pass" in ids
+    assert "bold-rewrite-pass" in ids
+
+
 def test_persist_run_round_trip(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "doc_runs.db"
     monkeypatch.setenv("DOC_EDIT_RUNS_DB_PATH", str(db_path))
@@ -125,6 +284,7 @@ def test_persist_run_round_trip(tmp_path: Path, monkeypatch):
     state = {
         "document": "Example document for persistence",
         "skills": ["writing-refiner"],
+        "workflow_mode": "consensus",
         "model_location": "mixed",
         "model_strength": "fast",
         "preferred_model": None,
@@ -183,6 +343,7 @@ def test_list_runs_includes_human_readable_title(tmp_path: Path, monkeypatch):
     state = {
         "document": "A useful title for the run list view",
         "skills": ["writing-refiner"],
+        "workflow_mode": "consensus",
         "model_location": "mixed",
         "model_strength": "fast",
         "preferred_model": None,
@@ -293,6 +454,7 @@ def test_start_doc_edit_returns_graph_result(monkeypatch, tmp_path: Path):
             doc_editing.DocEditRequest(
                 document="Hello world",
                 skills=["writing-refiner"],
+                workflow_mode="debate-judge",
                 model_location="remote",
                 model_strength="cheap",
                 preferred_model="gpt-5.2-mini",
@@ -307,6 +469,7 @@ def test_start_doc_edit_returns_graph_result(monkeypatch, tmp_path: Path):
     assert response.versions[0]["skill_name"] == "writing-refiner"
     assert captured["state"]["model_location"] == "remote"
     assert captured["state"]["model_strength"] == "cheap"
+    assert captured["state"]["workflow_mode"] == "debate-judge"
     assert captured["state"]["preferred_model"] == "gpt-5.2-mini"
 
 
@@ -356,8 +519,17 @@ def test_select_doc_run_version_resumes_graph(monkeypatch, tmp_path: Path):
                 "tokens_used": 111,
                 "title": "Resume run",
                 "final_path": str(tmp_path / "final.md"),
-                "selected_version": {"skill_name": "writing-refiner"},
-                "ranked_versions": [{"skill_name": "writing-refiner", "score": 0.8}],
+                "selected_version": {
+                    "skill_name": "writing-refiner",
+                    "version_id": "writing-refiner-gpt-5-2-codex",
+                },
+                "ranked_versions": [
+                    {
+                        "skill_name": "writing-refiner",
+                        "version_id": "writing-refiner-gpt-5-2-codex",
+                        "score": 0.8,
+                    }
+                ],
             }
 
     async def fake_get_graph():
@@ -366,9 +538,10 @@ def test_select_doc_run_version_resumes_graph(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(doc_editing, "get_doc_edit_graph", fake_get_graph)
     monkeypatch.setattr(doc_editing, "ensure_run_dir", lambda run_id: tmp_path / run_id)
 
-    response = asyncio.run(doc_editing.select_doc_run_version("run42", "writing-refiner"))
+    response = asyncio.run(doc_editing.select_doc_run_version("run42", "writing-refiner-gpt-5-2-codex"))
 
     assert response.status == "completed"
     assert response.title == "Resume run"
     assert response.selected_skill == "writing-refiner"
+    assert response.selected_version_id == "writing-refiner-gpt-5-2-codex"
     assert captured["config"] == {"configurable": {"thread_id": "run42"}}
