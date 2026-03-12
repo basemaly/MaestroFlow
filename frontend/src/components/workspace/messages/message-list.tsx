@@ -1,9 +1,11 @@
 import type { BaseStream } from "@langchain/langgraph-sdk/react";
+import { useEffect } from "react";
 
 import {
   Conversation,
   ConversationContent,
 } from "@/components/ai-elements/conversation";
+import { getBackendBaseURL } from "@/core/config";
 import { useI18n } from "@/core/i18n/hooks";
 import {
   extractContentFromMessage,
@@ -16,6 +18,7 @@ import {
 } from "@/core/messages/utils";
 import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
 import type { Subtask } from "@/core/tasks";
+import { parseTaskToolResult } from "@/core/tasks";
 import { useUpdateSubtask } from "@/core/tasks/context";
 import type { AgentThreadState } from "@/core/threads";
 import { cn } from "@/lib/utils";
@@ -28,6 +31,22 @@ import { MessageGroup } from "./message-group";
 import { MessageListItem } from "./message-list-item";
 import { MessageListSkeleton } from "./skeleton";
 import { SubtaskCard } from "./subtask-card";
+
+function isTaskQualityCandidate(value: unknown): value is NonNullable<Subtask["quality"]> {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.task_id === "string" &&
+    typeof candidate.subagent_type === "string" &&
+    typeof candidate.schema === "string" &&
+    typeof candidate.composite === "number" &&
+    typeof candidate.word_count === "number" &&
+    Array.isArray(candidate.quality_warnings)
+  );
+}
 
 export function MessageList({
   className,
@@ -44,6 +63,54 @@ export function MessageList({
   const rehypePlugins = useRehypeSplitWordsIntoSpans(thread.isLoading);
   const updateSubtask = useUpdateSubtask();
   const messages = thread.messages;
+
+  useEffect(() => {
+    const taskIds = new Set<string>();
+    for (const message of messages) {
+      if (message.type !== "ai") {
+        continue;
+      }
+      for (const toolCall of message.tool_calls ?? []) {
+        if (toolCall.name === "task" && toolCall.id) {
+          taskIds.add(toolCall.id);
+        }
+      }
+    }
+    if (taskIds.size === 0) {
+      return;
+    }
+
+    const controller = new AbortController();
+    fetch(`${getBackendBaseURL()}/api/threads/${threadId}/quality/`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return { scores: [] as Array<Record<string, unknown>> };
+        }
+        return (await response.json()) as {
+          scores?: Array<Record<string, unknown>>;
+        };
+      })
+      .then((payload) => {
+        for (const score of payload.scores ?? []) {
+          if (!isTaskQualityCandidate(score)) {
+            continue;
+          }
+          if (!taskIds.has(score.task_id)) {
+            continue;
+          }
+          updateSubtask({
+            id: score.task_id,
+            quality: score,
+          });
+        }
+      })
+      .catch(() => undefined);
+
+    return () => controller.abort();
+  }, [messages, threadId, updateSubtask]);
+
   if (thread.isThreadLoading && messages.length === 0) {
     return <MessageListSkeleton />;
   }
@@ -118,25 +185,29 @@ export function MessageList({
                 const taskId = message.tool_call_id;
                 if (taskId) {
                   const result = extractTextFromMessage(message);
-                  if (result.startsWith("Task Succeeded. Result:")) {
+                  const parsed = parseTaskToolResult(result);
+                  if (parsed?.status === "completed") {
                     updateSubtask({
                       id: taskId,
                       status: "completed",
-                      result: result
-                        .split("Task Succeeded. Result:")[1]
-                        ?.trim(),
+                      subagent_type: parsed.subagent_type,
+                      result: parsed.result ?? parsed.visibleText,
+                      artifact: parsed.artifact,
+                      quality: parsed.quality,
                     });
-                  } else if (result.startsWith("Task failed.")) {
+                  } else if (parsed?.status === "failed") {
                     updateSubtask({
                       id: taskId,
                       status: "failed",
-                      error: result.split("Task failed.")[1]?.trim(),
+                      subagent_type: parsed.subagent_type,
+                      error: parsed.error ?? parsed.visibleText,
                     });
-                  } else if (result.startsWith("Task timed out")) {
+                  } else if (parsed?.status === "timed_out") {
                     updateSubtask({
                       id: taskId,
                       status: "failed",
-                      error: result,
+                      subagent_type: parsed.subagent_type,
+                      error: parsed.error ?? parsed.visibleText,
                     });
                   } else {
                     updateSubtask({

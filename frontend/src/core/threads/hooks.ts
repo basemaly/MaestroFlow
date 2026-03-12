@@ -12,6 +12,7 @@ import { useI18n } from "../i18n/hooks";
 import type { FileInMessage } from "../messages/utils";
 import type { LocalSettings } from "../settings";
 import { useUpdateSubtask } from "../tasks/context";
+import type { TaskArtifact, TaskQuality } from "../tasks/types";
 import type { UploadedFileInfo } from "../uploads";
 import { uploadFiles } from "../uploads";
 
@@ -135,17 +136,75 @@ export function useThreadStream({
     },
     onCustomEvent(event: unknown) {
       if (
-        typeof event === "object" &&
-        event !== null &&
-        "type" in event &&
-        event.type === "task_running"
+        typeof event !== "object" ||
+        event === null ||
+        !("type" in event) ||
+        typeof event.type !== "string"
       ) {
+        return;
+      }
+
+      if (event.type === "task_started") {
+        const e = event as {
+          type: "task_started";
+          task_id: string;
+          description: string;
+          prompt: string;
+          subagent_type: string;
+        };
+        updateSubtask({
+          id: e.task_id,
+          description: e.description,
+          prompt: e.prompt,
+          subagent_type: e.subagent_type,
+          status: "in_progress",
+        });
+        return;
+      }
+
+      if (event.type === "task_running") {
         const e = event as {
           type: "task_running";
           task_id: string;
           message: AIMessage;
         };
-        updateSubtask({ id: e.task_id, latestMessage: e.message });
+        updateSubtask({ id: e.task_id, latestMessage: e.message, status: "in_progress" });
+        return;
+      }
+
+      if (event.type === "task_completed") {
+        const e = event as {
+          type: "task_completed";
+          task_id: string;
+          subagent_type: string;
+          result: string;
+          artifact?: Record<string, unknown>;
+          quality?: Record<string, unknown>;
+        };
+        updateSubtask({
+          id: e.task_id,
+          subagent_type: e.subagent_type,
+          status: "completed",
+          result: e.result,
+          artifact: e.artifact as TaskArtifact | undefined,
+          quality: e.quality as TaskQuality | undefined,
+        });
+        return;
+      }
+
+      if (event.type === "task_failed" || event.type === "task_timed_out") {
+        const e = event as {
+          type: "task_failed" | "task_timed_out";
+          task_id: string;
+          subagent_type?: string;
+          error?: string;
+        };
+        updateSubtask({
+          id: e.task_id,
+          subagent_type: e.subagent_type ?? "general-purpose",
+          status: "failed",
+          error: e.error,
+        });
       }
     },
     onFinish(state) {

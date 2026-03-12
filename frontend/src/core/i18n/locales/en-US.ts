@@ -49,11 +49,11 @@ export const enUS: Translations = {
   welcome: {
     greeting: "Hello, again!",
     description:
-      "Welcome to 🦌 DeerFlow, an open source super agent. With built-in and custom skills, DeerFlow helps you search on the web, analyze data, and generate artifacts like slides, web pages and do almost anything.",
+      "Welcome to MaestroFlow, an open source super agent. With built-in and custom skills, MaestroFlow helps you search on the web, analyze data, and generate artifacts like slides, web pages and do almost anything.",
 
     createYourOwnSkill: "Create Your Own Skill",
     createYourOwnSkillDescription:
-      "Create your own skill to release the power of DeerFlow. With customized skills,\nDeerFlow can help you search on the web, analyze data, and generate\n artifacts like slides, web pages and do almost anything.",
+      "Create your own skill to release the power of MaestroFlow. With customized skills,\nMaestroFlow can help you search on the web, analyze data, and generate\n artifacts like slides, web pages and do almost anything.",
   },
 
   // Clipboard
@@ -104,24 +104,26 @@ export const enUS: Translations = {
     followupConfirmReplace: "Replace & send",
     suggestions: [
       {
-        suggestion: "Write",
-        prompt: "Write a blog post about the latest trends on [topic]",
+        suggestion: "Humanize",
+        prompt: "Humanize this AI-generated draft without changing the meaning: [paste text]",
         icon: PenLineIcon,
+      },
+      {
+        suggestion: "Critique",
+        prompt:
+          "Critique this argument or essay for thesis strength, evidence, counterclaims, and rebuttals: [paste draft]",
+        icon: MicroscopeIcon,
+      },
+      {
+        suggestion: "Refine",
+        prompt:
+          "Refine this prompt or draft iteratively. Give me a first pass, critique it, then produce a stronger revision: [paste prompt or draft]",
+        icon: ShapesIcon,
       },
       {
         suggestion: "Research",
         prompt:
           "Conduct a deep dive research on [topic], and summarize the findings.",
-        icon: MicroscopeIcon,
-      },
-      {
-        suggestion: "Collect",
-        prompt: "Collect data from [source] and create a report.",
-        icon: ShapesIcon,
-      },
-      {
-        suggestion: "Learn",
-        prompt: "Learn about [topic] and create a tutorial.",
         icon: GraduationCapIcon,
       },
     ],
@@ -204,13 +206,13 @@ export const enUS: Translations = {
 
   // Workspace
   workspace: {
-    officialWebsite: "DeerFlow's official website",
-    githubTooltip: "DeerFlow on Github",
+    officialWebsite: "MaestroFlow official website",
+    githubTooltip: "MaestroFlow on GitHub",
     settingsAndMore: "Settings and more",
-    visitGithub: "DeerFlow on GitHub",
+    visitGithub: "MaestroFlow on GitHub",
     reportIssue: "Report a issue",
     contactUs: "Contact us",
-    about: "About DeerFlow",
+    about: "About MaestroFlow",
   },
 
   // Conversation
@@ -226,7 +228,7 @@ export const enUS: Translations = {
 
   // Page titles (document title)
   pages: {
-    appName: "DeerFlow",
+    appName: "MaestroFlow",
     chats: "Chats",
     newChat: "New chat",
     untitled: "Untitled",
@@ -252,7 +254,7 @@ export const enUS: Translations = {
     writeFile: "Write file",
     clickToViewContent: "Click to view file content",
     writeTodos: "Update to-do list",
-    skillInstallTooltip: "Install skill and make it available to DeerFlow",
+    skillInstallTooltip: "Install skill and make it available to MaestroFlow",
   },
 
   // Subtasks
@@ -273,7 +275,7 @@ export const enUS: Translations = {
   // Settings
   settings: {
     title: "Settings",
-    description: "Adjust how DeerFlow looks and behaves for you.",
+    description: "Adjust how MaestroFlow looks and behaves for you.",
     sections: {
       appearance: "Appearance",
       memory: "Memory",
@@ -285,7 +287,7 @@ export const enUS: Translations = {
     memory: {
       title: "Memory",
       description:
-        "DeerFlow automatically learns from your conversations in the background. These memories help DeerFlow understand you better and deliver a more personalized experience.",
+        "MaestroFlow automatically learns from your conversations in the background. These memories help MaestroFlow understand you better and deliver a more personalized experience.",
       empty: "No memory data to display.",
       rawJson: "Raw JSON",
       markdown: {
@@ -341,18 +343,18 @@ export const enUS: Translations = {
       createSkill: "Create skill",
       emptyTitle: "No agent skill yet",
       emptyDescription:
-        "Put your agent skill folders under the `/skills/custom` folder under the root folder of DeerFlow.",
+        "Put your agent skill folders under the `/skills/custom` folder under the root folder of MaestroFlow.",
       emptyButton: "Create Your First Skill",
     },
     notification: {
       title: "Notification",
       description:
-        "DeerFlow only sends a completion notification when the window is not active. This is especially useful for long-running tasks so you can switch to other work and get notified when done.",
+        "MaestroFlow only sends a completion notification when the window is not active. This is especially useful for long-running tasks so you can switch to other work and get notified when done.",
       requestPermission: "Request notification permission",
       deniedHint:
         "Notification permission was denied. You can enable it in your browser's site settings to receive completion alerts.",
       testButton: "Send test notification",
-      testTitle: "DeerFlow",
+      testTitle: "MaestroFlow",
       testBody: "This is a test notification.",
       notSupported: "Your browser does not support notifications.",
       disableNotification: "Disable notification",

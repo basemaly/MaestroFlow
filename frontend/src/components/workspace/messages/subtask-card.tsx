@@ -14,6 +14,7 @@ import {
   ChainOfThoughtStep,
 } from "@/components/ai-elements/chain-of-thought";
 import { Shimmer } from "@/components/ai-elements/shimmer";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ShineBorder } from "@/components/ui/shine-border";
 import { useI18n } from "@/core/i18n/hooks";
@@ -51,6 +52,9 @@ export function SubtaskCard({
       return <Loader2Icon className="size-3 animate-spin" />;
     }
   }, [task.status]);
+  const compositeLabel = task.quality
+    ? `${Math.round(task.quality.composite * 100)}%`
+    : null;
   return (
     <ChainOfThought
       className={cn("relative w-full gap-2 rounded-lg border py-0", className)}
@@ -104,7 +108,9 @@ export function SubtaskCard({
                       className="max-w-[420px] truncate pb-1"
                       uniqueKey={task.latestMessage?.id ?? ""}
                     >
-                      {task.status === "in_progress" &&
+                      {task.status === "completed" && compositeLabel
+                        ? `${task.subagent_type} · ${compositeLabel}`
+                        : task.status === "in_progress" &&
                       task.latestMessage &&
                       hasToolCalls(task.latestMessage)
                         ? explainLastToolCall(task.latestMessage, t)
@@ -151,6 +157,43 @@ export function SubtaskCard({
                 label={t.subtasks.completed}
                 icon={<CheckCircleIcon className="size-4" />}
               ></ChainOfThoughtStep>
+              <ChainOfThoughtStep
+                label={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{task.subagent_type}</Badge>
+                    {task.artifact?.schema && (
+                      <Badge variant="secondary">{task.artifact.schema}</Badge>
+                    )}
+                    {compositeLabel && (
+                      <Badge variant="outline">Score {compositeLabel}</Badge>
+                    )}
+                  </div>
+                }
+              />
+              {task.quality && (
+                <ChainOfThoughtStep
+                  label={
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {Object.entries(task.quality.dimensions).map(([name, value]) => (
+                        <Badge key={name} variant="outline">
+                          {name}: {Math.round(value * 100)}%
+                        </Badge>
+                      ))}
+                    </div>
+                  }
+                />
+              )}
+              {(task.artifact?.quality_warnings?.length || task.quality?.quality_warnings?.length) ? (
+                <ChainOfThoughtStep
+                  label={
+                    <div className="flex flex-col gap-1 text-xs text-amber-600">
+                      {[...(task.artifact?.quality_warnings ?? []), ...(task.quality?.quality_warnings ?? [])].map((warning) => (
+                        <div key={warning}>Warning: {warning}</div>
+                      ))}
+                    </div>
+                  }
+                />
+              ) : null}
               <ChainOfThoughtStep
                 label={
                   task.result ? (

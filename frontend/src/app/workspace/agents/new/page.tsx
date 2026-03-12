@@ -3,6 +3,7 @@
 import { ArrowLeftIcon, BotIcon, CheckCircleIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import {
   PromptInput,
@@ -83,10 +84,14 @@ export default function NewAgentPage() {
     }
     setAgentName(trimmed);
     setStep("chat");
-    await sendMessage(threadId, {
-      text: t.agents.nameStepBootstrapMessage.replace("{name}", trimmed),
-      files: [],
-    });
+    try {
+      await sendMessage(threadId, {
+        text: t.agents.nameStepBootstrapMessage.replace("{name}", trimmed),
+        files: [],
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
   }, [
     nameInput,
     sendMessage,
@@ -108,11 +113,15 @@ export default function NewAgentPage() {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || thread.isLoading) return;
-      await sendMessage(
-        threadId,
-        { text: trimmed, files: [] },
-        { agent_name: agentName },
-      );
+      try {
+        await sendMessage(
+          threadId,
+          { text: trimmed, files: [] },
+          { agent_name: agentName },
+        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error));
+      }
     },
     [thread.isLoading, sendMessage, threadId, agentName],
   );

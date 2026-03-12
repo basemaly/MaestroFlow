@@ -3,6 +3,7 @@
 import { BotIcon, PlusSquare } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback } from "react";
+import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
@@ -69,7 +70,13 @@ export default function AgentChatPage() {
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
-      void sendMessage(threadId, message, { agent_name });
+      void sendMessage(threadId, message, { agent_name }).catch(
+        (error: unknown) => {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          toast.error(errorMessage);
+        },
+      );
     },
     [sendMessage, threadId, agent_name],
   );

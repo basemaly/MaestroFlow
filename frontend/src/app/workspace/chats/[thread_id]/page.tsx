@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
@@ -26,11 +27,16 @@ import { cn } from "@/lib/utils";
 export default function ChatPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
+  const [isHydrated, setIsHydrated] = useState(false);
 
   const { threadId, isNewThread, setIsNewThread, isMock } = useThreadChat();
   useSpecificChatMode();
 
   const { showNotification } = useNotification();
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   const [thread, sendMessage] = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
@@ -60,13 +66,20 @@ export default function ChatPage() {
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
-      void sendMessage(threadId, message);
+      void sendMessage(threadId, message).catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        toast.error(errorMessage);
+      });
     },
     [sendMessage, threadId],
   );
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
+
+  if (isNewThread && !isHydrated) {
+    return <div className="bg-background size-full" />;
+  }
 
   return (
     <ThreadContext.Provider value={{ thread, isMock }}>
