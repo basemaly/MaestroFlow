@@ -10,10 +10,15 @@ from langchain.tools import InjectedToolCallId, ToolRuntime, tool
 from langgraph.config import get_stream_writer
 from langgraph.typing import ContextT
 
+from src.agents.decomposer import classify_task
 from src.agents.lead_agent.prompt import get_skills_prompt_section
 from src.agents.thread_state import ThreadState
+from src.models.routing import resolve_subagent_model_preference
+from src.research.registry import inject_research_hints
 from src.subagents import SubagentExecutor, get_subagent_config
 from src.subagents.executor import SubagentStatus, cleanup_background_task, get_background_task_result
+from src.subagents.mab import select_subagent
+from src.subagents.quality import score_async
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +28,9 @@ def task_tool(
     runtime: ToolRuntime[ContextT, ThreadState],
     description: str,
     prompt: str,
-    subagent_type: Literal["general-purpose", "bash"],
+    subagent_type: Literal["general-purpose", "bash"] | None,
     tool_call_id: Annotated[str, InjectedToolCallId],
+    subagent_model: str | None = None,
     max_turns: int | None = None,
 ) -> str:
     """Delegate a task to a specialized subagent that runs in its own context.
@@ -54,9 +60,24 @@ def task_tool(
     Args:
         description: A short (3-5 word) description of the task for logging/display. ALWAYS PROVIDE THIS PARAMETER FIRST.
         prompt: The task description for the subagent. Be specific and clear about what needs to be done. ALWAYS PROVIDE THIS PARAMETER SECOND.
-        subagent_type: The type of subagent to use. ALWAYS PROVIDE THIS PARAMETER THIRD.
+        subagent_type: The type of subagent to use. If omitted, auto-classified from the description and prompt. ALWAYS PROVIDE THIS PARAMETER THIRD when you know the type.
+        subagent_model: Optional model preference for the subagent. Use exact model names when possible,
+            or phrases like "fastest gemini model", "fastest local model", or "gpt-5-2-codex".
         max_turns: Optional maximum number of agent turns. Defaults to subagent's configured max.
     """
+    # Auto-classify subagent_type when not explicitly provided
+    if subagent_type is None:
+        heuristic_type = classify_task(description, prompt)
+        # MAB may override the heuristic once sufficient data is collected
+        task_category = heuristic_type  # use heuristic type as category label
+        subagent_type = select_subagent(task_category=task_category, candidates=[heuristic_type, "general-purpose"])
+        logger.info(
+            "Auto-selected task '%s': heuristic='%s' -> mab_selected='%s'",
+            description, heuristic_type, subagent_type,
+        )
+    else:
+        task_category = subagent_type  # explicit type is its own category
+
     # Get subagent configuration
     config = get_subagent_config(subagent_type)
     if config is None:
@@ -66,8 +87,14 @@ def task_tool(
     overrides: dict = {}
 
     skills_section = get_skills_prompt_section()
+    system_prompt = config.system_prompt
     if skills_section:
-        overrides["system_prompt"] = config.system_prompt + "\n\n" + skills_section
+        system_prompt = system_prompt + "\n\n" + skills_section
+    # Inject external research tool hints for general-purpose tasks
+    if subagent_type == "general-purpose":
+        system_prompt = inject_research_hints(system_prompt, task_description=description)
+    if system_prompt != config.system_prompt:
+        overrides["system_prompt"] = system_prompt
 
     if max_turns is not None:
         overrides["max_turns"] = max_turns
@@ -93,6 +120,26 @@ def task_tool(
 
         # Get or generate trace_id for distributed tracing
         trace_id = metadata.get("trace_id") or str(uuid.uuid4())[:8]
+
+    resolved_subagent_model = resolve_subagent_model_preference(
+        subagent_model,
+        parent_model=parent_model,
+    )
+    if subagent_model:
+        if resolved_subagent_model:
+            config = replace(config, model=resolved_subagent_model)
+            logger.info(
+                "[trace=%s] Resolved subagent model preference '%s' -> '%s'",
+                trace_id,
+                subagent_model,
+                resolved_subagent_model,
+            )
+        else:
+            logger.warning(
+                "[trace=%s] Could not resolve subagent model preference '%s'; using default routing",
+                trace_id,
+                subagent_model,
+            )
 
     # Get available tools (excluding task tool to prevent nesting)
     # Lazy import to avoid circular dependency
@@ -163,6 +210,7 @@ def task_tool(
 
         # Check if task completed, failed, or timed out
         if result.status == SubagentStatus.COMPLETED:
+            score_async(task_id, result.result, subagent_type, thread_id=thread_id, task_category=task_category)
             writer({"type": "task_completed", "task_id": task_id, "result": result.result})
             logger.info(f"[trace={trace_id}] Task {task_id} completed after {poll_count} polls")
             cleanup_background_task(task_id)

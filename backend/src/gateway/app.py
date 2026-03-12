@@ -13,6 +13,7 @@ from src.gateway.routers import (
     mcp,
     memory,
     models,
+    quality,
     skills,
     suggestions,
     uploads,
@@ -140,6 +141,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
                 "description": "Manage IM channel integrations (Feishu, Slack, Telegram)",
             },
             {
+                "name": "quality",
+                "description": "Subagent output quality scores per thread",
+            },
+            {
                 "name": "health",
                 "description": "Health check and system status endpoints",
             },
@@ -175,6 +180,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Channels API is mounted at /api/channels
     app.include_router(channels.router)
+
+    # Quality API is mounted at /api/threads/{thread_id}/quality
+    app.include_router(quality.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:

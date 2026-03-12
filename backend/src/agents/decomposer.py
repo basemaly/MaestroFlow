@@ -48,6 +48,29 @@ _SUBTASK_PATTERNS = [
 _SYNTHESIS_WORDS = frozenset(("summarize", "report", "document", "explain", "present", "write up"))
 
 
+# ---------------------------------------------------------------------------
+# Task Shape Classifier
+# ---------------------------------------------------------------------------
+
+# Signals that a task is best handled by a bash subagent (command execution)
+_BASH_SIGNALS = frozenset((
+    "run", "execute", "install", "build", "compile", "deploy", "start", "stop",
+    "restart", "git", "docker", "bash", "shell", "command", "script", "cli",
+    "terminal", "ssh", "npm", "pip", "make", "lint", "format", "grep", "find",
+    "chmod", "chown", "curl", "wget", "ls", "cat", "mv", "cp", "rm", "mkdir",
+    "pytest", "python -", "node ", "bun ", "uv ", "ruff",
+))
+
+# Signals that a task is best handled by a general-purpose research/reasoning subagent
+_RESEARCH_SIGNALS = frozenset((
+    "research", "analyze", "analyse", "investigate", "summarize", "explain",
+    "compare", "write", "document", "plan", "design", "architect", "evaluate",
+    "assess", "review", "explore", "understand", "gather", "collect",
+    "synthesize", "what is", "how does", "why does", "search for", "look up",
+    "find information", "describe", "outline", "propose", "suggest",
+))
+
+
 def complexity_score(task: str) -> int:
     """Score task complexity. >= 6 triggers decomposition by default."""
     lowered = task.lower()
@@ -138,3 +161,27 @@ def decompose(task: str, max_subtasks: int = 8, threshold: int = 6) -> Decomposi
         execution_batches=build_execution_order(subtasks),
         source="heuristic",
     )
+
+
+def classify_task(description: str, prompt: str = "") -> str:
+    """Classify a task and return the recommended subagent type.
+
+    Uses heuristic keyword scoring against bash-execution and research/reasoning
+    signal sets. Returns ``"bash"`` when command-execution signals dominate,
+    ``"general-purpose"`` otherwise.
+
+    Args:
+        description: Short task description (3-5 words).
+        prompt: Full task prompt (optional, improves accuracy).
+
+    Returns:
+        ``"bash"`` or ``"general-purpose"``.
+    """
+    text = (description + " " + prompt).lower()
+
+    bash_score = sum(1 for s in _BASH_SIGNALS if s in text)
+    research_score = sum(1 for s in _RESEARCH_SIGNALS if s in text)
+
+    # Bash wins only when it clearly dominates; default to general-purpose
+    # for ambiguous cases since general-purpose can also run commands.
+    return "bash" if bash_score > research_score + 1 else "general-purpose"
