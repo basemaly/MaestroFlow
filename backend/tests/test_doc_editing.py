@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.doc_editing.nodes.collector import collector
 from src.doc_editing.nodes.dispatcher import dispatch_skills
+from src.doc_editing.nodes.skill_agent import _sanitize_skill_output
 from src.doc_editing.nodes.finalizer import _resolve_final_path
 from src.doc_editing.run_tracker import get_run, list_runs, persist_run
 from src.gateway.routers import doc_editing
@@ -194,6 +195,35 @@ def test_resolve_final_path_avoids_collisions(tmp_path: Path):
     assert resolved == tmp_path / "report-2.md"
 
 
+def test_sanitize_skill_output_prefers_revised_text_section():
+    raw = """
+## Summary
+The text is more direct.
+
+## Revised Text
+# Async Python
+
+Use async only when it genuinely helps.
+
+## Notes
+- Removed filler.
+""".strip()
+
+    assert _sanitize_skill_output(raw) == "# Async Python\n\nUse async only when it genuinely helps."
+
+
+def test_sanitize_skill_output_drops_summary_and_notes_labels():
+    raw = """
+Summary: tightened the prose.
+
+# Async Python
+
+Notes: removed repetition.
+""".strip()
+
+    assert _sanitize_skill_output(raw) == "tightened the prose.\n\n# Async Python"
+
+
 def test_start_doc_edit_returns_graph_result(monkeypatch, tmp_path: Path):
     class FakeGraph:
         async def ainvoke(self, state, config=None):
@@ -206,7 +236,10 @@ def test_start_doc_edit_returns_graph_result(monkeypatch, tmp_path: Path):
                 "versions": [{"skill_name": "writing-refiner", "score": 0.8}],
             }
 
-    monkeypatch.setattr(doc_editing, "doc_edit_graph", FakeGraph())
+    async def fake_get_graph():
+        return FakeGraph()
+
+    monkeypatch.setattr(doc_editing, "get_doc_edit_graph", fake_get_graph)
     monkeypatch.setattr(doc_editing, "ensure_run_dir", lambda run_id: tmp_path / run_id)
 
     response = asyncio.run(
@@ -227,7 +260,10 @@ def test_start_doc_edit_returns_pending_selection(monkeypatch, tmp_path: Path):
         async def ainvoke(self, state, config=None):
             return {"__interrupt__": [{"value": "pause"}]}
 
-    monkeypatch.setattr(doc_editing, "doc_edit_graph", FakeGraph())
+    async def fake_get_graph():
+        return FakeGraph()
+
+    monkeypatch.setattr(doc_editing, "get_doc_edit_graph", fake_get_graph)
     monkeypatch.setattr(doc_editing, "ensure_run_dir", lambda run_id: tmp_path / run_id)
     monkeypatch.setattr(
         doc_editing,
@@ -269,7 +305,10 @@ def test_select_doc_run_version_resumes_graph(monkeypatch, tmp_path: Path):
                 "ranked_versions": [{"skill_name": "writing-refiner", "score": 0.8}],
             }
 
-    monkeypatch.setattr(doc_editing, "doc_edit_graph", FakeGraph())
+    async def fake_get_graph():
+        return FakeGraph()
+
+    monkeypatch.setattr(doc_editing, "get_doc_edit_graph", fake_get_graph)
     monkeypatch.setattr(doc_editing, "ensure_run_dir", lambda run_id: tmp_path / run_id)
 
     response = asyncio.run(doc_editing.select_doc_run_version("run42", "writing-refiner"))

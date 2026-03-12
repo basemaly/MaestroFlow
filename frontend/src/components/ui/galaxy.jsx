@@ -198,11 +198,20 @@ export default function Galaxy({
   useEffect(() => {
     if (!ctnDom.current) return;
     const ctn = ctnDom.current;
-    const renderer = new Renderer({
-      alpha: transparent,
-      premultipliedAlpha: false,
-    });
+    /** @type {Renderer | undefined} */
+    let renderer;
+    try {
+      renderer = new Renderer({
+        alpha: transparent,
+        premultipliedAlpha: false,
+      });
+    } catch {
+      return;
+    }
     const gl = renderer.gl;
+    if (!gl?.canvas) {
+      return;
+    }
 
     if (transparent) {
       gl.enable(gl.BLEND);

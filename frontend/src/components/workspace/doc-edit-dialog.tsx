@@ -24,9 +24,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -49,6 +46,8 @@ const SKILL_OPTIONS = [
   { value: "humanizer", label: "Humanizer" },
 ] as const;
 const DEFAULT_SKILLS = ["writing-refiner", "argument-critic"];
+const selectedToggleItemClass =
+  "data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-foreground data-[state=on]:shadow-sm";
 
 function resolveModelPreference(
   mode: "flash" | "thinking" | "pro" | "ultra" | undefined,
@@ -57,6 +56,20 @@ function resolveModelPreference(
     return "strong";
   }
   return "fast";
+}
+
+function DocEditStudioHeader({ title }: { title: string }) {
+  return (
+    <div className="mb-6 flex flex-col gap-2 text-left">
+      <div className="flex items-center gap-2 text-lg leading-none font-semibold">
+        <SparklesIcon className="size-4" />
+        {title}
+      </div>
+      <div className="text-muted-foreground text-sm">
+        Paste markdown or upload a supported file, run multiple editorial skills in parallel, then choose the winner.
+      </div>
+    </div>
+  );
 }
 
 export function DocEditStudio({
@@ -230,15 +243,7 @@ export function DocEditStudio({
   return (
     <div className={cn("grid h-full min-h-[70vh] grid-cols-1 lg:grid-cols-[1.05fr_1.25fr]", embedded && "min-h-0")}>
       <div className={cn("border-border/70 bg-muted/20 p-6", !embedded && "border-r")}>
-        <DialogHeader className="mb-6">
-          <DialogTitle className="flex items-center gap-2">
-            <SparklesIcon className="size-4" />
-            {runTitle}
-          </DialogTitle>
-          <DialogDescription>
-            Paste markdown or upload a supported file, run multiple editorial skills in parallel, then choose the winner.
-          </DialogDescription>
-        </DialogHeader>
+        <DocEditStudioHeader title={runTitle} />
 
         <div className="space-y-5">
           <div className="space-y-2">
@@ -291,7 +296,7 @@ export function DocEditStudio({
                 <ToggleGroupItem
                   key={skill.value}
                   value={skill.value}
-                  className="rounded-md"
+                  className={cn("rounded-md border-border/70", selectedToggleItemClass)}
                 >
                   {skill.label}
                 </ToggleGroupItem>
@@ -311,9 +316,9 @@ export function DocEditStudio({
                 }
               }}
             >
-              <ToggleGroupItem value="local">Local</ToggleGroupItem>
-              <ToggleGroupItem value="fast">Fast</ToggleGroupItem>
-              <ToggleGroupItem value="strong">Strong</ToggleGroupItem>
+              <ToggleGroupItem className={selectedToggleItemClass} value="local">Local</ToggleGroupItem>
+              <ToggleGroupItem className={selectedToggleItemClass} value="fast">Fast</ToggleGroupItem>
+              <ToggleGroupItem className={selectedToggleItemClass} value="strong">Strong</ToggleGroupItem>
             </ToggleGroup>
           </div>
 
@@ -401,7 +406,11 @@ export function DocEditStudio({
               onValueChange={(value) => setCompareSkill(value || null)}
             >
               {sortedVersions.map((version) => (
-                <ToggleGroupItem key={version.skill_name} value={version.skill_name}>
+                <ToggleGroupItem
+                  key={version.skill_name}
+                  value={version.skill_name}
+                  className={cn("border-border/70", selectedToggleItemClass)}
+                >
                   {version.skill_name}
                 </ToggleGroupItem>
               ))}

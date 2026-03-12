@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -49,6 +50,49 @@ def _extract_text(content: object) -> str:
     return str(content)
 
 
+_REVISED_TEXT_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+revised text\s*$", re.IGNORECASE | re.MULTILINE)
+_LABEL_PREFIX_RE = re.compile(r"^\s*summary\s*:\s*", re.IGNORECASE)
+
+
+def _sanitize_skill_output(text: str) -> str:
+    normalized = text.strip()
+    if not normalized:
+        return ""
+
+    revised_match = _REVISED_TEXT_HEADING_RE.search(normalized)
+    if revised_match:
+        remainder = normalized[revised_match.end() :].lstrip()
+        kept_lines: list[str] = []
+        for line in remainder.splitlines():
+            lowered = line.strip().lower()
+            if lowered in {"## notes", "### notes", "# notes", "## summary", "### summary", "# summary"}:
+                break
+            kept_lines.append(line)
+        cleaned = "\n".join(kept_lines).strip()
+        if cleaned:
+            return cleaned
+
+    lines = normalized.splitlines()
+    filtered_lines: list[str] = []
+    skipping_section = False
+    for line in lines:
+        stripped = line.strip()
+        lower = stripped.lower()
+        if lower.startswith("notes:"):
+            continue
+        if lower in {"## summary", "### summary", "# summary", "## notes", "### notes", "# notes"}:
+            skipping_section = True
+            continue
+        if skipping_section and stripped.startswith("#"):
+            skipping_section = False
+        if skipping_section:
+            continue
+        filtered_lines.append(_LABEL_PREFIX_RE.sub("", line))
+
+    cleaned = "\n".join(filtered_lines).strip()
+    return cleaned or normalized
+
+
 def _candidate_models(mode: str) -> list[str]:
     preference = _MODE_PREFERENCES.get(mode, _MODE_PREFERENCES["fast"])
     candidates: list[str] = []
@@ -93,7 +137,7 @@ async def skill_agent(state: DocEditState) -> dict:
             started = time.monotonic()
             response = await model.ainvoke(messages)
             latency_ms = int((time.monotonic() - started) * 1000)
-            response_text = _extract_text(response.content).strip()
+            response_text = _sanitize_skill_output(_extract_text(response.content))
             model_name = candidate
             if response_text:
                 break

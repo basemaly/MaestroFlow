@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from langgraph.types import Command
 
-from src.doc_editing.graph import doc_edit_graph, make_run_id
+from src.doc_editing.graph import get_doc_edit_graph, make_run_id
 from src.doc_editing.run_tracker import convert_doc_edit_upload, ensure_run_dir, get_run, list_runs
 
 logger = logging.getLogger(__name__)
@@ -74,9 +74,10 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
         "versions": [],
     }
     config = {"configurable": {"thread_id": run_id}}
+    graph = await get_doc_edit_graph()
 
     try:
-        result = await doc_edit_graph.ainvoke(initial_state, config=config)
+        result = await graph.ainvoke(initial_state, config=config)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -112,8 +113,9 @@ async def get_doc_run(run_id: str) -> dict:
 @router.put("/{run_id}/select/{skill_name}", response_model=DocEditStartResponse)
 async def select_doc_run_version(run_id: str, skill_name: str) -> DocEditStartResponse:
     config = {"configurable": {"thread_id": run_id}}
+    graph = await get_doc_edit_graph()
     try:
-        result = await doc_edit_graph.ainvoke(Command(resume=skill_name), config=config)
+        result = await graph.ainvoke(Command(resume=skill_name), config=config)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Doc edit run '{run_id}' not found") from exc
     except Exception as exc:

@@ -3,31 +3,31 @@
 from __future__ import annotations
 
 import uuid
-from functools import lru_cache
 
 from langgraph.graph import END, StateGraph
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from src.doc_editing.nodes import collector, dispatch_skills, finalizer, human_review, prepare_run, skill_agent
 from src.doc_editing.run_tracker import get_doc_edit_checkpoints_db_path
 from src.doc_editing.state import DocEditState
 
+_graph = None
 _checkpointer = None
 _checkpointer_ctx = None
 
 
-def _get_doc_edit_checkpointer():
+async def _get_doc_edit_checkpointer():
     global _checkpointer
     global _checkpointer_ctx
-    if _checkpointer_ctx is None:
+    if _checkpointer is None:
         conn_str = str(get_doc_edit_checkpoints_db_path())
-        _checkpointer_ctx = SqliteSaver.from_conn_string(conn_str)
-        _checkpointer = _checkpointer_ctx.__enter__()
-        _checkpointer.setup()
+        _checkpointer_ctx = AsyncSqliteSaver.from_conn_string(conn_str)
+        _checkpointer = await _checkpointer_ctx.__aenter__()
+        await _checkpointer.setup()
     return _checkpointer
 
 
-def build_doc_edit_graph():
+def build_doc_edit_graph(*, checkpointer):
     builder = StateGraph(DocEditState)
     builder.add_node("prepare_run", prepare_run)
     builder.add_node("skill_agent", skill_agent)
@@ -41,15 +41,14 @@ def build_doc_edit_graph():
     builder.add_edge("collector", "human_review")
     builder.add_edge("human_review", "finalizer")
     builder.add_edge("finalizer", END)
-    return builder.compile(checkpointer=_get_doc_edit_checkpointer())
+    return builder.compile(checkpointer=checkpointer)
 
 
-@lru_cache(maxsize=1)
-def get_doc_edit_graph():
-    return build_doc_edit_graph()
-
-
-doc_edit_graph = get_doc_edit_graph()
+async def get_doc_edit_graph():
+    global _graph
+    if _graph is None:
+        _graph = build_doc_edit_graph(checkpointer=await _get_doc_edit_checkpointer())
+    return _graph
 
 
 def make_run_id() -> str:
