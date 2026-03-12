@@ -109,6 +109,43 @@ def test_make_lead_agent_disables_thinking_when_model_does_not_support_it(monkey
     assert result["model"] is not None
 
 
+def test_make_lead_agent_caps_claude_subagent_concurrency(monkeypatch):
+    app_config = _make_app_config([_make_model("claude-sonnet-4-6", supports_thinking=True)])
+
+    import src.tools as tools_module
+
+    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
+    monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
+
+    captured: dict[str, object] = {}
+
+    def _fake_build_middlewares(config, model_name, agent_name=None):
+        captured["max_concurrent_subagents"] = config["configurable"]["max_concurrent_subagents"]
+        return []
+
+    monkeypatch.setattr(lead_agent_module, "_build_middlewares", _fake_build_middlewares)
+    monkeypatch.setattr(
+        lead_agent_module,
+        "create_chat_model",
+        lambda *, name, thinking_enabled, reasoning_effort=None: object(),
+    )
+    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
+
+    lead_agent_module.make_lead_agent(
+        {
+            "configurable": {
+                "model_name": "claude-sonnet-4-6",
+                "thinking_enabled": True,
+                "is_plan_mode": True,
+                "subagent_enabled": True,
+                "max_concurrent_subagents": 3,
+            }
+        }
+    )
+
+    assert captured["max_concurrent_subagents"] == 1
+
+
 def test_build_middlewares_uses_resolved_model_name_for_vision(monkeypatch):
     app_config = _make_app_config(
         [

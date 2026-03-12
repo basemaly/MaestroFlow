@@ -30,6 +30,7 @@ def _make_model(
     supports_reasoning_effort: bool = False,
     when_thinking_enabled: dict | None = None,
     thinking: dict | None = None,
+    **kwargs,
 ) -> ModelConfig:
     return ModelConfig(
         name=name,
@@ -42,6 +43,7 @@ def _make_model(
         when_thinking_enabled=when_thinking_enabled,
         thinking=thinking,
         supports_vision=False,
+        **kwargs,
     )
 
 
@@ -135,6 +137,25 @@ def test_thinking_enabled_merges_when_thinking_enabled_settings(monkeypatch):
 
     assert FakeChatModel.captured_kwargs.get("temperature") == 1.0
     assert FakeChatModel.captured_kwargs.get("max_tokens") == 16000
+
+
+def test_thinking_enabled_claude_openai_compatible_forces_temperature_one(monkeypatch):
+    cfg = _make_app_config(
+        [
+            _make_model(
+                "claude-sonnet-4-6",
+                supports_thinking=True,
+                when_thinking_enabled={"thinking": {"type": "enabled", "budget_tokens": 4096}},
+                temperature=0.7,
+            )
+        ]
+    )
+    _patch_factory(monkeypatch, cfg)
+
+    FakeChatModel.captured_kwargs = {}
+    factory_module.create_chat_model(name="claude-sonnet-4-6", thinking_enabled=True)
+
+    assert FakeChatModel.captured_kwargs.get("temperature") == 1
 
 
 # ---------------------------------------------------------------------------
