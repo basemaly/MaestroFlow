@@ -1,10 +1,13 @@
 """Quality Gateway Router — GET /api/threads/{thread_id}/quality."""
 
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException
 
 from src.subagents.quality import get_scores_for_thread
+
+_THREAD_ID_RE = re.compile(r"^[\w-]{1,256}$")
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +21,9 @@ async def get_thread_quality(thread_id: str) -> dict:
     Scores are persisted asynchronously after each task completes.
     Returns an empty list if no tasks have been scored yet.
     """
+    if not _THREAD_ID_RE.match(thread_id):
+        raise HTTPException(status_code=400, detail="Invalid thread_id")
+
     try:
         scores = get_scores_for_thread(thread_id)
     except Exception as exc:

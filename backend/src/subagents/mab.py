@@ -6,11 +6,11 @@ task category.
 
 Each arm is a (subagent_type, task_category) pair with a Beta distribution
 Beta(alpha, beta) representing the reward belief:
-  - alpha  = prior successes + observed successes (composite_score > threshold)
-  - beta   = prior failures  + observed failures
+  - alpha  = prior + sum of composite_score observations
+  - beta   = prior + sum of (1 - composite_score) observations
 
 On selection: sample from each candidate arm's Beta; pick the highest sample.
-On update:    increment alpha (success) or beta (failure) based on quality score.
+On update:    continuously update alpha += composite, beta += (1 - composite).
 
 State is persisted to SQLite so learning carries across restarts.
 """
@@ -35,9 +35,6 @@ _DEFAULT_DB_PATH = Path(__file__).parents[3] / ".deer-flow" / "mab.db"
 # Beta prior — weakly informative (1,1) = uniform
 _ALPHA_PRIOR = 1.0
 _BETA_PRIOR = 1.0
-
-# Composite score threshold above which a result counts as a "success"
-_SUCCESS_THRESHOLD = 0.6
 
 # Arms available for selection
 _SUBAGENT_ARMS = ("general-purpose", "bash", "writing-refiner", "argument-critic")
@@ -80,6 +77,7 @@ def _db_conn(db_path: Path):
 
 def _ensure_schema(db_path: Path) -> None:
     with _db_conn(db_path) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS mab_arms (
                 subagent_type TEXT NOT NULL,
@@ -214,10 +212,8 @@ def record_outcome(
             arms = _load_arms(db_path, task_category)
             alpha, beta_val = arms.get(subagent_type, (_ALPHA_PRIOR, _BETA_PRIOR))
 
-            if composite_score >= _SUCCESS_THRESHOLD:
-                alpha = min(alpha + 1.0, _MAX_PARAM)
-            else:
-                beta_val = min(beta_val + 1.0, _MAX_PARAM)
+            alpha = min(alpha + composite_score, _MAX_PARAM)
+            beta_val = min(beta_val + (1.0 - composite_score), _MAX_PARAM)
 
             _save_arm(db_path, subagent_type, task_category, alpha, beta_val)
 

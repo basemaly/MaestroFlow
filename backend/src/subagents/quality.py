@@ -184,8 +184,8 @@ def _score(
             "error_rate": error_rate,
         }
         composite = (
-            completeness * 0.6
-            + (1.0 - error_rate) * 0.4
+            (1.0 - error_rate) * 0.7
+            + completeness * 0.3
         )
         profile = "bash"
     else:
@@ -251,6 +251,7 @@ def _ensure_schema(db_path: Path) -> None:
     if key in _schema_initialized:
         return
     with _db_conn(db_path) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS subagent_quality_scores (
                 task_id       TEXT PRIMARY KEY,

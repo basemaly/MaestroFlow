@@ -51,7 +51,9 @@ def _format_task_result(
         human_lines.extend(["Result:", result])
     if error:
         human_lines.extend(["Error:", error])
-    return f"<task-metadata>{json.dumps(payload, ensure_ascii=False)}</task-metadata>\n\n" + "\n".join(human_lines)
+    # Escape the closing tag so LLM-produced output cannot prematurely terminate the block
+    metadata_json = json.dumps(payload, ensure_ascii=False).replace("</task-metadata>", r"<\/task-metadata>")
+    return f"<task-metadata>{metadata_json}</task-metadata>\n\n" + "\n".join(human_lines)
 
 
 @tool("task", parse_docstring=True)

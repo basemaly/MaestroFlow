@@ -81,6 +81,11 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
             return user_msg if user_msg else "New Conversation"
 
     @override
+    def after_model(self, state: TitleMiddlewareState, runtime: Runtime) -> dict | None:
+        """Synchronous hook — title generation requires async LLM, so this is a no-op."""
+        return None
+
+    @override
     async def aafter_model(self, state: TitleMiddlewareState, runtime: Runtime) -> dict | None:
         """Generate and set thread title after the first agent response."""
         if self._should_generate_title(state):
