@@ -70,11 +70,15 @@ def save_run_manifest(
         "model_location": state["model_location"],
         "model_strength": state["model_strength"],
         "preferred_model": state.get("preferred_model"),
+        "selected_models": state.get("selected_models", []),
         "token_budget": state["token_budget"],
         "tokens_used": state.get("tokens_used", 0),
         "run_dir": str(run_dir),
         "versions": versions if versions is not None else state.get("ranked_versions", state.get("versions", [])),
         "selected_version": selected_version if selected_version is not None else state.get("selected_version"),
+        "selected_version_id": (
+            (selected_version if selected_version is not None else state.get("selected_version")) or {}
+        ).get("version_id"),
         "final_path": final_path if final_path is not None else state.get("final_path"),
         "status": "completed" if (final_path if final_path is not None else state.get("final_path")) else "awaiting_selection",
         "review_payload": state.get("review_payload"),
@@ -244,6 +248,7 @@ def get_run(run_id: str) -> dict[str, Any]:
                 "run_dir": row[12],
                 "versions": json.loads(row[13]),
                 "selected_version": json.loads(row[14]),
+                "selected_version_id": json.loads(row[14]).get("version_id"),
                 "status": "completed",
             }
 
@@ -252,6 +257,8 @@ def get_run(run_id: str) -> dict[str, Any]:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
         payload["status"] = payload.get("status", "awaiting_selection")
         payload["title"] = payload.get("title") or make_run_title(payload.get("document", ""))
+        if "selected_version_id" not in payload:
+            payload["selected_version_id"] = (payload.get("selected_version") or {}).get("version_id")
         return payload
     raise FileNotFoundError(run_id)
 

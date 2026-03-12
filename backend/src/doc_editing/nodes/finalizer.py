@@ -34,11 +34,11 @@ def finalizer(state: DocEditState) -> dict:
 
     date_str = datetime.now().strftime("%Y-%m-%d")
     doc_slug = slugify(" ".join(state["document"].split()[:12]))
-    final_name = f"{date_str}-{doc_slug}-{winner['skill_name']}-final.md"
+    final_name = f"{date_str}-{doc_slug}-{winner['version_id']}-final.md"
     final_path = _resolve_final_path(reports_dir / final_name)
     final_path.write_text(
         (
-            f"---\nrun_id: {state['run_id']}\nskill: {winner['skill_name']}\nsubagent_type: {winner['subagent_type']}\n"
+            f"---\nrun_id: {state['run_id']}\nversion_id: {winner['version_id']}\nskill: {winner['skill_name']}\nsubagent_type: {winner['subagent_type']}\n"
             f"model: {winner['model_name']}\nscore: {winner['score']:.3f}\ndate: {date_str}\n---\n\n{winner['output']}\n"
         ),
         encoding="utf-8",

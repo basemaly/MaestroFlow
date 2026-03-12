@@ -367,3 +367,24 @@ def resolve_doc_edit_candidate_models(
         candidates.append(default_name)
 
     return list(dict.fromkeys(candidates))
+
+
+def resolve_doc_edit_selected_models(
+    model_names: Iterable[str],
+    *,
+    location: str,
+    strength: str,
+) -> list[tuple[str, str | None]]:
+    resolved: list[tuple[str, str | None]] = []
+    for model_name in model_names:
+        requested = model_name.strip()
+        if not requested:
+            continue
+        candidates = resolve_doc_edit_candidate_models(
+            location=location,
+            strength=strength,
+            preferred_model=requested,
+        )
+        if candidates:
+            resolved.append((candidates[0], requested))
+    return list(dict.fromkeys(resolved))

@@ -28,6 +28,7 @@ def collector(state: DocEditState) -> dict:
         f"**Model location:** {state['model_location']}  ",
         f"**Model strength:** {state['model_strength']}  ",
         f"**Requested model:** {state.get('preferred_model') or 'auto'}",
+        f"**Selected models:** {', '.join(name for name, _ in state.get('selected_models', [])) or 'auto'}",
         "",
         "## Results",
         "",

@@ -7,8 +7,10 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 class VersionRecord(TypedDict):
     """A single edited document variant produced by a skill."""
 
+    version_id: str
     skill_name: str
     subagent_type: str
+    requested_model: str | None
     output: str
     score: float
     quality_dims: dict[str, float]
@@ -26,6 +28,7 @@ class DocEditState(TypedDict):
     model_location: Literal["local", "remote", "mixed"]
     model_strength: Literal["fast", "cheap", "strong"]
     preferred_model: str | None
+    selected_models: list[str] | list[tuple[str | None, str | None]]
     token_budget: int
     run_id: str
     run_dir: str
@@ -37,3 +40,5 @@ class DocEditState(TypedDict):
     review_payload: NotRequired[dict]
     current_skill: NotRequired[str]
     current_skill_index: NotRequired[int]
+    current_model_name: NotRequired[str]
+    current_model_request: NotRequired[str | None]

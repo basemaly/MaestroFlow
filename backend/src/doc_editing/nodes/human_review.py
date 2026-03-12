@@ -23,12 +23,15 @@ def human_review(state: DocEditState) -> dict:
     payload = {
         "run_id": state["run_id"],
         "status": "awaiting_selection",
-        "instruction": "Select a version by skill name to finalize this run.",
+        "instruction": "Select a version to finalize this run.",
         "suggested_skill": ranked_versions[0]["skill_name"],
+        "suggested_version_id": ranked_versions[0]["version_id"],
         "versions_summary": [
             {
                 "rank": index + 1,
+                "version_id": version["version_id"],
                 "skill_name": version["skill_name"],
+                "model_name": version.get("model_name"),
                 "score": version["score"],
                 "file_path": version["file_path"],
                 "preview": _preview_text(version["output"]),
@@ -44,7 +47,12 @@ def human_review(state: DocEditState) -> dict:
 
     feedback = interrupt(payload)
     selected_version = next(
-        (version for version in ranked_versions if version["skill_name"] == str(feedback).strip()),
+        (
+            version
+            for version in ranked_versions
+            if version["version_id"] == str(feedback).strip()
+            or version["skill_name"] == str(feedback).strip()
+        ),
         ranked_versions[0],
     )
     return {"selected_version": selected_version, "review_payload": payload}

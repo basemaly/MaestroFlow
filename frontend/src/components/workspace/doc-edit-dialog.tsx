@@ -43,6 +43,7 @@ import {
   useUploadDocEditFile,
 } from "@/core/doc-editing/hooks";
 import type { DocEditRun } from "@/core/doc-editing/types";
+import { useModels } from "@/core/models/hooks";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -102,14 +103,18 @@ export function DocEditStudio({
     resolveModelStrength(mode),
   );
   const [preferredModel, setPreferredModel] = useState("");
+  const [compareModelsEnabled, setCompareModelsEnabled] = useState(false);
+  const [modelA, setModelA] = useState("");
+  const [modelB, setModelB] = useState("");
   const [tokenBudget, setTokenBudget] = useState("4000");
   const [run, setRun] = useState<DocEditRun | null>(initialRun ?? null);
-  const [compareSkill, setCompareSkill] = useState<string | null>(
-    initialRun?.selected_skill ??
-      initialRun?.versions?.[0]?.skill_name ??
+  const [compareVersionId, setCompareVersionId] = useState<string | null>(
+    initialRun?.selected_version_id ??
+      initialRun?.versions?.[0]?.version_id ??
       null,
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { models } = useModels();
 
   const startRun = useStartDocEditRun();
   const selectVersion = useSelectDocEditVersion();
@@ -122,8 +127,8 @@ export function DocEditStudio({
     setRun(initialRun);
     setDocument(initialRun.document ?? "");
     if (initialRun.versions.length > 0) {
-      setCompareSkill(
-        initialRun.selected_skill ?? initialRun.versions[0]?.skill_name ?? null,
+      setCompareVersionId(
+        initialRun.selected_version_id ?? initialRun.versions[0]?.version_id ?? null,
       );
       setSkills(initialRun.versions.map((version) => version.skill_name));
     }
@@ -147,46 +152,54 @@ export function DocEditStudio({
   const versionsSummaryBySkill = useMemo(
     () =>
       new Map(
-        run?.review_payload?.versions_summary?.map((item) => [item.skill_name, item]) ?? [],
+        run?.review_payload?.versions_summary?.map((item) => [item.version_id, item]) ?? [],
       ),
     [run?.review_payload?.versions_summary],
   );
   const comparedVersion = useMemo(
     () =>
-      deferredVersions.find((version) => version.skill_name === compareSkill) ??
+      deferredVersions.find((version) => version.version_id === compareVersionId) ??
       deferredVersions[0] ??
       null,
-    [compareSkill, deferredVersions],
+    [compareVersionId, deferredVersions],
   );
   const canSubmit =
     document.trim().length > 0 &&
     skills.length > 0 &&
     !(disabled ?? false) &&
     !invalidBudget &&
+    (!compareModelsEnabled ||
+      (modelA.length > 0 && modelB.length > 0 && modelA !== modelB)) &&
     !uploadFile.isPending &&
     !selectVersion.isPending;
 
   useEffect(() => {
     if (deferredVersions.length === 0) {
-      if (compareSkill !== null) {
-        setCompareSkill(null);
+      if (compareVersionId !== null) {
+        setCompareVersionId(null);
       }
       return;
     }
-    if (!compareSkill || !deferredVersions.some((version) => version.skill_name === compareSkill)) {
-      setCompareSkill(run?.selected_skill ?? deferredVersions[0]?.skill_name ?? null);
+    if (
+      !compareVersionId ||
+      !deferredVersions.some((version) => version.version_id === compareVersionId)
+    ) {
+      setCompareVersionId(run?.selected_version_id ?? deferredVersions[0]?.version_id ?? null);
     }
-  }, [compareSkill, deferredVersions, run?.selected_skill]);
+  }, [compareVersionId, deferredVersions, run?.selected_version_id]);
 
   function resetStudio() {
     setRun(null);
     setDocument("");
-    setCompareSkill(null);
+    setCompareVersionId(null);
     setTokenBudget("4000");
     setSkills(DEFAULT_SKILLS);
     setModelLocation("mixed");
     setModelStrength(resolveModelStrength(mode));
     setPreferredModel("");
+    setCompareModelsEnabled(false);
+    setModelA("");
+    setModelB("");
   }
 
   async function handleRun() {
@@ -199,17 +212,19 @@ export function DocEditStudio({
         toast.error("Token budget must be at least 250");
         return;
       }
+      const selectedModels = [modelA, modelB].map((value) => value.trim()).filter(Boolean);
       const nextRun = await startRun.mutateAsync({
         document: document.trim(),
         skills,
         model_location: modelLocation,
         model_strength: modelStrength,
         preferred_model: preferredModel.trim() || undefined,
+        selected_models: compareModelsEnabled ? selectedModels : undefined,
         token_budget: Number.isNaN(parsedBudget) ? 4000 : parsedBudget,
       });
       setRun(nextRun);
-      setCompareSkill(
-        nextRun.selected_skill ?? nextRun.versions[0]?.skill_name ?? null,
+      setCompareVersionId(
+        nextRun.selected_version_id ?? nextRun.versions[0]?.version_id ?? null,
       );
       toast.success(
         nextRun.status === "awaiting_selection"
@@ -221,18 +236,19 @@ export function DocEditStudio({
     }
   }
 
-  async function handleSelect(skillName: string) {
+  async function handleSelect(versionId: string) {
     if (!run) {
       return;
     }
     try {
       const nextRun = await selectVersion.mutateAsync({
         runId: run.run_id,
-        skillName,
+        skillName: versionId,
       });
       setRun(nextRun);
-      setCompareSkill(skillName);
-      toast.success(`Selected ${skillName} as the final version`);
+      setCompareVersionId(versionId);
+      const selectedVersion = nextRun.versions.find((version) => version.version_id === versionId);
+      toast.success(`Selected ${selectedVersion?.skill_name ?? versionId} as the final version`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
@@ -376,6 +392,58 @@ export function DocEditStudio({
             </div>
           </div>
 
+          <div className="space-y-3 rounded-lg border border-border/70 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium">Two-Model Compare</div>
+                <div className="text-muted-foreground text-xs">
+                  Run the same edit pass across two specific models at once.
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant={compareModelsEnabled ? "default" : "outline"}
+                onClick={() => setCompareModelsEnabled((value) => !value)}
+              >
+                {compareModelsEnabled ? "Enabled" : "Enable"}
+              </Button>
+            </div>
+            {compareModelsEnabled && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Model A</div>
+                  <Select value={modelA} onValueChange={setModelA}>
+                    <SelectTrigger className="w-full bg-background">
+                      <SelectValue placeholder="Choose first model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {models.map((model) => (
+                        <SelectItem key={model.name} value={model.name}>
+                          {model.display_name ?? model.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Model B</div>
+                  <Select value={modelB} onValueChange={setModelB}>
+                    <SelectTrigger className="w-full bg-background">
+                      <SelectValue placeholder="Choose second model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {models.map((model) => (
+                        <SelectItem key={model.name} value={model.name}>
+                          {model.display_name ?? model.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             <div className="text-sm font-medium">Token Budget</div>
             <Textarea
@@ -456,16 +524,17 @@ export function DocEditStudio({
               type="single"
               variant="outline"
               className="flex flex-wrap gap-2"
-              value={compareSkill ?? undefined}
-              onValueChange={(value) => setCompareSkill(value || null)}
+              value={compareVersionId ?? undefined}
+              onValueChange={(value) => setCompareVersionId(value || null)}
             >
               {sortedVersions.map((version) => (
                 <ToggleGroupItem
-                  key={version.skill_name}
-                  value={version.skill_name}
+                  key={version.version_id ?? version.skill_name}
+                  value={version.version_id ?? version.skill_name}
                   className={cn("border-border/70", selectedToggleItemClass)}
                 >
                   {version.skill_name}
+                  {version.model_name ? ` · ${version.model_name}` : ""}
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
@@ -490,13 +559,14 @@ export function DocEditStudio({
               <CardHeader className="px-4">
                 <CardTitle className="text-base">
                   {comparedVersion?.skill_name ?? "Compared Version"}
+                  {comparedVersion?.model_name ? ` · ${comparedVersion.model_name}` : ""}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4">
                 <div className="bg-muted/30 max-h-80 overflow-auto rounded-lg border p-4 text-sm leading-6 whitespace-pre-wrap">
                   {comparedVersion?.output ??
-                    (comparedVersion?.skill_name
-                      ? versionsSummaryBySkill.get(comparedVersion.skill_name)?.preview
+                    (comparedVersion?.version_id
+                      ? versionsSummaryBySkill.get(comparedVersion.version_id)?.preview
                       : null) ??
                     "No compared version available."}
                 </div>
@@ -518,12 +588,14 @@ export function DocEditStudio({
             {deferredVersions.map((version, index) => {
               const preview =
                 version.output ??
-                versionsSummaryBySkill.get(version.skill_name)?.preview ??
+                (version.version_id
+                  ? versionsSummaryBySkill.get(version.version_id)?.preview
+                  : undefined) ??
                 "";
-              const isSelected = run?.selected_skill === version.skill_name;
+              const isSelected = run?.selected_version_id === version.version_id;
               return (
                 <Card
-                  key={`${run?.run_id ?? "draft"}-${version.skill_name}`}
+                  key={`${run?.run_id ?? "draft"}-${version.version_id ?? version.skill_name}`}
                   className={cn(
                     "gap-4 py-4",
                     index === 0 && "border-amber-500/35",
@@ -538,6 +610,7 @@ export function DocEditStudio({
                             <MedalIcon className="size-4 text-amber-600" />
                           )}
                           {version.skill_name}
+                          {version.model_name ? ` · ${version.model_name}` : ""}
                         </CardTitle>
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="outline">
@@ -557,18 +630,18 @@ export function DocEditStudio({
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => setCompareSkill(version.skill_name)}
+                          onClick={() => setCompareVersionId(version.version_id ?? null)}
                         >
                           Compare
                         </Button>
                         {run?.status === "awaiting_selection" && (
                           <Button
                             size="sm"
-                            onClick={() => void handleSelect(version.skill_name)}
+                            onClick={() => void handleSelect(version.version_id ?? version.skill_name)}
                             disabled={selectVersion.isPending}
                           >
                             {selectVersion.isPending &&
-                            selectVersion.variables?.skillName === version.skill_name ? (
+                            selectVersion.variables?.skillName === (version.version_id ?? version.skill_name) ? (
                               <Loader2Icon className="size-4 animate-spin" />
                             ) : null}
                             Select This Version

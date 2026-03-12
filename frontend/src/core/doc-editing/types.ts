@@ -1,6 +1,8 @@
 export interface DocEditVersion {
+  version_id?: string;
   skill_name: string;
   subagent_type?: string;
+  requested_model?: string | null;
   output?: string;
   score: number;
   quality_dims?: Record<string, number>;
@@ -15,9 +17,12 @@ export interface DocEditReviewPayload {
   status?: string;
   instruction?: string;
   suggested_skill?: string;
+  suggested_version_id?: string;
   versions_summary?: Array<{
     rank: number;
+    version_id: string;
     skill_name: string;
+    model_name?: string;
     score: number;
     file_path?: string;
     preview?: string;
@@ -32,6 +37,7 @@ export interface DocEditRun {
   document?: string;
   final_path: string | null;
   selected_skill: string | null;
+  selected_version_id?: string | null;
   versions: DocEditVersion[];
   token_count: number;
   review_payload?: DocEditReviewPayload | null;

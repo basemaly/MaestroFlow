@@ -23,6 +23,7 @@ class DocEditRequest(BaseModel):
     model_location: str = Field(default="mixed", pattern="^(local|remote|mixed)$")
     model_strength: str = Field(default="fast", pattern="^(fast|cheap|strong)$")
     preferred_model: str | None = Field(default=None, max_length=120)
+    selected_models: list[str] = Field(default_factory=list, max_length=3)
     token_budget: int = Field(default=4000, ge=250)
 
 
@@ -35,6 +36,7 @@ class DocEditStartResponse(BaseModel):
     status: str
     final_path: str | None
     selected_skill: str | None
+    selected_version_id: str | None = None
     versions: list[dict]
     token_count: int
     review_payload: dict | None = None
@@ -56,6 +58,7 @@ def _to_response_payload(run_id: str, run_dir: str, result: dict) -> DocEditStar
         status=status,
         final_path=result.get("final_path"),
         selected_skill=selected_version["skill_name"] if selected_version else None,
+        selected_version_id=selected_version.get("version_id") if selected_version else None,
         versions=result.get("ranked_versions", result.get("versions", [])),
         token_count=result.get("tokens_used", 0),
         review_payload=review_payload,
@@ -72,6 +75,7 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
         "model_location": req.model_location,
         "model_strength": req.model_strength,
         "preferred_model": req.preferred_model.strip() if req.preferred_model else None,
+        "selected_models": req.selected_models,
         "token_budget": req.token_budget,
         "run_id": run_id,
         "run_dir": str(run_dir),
@@ -114,12 +118,12 @@ async def get_doc_run(run_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Doc edit run '{run_id}' not found") from exc
 
 
-@router.put("/{run_id}/select/{skill_name}", response_model=DocEditStartResponse)
-async def select_doc_run_version(run_id: str, skill_name: str) -> DocEditStartResponse:
+@router.put("/{run_id}/select/{version_id}", response_model=DocEditStartResponse)
+async def select_doc_run_version(run_id: str, version_id: str) -> DocEditStartResponse:
     config = {"configurable": {"thread_id": run_id}}
     graph = await get_doc_edit_graph()
     try:
-        result = await graph.ainvoke(Command(resume=skill_name), config=config)
+        result = await graph.ainvoke(Command(resume=version_id), config=config)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Doc edit run '{run_id}' not found") from exc
     except Exception as exc:

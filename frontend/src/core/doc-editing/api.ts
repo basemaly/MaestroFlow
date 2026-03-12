@@ -8,6 +8,7 @@ export async function startDocEditRun(input: {
   model_location: "local" | "remote" | "mixed";
   model_strength: "fast" | "cheap" | "strong";
   preferred_model?: string;
+  selected_models?: string[];
   token_budget: number;
 }): Promise<DocEditRun> {
   const response = await fetch(`${getBackendBaseURL()}/api/doc-edit`, {
@@ -23,10 +24,10 @@ export async function startDocEditRun(input: {
 
 export async function selectDocEditVersion(
   runId: string,
-  skillName: string,
+  versionId: string,
 ): Promise<DocEditRun> {
   const response = await fetch(
-    `${getBackendBaseURL()}/api/doc-edit/${runId}/select/${encodeURIComponent(skillName)}`,
+    `${getBackendBaseURL()}/api/doc-edit/${runId}/select/${encodeURIComponent(versionId)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

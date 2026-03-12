@@ -7,6 +7,7 @@ import re
 import time
 from functools import lru_cache
 from pathlib import Path
+from re import sub
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -113,11 +114,16 @@ async def skill_agent(state: DocEditState) -> dict:
     response_text = ""
     model_name = ""
     latency_ms = 0
-    for candidate in _cached_candidate_models(
-        state["model_location"],
-        state["model_strength"],
-        state.get("preferred_model"),
-    ):
+    if state.get("current_model_name"):
+        candidates = (state["current_model_name"],)
+    else:
+        candidates = _cached_candidate_models(
+            state["model_location"],
+            state["model_strength"],
+            state.get("preferred_model"),
+        )
+
+    for candidate in candidates:
         try:
             model = create_chat_model(name=candidate, thinking_enabled=False)
             started = time.monotonic()
@@ -153,18 +159,21 @@ async def skill_agent(state: DocEditState) -> dict:
 
     run_dir = Path(state["run_dir"])
     run_dir.mkdir(parents=True, exist_ok=True)
-    file_path = run_dir / f"{skill_index:02d}-{skill_name}.md"
+    version_id = sub(r"[^a-z0-9]+", "-", f"{skill_name}-{model_name}".lower()).strip("-")
+    file_path = run_dir / f"{skill_index:02d}-{version_id}.md"
     file_path.write_text(
         (
-            f"---\nrun_id: {state['run_id']}\nskill: {skill_name}\nsubagent_type: {config.name}\n"
+            f"---\nrun_id: {state['run_id']}\nversion_id: {version_id}\nskill: {skill_name}\nsubagent_type: {config.name}\n"
             f"model: {model_name}\nscore: {quality.composite:.3f}\n---\n\n{response_text}\n"
         ),
         encoding="utf-8",
     )
 
     version: VersionRecord = {
+        "version_id": version_id,
         "skill_name": skill_name,
         "subagent_type": config.name,
+        "requested_model": state.get("current_model_request"),
         "output": response_text,
         "score": quality.composite,
         "quality_dims": {

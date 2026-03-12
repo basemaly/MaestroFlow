@@ -47,6 +47,27 @@ def test_dispatch_skills_deduplicates_requested_skills():
     assert [send.arg["current_skill"] for send in sends] == ["writing-refiner", "argument-critic"]
 
 
+def test_dispatch_skills_crosses_selected_models():
+    state = {
+        "document": "word " * 20,
+        "skills": ["writing-refiner", "argument-critic"],
+        "model_location": "mixed",
+        "model_strength": "fast",
+        "preferred_model": None,
+        "selected_models": [("gemini-2-5-flash", "gemini"), ("gpt-5-2-codex", "gpt-5.2-mini")],
+        "token_budget": 4000,
+        "run_id": "run12345",
+        "run_dir": "/tmp/doc-edit-test",
+        "versions": [],
+    }
+
+    sends = dispatch_skills(state)
+
+    assert len(sends) == 4
+    assert sends[0].arg["current_model_name"] == "gemini-2-5-flash"
+    assert sends[-1].arg["current_model_name"] == "gpt-5-2-codex"
+
+
 def test_collector_writes_report_and_selects_top_version(tmp_path: Path):
     run_dir = tmp_path / "run-1"
     state = {
@@ -60,8 +81,10 @@ def test_collector_writes_report_and_selects_top_version(tmp_path: Path):
         "run_dir": str(run_dir),
         "versions": [
             {
+                "version_id": "writing-refiner-gemini-2-5-flash",
                 "skill_name": "writing-refiner",
                 "subagent_type": "writing-refiner",
+                "requested_model": None,
                 "output": "edited a",
                 "score": 0.62,
                 "quality_dims": {"completeness": 0.8, "error_rate": 0.0},
@@ -71,8 +94,10 @@ def test_collector_writes_report_and_selects_top_version(tmp_path: Path):
                 "model_name": "gemini-2-5-flash",
             },
             {
+                "version_id": "argument-critic-gemini-2-5-flash",
                 "skill_name": "argument-critic",
                 "subagent_type": "argument-critic",
+                "requested_model": None,
                 "output": "edited b",
                 "score": 0.91,
                 "quality_dims": {"completeness": 0.9, "error_rate": 0.0},
@@ -108,8 +133,10 @@ def test_persist_run_round_trip(tmp_path: Path, monkeypatch):
         "run_dir": str(tmp_path / "persist01"),
         "versions": [
             {
+                "version_id": "writing-refiner-gemini-2-5-flash",
                 "skill_name": "writing-refiner",
                 "subagent_type": "writing-refiner",
+                "requested_model": None,
                 "output": "edited",
                 "score": 0.88,
                 "quality_dims": {"completeness": 0.9, "error_rate": 0.0},
@@ -121,8 +148,10 @@ def test_persist_run_round_trip(tmp_path: Path, monkeypatch):
         ],
         "ranked_versions": [
             {
+                "version_id": "writing-refiner-gemini-2-5-flash",
                 "skill_name": "writing-refiner",
                 "subagent_type": "writing-refiner",
+                "requested_model": None,
                 "output": "edited",
                 "score": 0.88,
                 "quality_dims": {"completeness": 0.9, "error_rate": 0.0},
@@ -162,8 +191,10 @@ def test_list_runs_includes_human_readable_title(tmp_path: Path, monkeypatch):
         "run_dir": str(tmp_path / "list01"),
         "versions": [
             {
+                "version_id": "writing-refiner-gemini-2-5-flash",
                 "skill_name": "writing-refiner",
                 "subagent_type": "writing-refiner",
+                "requested_model": None,
                 "output": "edited",
                 "score": 0.88,
                 "quality_dims": {"completeness": 0.9, "error_rate": 0.0},
@@ -175,8 +206,10 @@ def test_list_runs_includes_human_readable_title(tmp_path: Path, monkeypatch):
         ],
         "ranked_versions": [
             {
+                "version_id": "writing-refiner-gemini-2-5-flash",
                 "skill_name": "writing-refiner",
                 "subagent_type": "writing-refiner",
+                "requested_model": None,
                 "output": "edited",
                 "score": 0.88,
                 "quality_dims": {"completeness": 0.9, "error_rate": 0.0},
