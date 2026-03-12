@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from src.models import create_chat_model
+from src.models.routing import is_rate_limited_model, resolve_lightweight_fallback_model
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,20 @@ class SuggestionsRequest(BaseModel):
 
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list, description="Suggested follow-up questions")
+
+
+def _resolve_suggestions_model_name(requested_model_name: str | None) -> str | None:
+    if not is_rate_limited_model(requested_model_name):
+        return requested_model_name
+    fallback_model = resolve_lightweight_fallback_model()
+    if fallback_model:
+        logger.info(
+            "Using lightweight fallback model '%s' for suggestions instead of rate-limited model '%s'",
+            fallback_model,
+            requested_model_name,
+        )
+        return fallback_model
+    return requested_model_name
 
 
 def _strip_markdown_code_fence(text: str) -> str:
@@ -102,7 +117,10 @@ async def generate_suggestions(thread_id: str, request: SuggestionsRequest) -> S
     )
 
     try:
-        model = create_chat_model(name=request.model_name, thinking_enabled=False)
+        model = create_chat_model(
+            name=_resolve_suggestions_model_name(request.model_name),
+            thinking_enabled=False,
+        )
         response = model.invoke(prompt)
         raw = str(response.content or "")
         suggestions = _parse_json_string_list(raw) or []

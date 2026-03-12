@@ -281,12 +281,14 @@ class TestRegistryListSubagents:
     def teardown_method(self):
         _reset_subagents_config()
 
-    def test_lists_both_builtin_agents(self):
+    def test_lists_all_builtin_agents(self):
         from src.subagents.registry import list_subagents
 
         names = {cfg.name for cfg in list_subagents()}
         assert "general-purpose" in names
         assert "bash" in names
+        assert "writing-refiner" in names
+        assert "argument-critic" in names
 
     def test_all_returned_configs_get_global_override(self):
         from src.subagents.registry import list_subagents

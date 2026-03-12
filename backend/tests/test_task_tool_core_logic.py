@@ -61,6 +61,45 @@ def _make_result(
     )
 
 
+class _DummyArtifact:
+    schema = SimpleNamespace(value="research")
+    word_count = 42
+    has_sources = False
+    has_errors = False
+    quality_warnings: list[str] = []
+    is_valid = True
+
+    def as_dict(self):
+        return {
+            "schema": "research",
+            "word_count": 42,
+            "has_sources": False,
+            "has_errors": False,
+            "quality_warnings": [],
+            "sections_present": [],
+            "expected_sections": [],
+            "is_valid": True,
+        }
+
+
+class _DummyQuality:
+    def as_dict(self):
+        return {
+            "task_id": "tc-123",
+            "thread_id": "thread-1",
+            "subagent_type": "general-purpose",
+            "schema": "research",
+            "completeness": 1.0,
+            "source_quality": 0.0,
+            "error_rate": 0.0,
+            "composite": 0.8,
+            "word_count": 42,
+            "dimensions": {"completeness": 1.0},
+            "quality_warnings": [],
+            "profile": "research",
+        }
+
+
 def test_task_tool_returns_error_for_unknown_subagent(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _: None)
 
@@ -110,6 +149,9 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _: next(responses))
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.time, "sleep", lambda _: None)
+    monkeypatch.setattr(task_tool_module, "validate_subagent_result", lambda *_args, **_kwargs: _DummyArtifact())
+    monkeypatch.setattr(task_tool_module, "score_result", lambda *_args, **_kwargs: _DummyQuality())
+    monkeypatch.setattr(task_tool_module, "score_async", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         task_tool_module,
         "resolve_subagent_model_preference",
@@ -128,7 +170,7 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
         max_turns=7,
     )
 
-    assert output.startswith("Task Succeeded")
+    assert "<task-metadata>" in output
     assert "all done" in output
     assert captured["prompt"] == "collect diagnostics"
     assert captured["task_id"] == "tc-123"
@@ -143,6 +185,8 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
     event_types = [e["type"] for e in events]
     assert event_types == ["task_started", "task_running", "task_running", "task_completed"]
     assert events[-1]["result"] == "all done"
+    assert events[-1]["artifact"]["schema"] == "research"
+    assert events[-1]["quality"]["composite"] == 0.8
 
 
 def test_task_tool_returns_failed_message(monkeypatch):
@@ -174,7 +218,8 @@ def test_task_tool_returns_failed_message(monkeypatch):
         tool_call_id="tc-fail",
     )
 
-    assert output == "Task failed. Error: subagent crashed"
+    assert '"status": "failed"' in output
+    assert "subagent crashed" in output
     assert events[-1]["type"] == "task_failed"
     assert events[-1]["error"] == "subagent crashed"
 
@@ -208,7 +253,8 @@ def test_task_tool_returns_timed_out_message(monkeypatch):
         tool_call_id="tc-timeout",
     )
 
-    assert output == "Task timed out. Error: timeout"
+    assert '"status": "timed_out"' in output
+    assert "timeout" in output
     assert events[-1]["type"] == "task_timed_out"
     assert events[-1]["error"] == "timeout"
 
@@ -244,7 +290,7 @@ def test_task_tool_polling_safety_timeout(monkeypatch):
         tool_call_id="tc-safety-timeout",
     )
 
-    assert output.startswith("Task polling timed out after 0 minutes")
+    assert '"status": "timed_out"' in output
     assert events[0]["type"] == "task_started"
     assert events[-1]["type"] == "task_timed_out"
 
@@ -271,6 +317,9 @@ def test_cleanup_called_on_completed(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.time, "sleep", lambda _: None)
     monkeypatch.setattr("src.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr(task_tool_module, "validate_subagent_result", lambda *_args, **_kwargs: _DummyArtifact())
+    monkeypatch.setattr(task_tool_module, "score_result", lambda *_args, **_kwargs: _DummyQuality())
+    monkeypatch.setattr(task_tool_module, "score_async", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -285,7 +334,7 @@ def test_cleanup_called_on_completed(monkeypatch):
         tool_call_id="tc-cleanup-completed",
     )
 
-    assert output.startswith("Task Succeeded")
+    assert '"status": "completed"' in output
     assert "done" in output
     assert cleanup_calls == ["tc-cleanup-completed"]
 
@@ -326,7 +375,8 @@ def test_cleanup_called_on_failed(monkeypatch):
         tool_call_id="tc-cleanup-failed",
     )
 
-    assert output == "Task failed. Error: error"
+    assert '"status": "failed"' in output
+    assert "error" in output
     assert cleanup_calls == ["tc-cleanup-failed"]
 
 
@@ -366,7 +416,8 @@ def test_cleanup_called_on_timed_out(monkeypatch):
         tool_call_id="tc-cleanup-timedout",
     )
 
-    assert output == "Task timed out. Error: timeout"
+    assert '"status": "timed_out"' in output
+    assert "timeout" in output
     assert cleanup_calls == ["tc-cleanup-timedout"]
 
 
@@ -413,6 +464,7 @@ def test_cleanup_not_called_on_polling_safety_timeout(monkeypatch):
         tool_call_id="tc-no-cleanup-safety-timeout",
     )
 
-    assert output.startswith("Task polling timed out after 0 minutes")
+    assert '"status": "timed_out"' in output
+    assert "Task polling timed out after 0 minutes" in output
     # cleanup should NOT be called because the task is still RUNNING
     assert cleanup_calls == []

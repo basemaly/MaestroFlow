@@ -18,6 +18,7 @@ from langchain_core.runnables import RunnableConfig
 
 from src.agents.thread_state import SandboxState, ThreadDataState, ThreadState
 from src.models import create_chat_model
+from src.models.routing import is_rate_limited_model, resolve_lightweight_fallback_model
 from src.subagents.config import SubagentConfig
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,10 @@ def _get_model_name(config: SubagentConfig, parent_model: str | None) -> str | N
         Model name to use, or None to use default.
     """
     if config.model == "inherit":
+        if is_rate_limited_model(parent_model):
+            fallback_model = resolve_lightweight_fallback_model()
+            if fallback_model:
+                return fallback_model
         return parent_model
     return config.model
 
@@ -152,6 +157,8 @@ class SubagentExecutor:
         # Generate trace_id if not provided (for top-level calls)
         self.trace_id = trace_id or str(uuid.uuid4())[:8]
 
+        self.model_name = _get_model_name(config, parent_model)
+
         # Filter tools based on config
         self.tools = _filter_tools(
             tools,
@@ -159,12 +166,18 @@ class SubagentExecutor:
             config.disallowed_tools,
         )
 
-        logger.info(f"[trace={self.trace_id}] SubagentExecutor initialized: {config.name} with {len(self.tools)} tools")
+        logger.info(
+            "[trace=%s] SubagentExecutor initialized: %s with %d tools (model=%s, parent_model=%s)",
+            self.trace_id,
+            config.name,
+            len(self.tools),
+            self.model_name,
+            self.parent_model,
+        )
 
     def _create_agent(self):
         """Create the agent instance."""
-        model_name = _get_model_name(self.config, self.parent_model)
-        model = create_chat_model(name=model_name, thinking_enabled=False)
+        model = create_chat_model(name=self.model_name, thinking_enabled=False)
 
         # Subagents need minimal middlewares to ensure tools can access sandbox and thread_data
         # These middlewares will reuse the sandbox/thread_data from parent agent

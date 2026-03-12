@@ -1,5 +1,6 @@
 """Task tool for delegating work to subagents."""
 
+import json
 import logging
 import time
 import uuid
@@ -14,14 +15,43 @@ from src.agents.artifacts import format_artifact_header, validate_subagent_resul
 from src.agents.decomposer import classify_task
 from src.agents.lead_agent.prompt import get_skills_prompt_section
 from src.agents.thread_state import ThreadState
+from src.editorial.registry import inject_editorial_hints, select_editorial_skill_names
 from src.models.routing import resolve_subagent_model_preference
 from src.research.registry import inject_research_hints
 from src.subagents import SubagentExecutor, get_subagent_config
 from src.subagents.executor import SubagentStatus, cleanup_background_task, get_background_task_result
 from src.subagents.mab import select_subagent
-from src.subagents.quality import score_async
+from src.subagents.quality import score_async, score_result
 
 logger = logging.getLogger(__name__)
+
+
+def _format_task_result(
+    *,
+    status: str,
+    subagent_type: str,
+    result: str | None = None,
+    artifact: dict[str, object] | None = None,
+    quality: dict[str, object] | None = None,
+    error: str | None = None,
+) -> str:
+    payload = {
+        "status": status,
+        "subagent_type": subagent_type,
+        "result": result,
+        "artifact": artifact,
+        "quality": quality,
+        "error": error,
+    }
+    human_lines = [
+        f"Task status: {status}",
+        f"Subagent: {subagent_type}",
+    ]
+    if result:
+        human_lines.extend(["Result:", result])
+    if error:
+        human_lines.extend(["Error:", error])
+    return f"<task-metadata>{json.dumps(payload, ensure_ascii=False)}</task-metadata>\n\n" + "\n".join(human_lines)
 
 
 @tool("task", parse_docstring=True)
@@ -29,7 +59,7 @@ def task_tool(
     runtime: ToolRuntime[ContextT, ThreadState],
     description: str,
     prompt: str,
-    subagent_type: Literal["general-purpose", "bash"] | None,
+    subagent_type: Literal["general-purpose", "bash", "writing-refiner", "argument-critic"] | None,
     tool_call_id: Annotated[str, InjectedToolCallId],
     subagent_model: str | None = None,
     max_turns: int | None = None,
@@ -82,18 +112,35 @@ def task_tool(
     # Get subagent configuration
     config = get_subagent_config(subagent_type)
     if config is None:
-        return f"Error: Unknown subagent type '{subagent_type}'. Available: general-purpose, bash"
+        return (
+            "Error: Unknown subagent type "
+            f"'{subagent_type}'. Available: general-purpose, bash, writing-refiner, argument-critic"
+        )
 
     # Build config overrides
     overrides: dict = {}
 
-    skills_section = get_skills_prompt_section()
+    editorial_skill_names = set()
+    if subagent_type in {"writing-refiner", "argument-critic"}:
+        editorial_skill_names = select_editorial_skill_names(subagent_type, description, prompt)
+
+    if editorial_skill_names:
+        skills_section = get_skills_prompt_section(editorial_skill_names)
+    else:
+        skills_section = get_skills_prompt_section()
     system_prompt = config.system_prompt
     if skills_section:
         system_prompt = system_prompt + "\n\n" + skills_section
     # Inject external research tool hints for general-purpose tasks
     if subagent_type == "general-purpose":
         system_prompt = inject_research_hints(system_prompt, task_description=description)
+    elif subagent_type in {"writing-refiner", "argument-critic"}:
+        system_prompt = inject_editorial_hints(
+            system_prompt,
+            subagent_type=subagent_type,
+            task_description=description,
+            prompt=prompt,
+        )
     if system_prompt != config.system_prompt:
         overrides["system_prompt"] = system_prompt
 
@@ -175,7 +222,15 @@ def task_tool(
 
     writer = get_stream_writer()
     # Send Task Started message'
-    writer({"type": "task_started", "task_id": task_id, "description": description})
+    writer(
+        {
+            "type": "task_started",
+            "task_id": task_id,
+            "description": description,
+            "prompt": prompt,
+            "subagent_type": subagent_type,
+        }
+    )
 
     while True:
         result = get_background_task_result(task_id)
@@ -211,28 +266,80 @@ def task_tool(
 
         # Check if task completed, failed, or timed out
         if result.status == SubagentStatus.COMPLETED:
-            score_async(task_id, result.result, subagent_type, thread_id=thread_id, task_category=task_category)
             artifact = validate_subagent_result(subagent_type, result.result)
+            quality = score_result(
+                task_id,
+                result.result,
+                subagent_type,
+                thread_id=thread_id,
+                artifact=artifact,
+            )
+            score_async(
+                task_id,
+                result.result,
+                subagent_type,
+                thread_id=thread_id,
+                task_category=task_category,
+                artifact=artifact,
+                precomputed_score=quality,
+            )
             artifact_header = format_artifact_header(artifact)
             if not artifact.is_valid:
                 logger.warning(
                     "[trace=%s] Task %s artifact quality warnings %s: %s",
                     trace_id, task_id, artifact_header, artifact.quality_warnings,
                 )
-            writer({"type": "task_completed", "task_id": task_id, "result": result.result})
+            writer(
+                {
+                    "type": "task_completed",
+                    "task_id": task_id,
+                    "subagent_type": subagent_type,
+                    "result": result.result,
+                    "artifact": artifact.as_dict(),
+                    "quality": quality.as_dict(),
+                }
+            )
             logger.info(f"[trace={trace_id}] Task {task_id} completed after {poll_count} polls")
             cleanup_background_task(task_id)
-            return f"Task Succeeded {artifact_header}.\nResult: {result.result}"
+            return _format_task_result(
+                status="completed",
+                subagent_type=subagent_type,
+                result=f"{artifact_header}\n{result.result or ''}".strip(),
+                artifact=artifact.as_dict(),
+                quality=quality.as_dict(),
+            )
         elif result.status == SubagentStatus.FAILED:
-            writer({"type": "task_failed", "task_id": task_id, "error": result.error})
+            writer(
+                {
+                    "type": "task_failed",
+                    "task_id": task_id,
+                    "subagent_type": subagent_type,
+                    "error": result.error,
+                }
+            )
             logger.error(f"[trace={trace_id}] Task {task_id} failed: {result.error}")
             cleanup_background_task(task_id)
-            return f"Task failed. Error: {result.error}"
+            return _format_task_result(
+                status="failed",
+                subagent_type=subagent_type,
+                error=result.error,
+            )
         elif result.status == SubagentStatus.TIMED_OUT:
-            writer({"type": "task_timed_out", "task_id": task_id, "error": result.error})
+            writer(
+                {
+                    "type": "task_timed_out",
+                    "task_id": task_id,
+                    "subagent_type": subagent_type,
+                    "error": result.error,
+                }
+            )
             logger.warning(f"[trace={trace_id}] Task {task_id} timed out: {result.error}")
             cleanup_background_task(task_id)
-            return f"Task timed out. Error: {result.error}"
+            return _format_task_result(
+                status="timed_out",
+                subagent_type=subagent_type,
+                error=result.error,
+            )
 
         # Still running, wait before next poll
         time.sleep(5)  # Poll every 5 seconds
@@ -247,5 +354,15 @@ def task_tool(
         if poll_count > max_poll_count:
             timeout_minutes = config.timeout_seconds // 60
             logger.error(f"[trace={trace_id}] Task {task_id} polling timed out after {poll_count} polls (should have been caught by thread pool timeout)")
-            writer({"type": "task_timed_out", "task_id": task_id})
-            return f"Task polling timed out after {timeout_minutes} minutes. This may indicate the background task is stuck. Status: {result.status.value}"
+            writer(
+                {
+                    "type": "task_timed_out",
+                    "task_id": task_id,
+                    "subagent_type": subagent_type,
+                }
+            )
+            return _format_task_result(
+                status="timed_out",
+                subagent_type=subagent_type,
+                error=f"Task polling timed out after {timeout_minutes} minutes. This may indicate the background task is stuck. Status: {result.status.value}",
+            )

@@ -12,7 +12,7 @@ from src.subagents.executor import MAX_CONCURRENT_SUBAGENTS
 logger = logging.getLogger(__name__)
 
 # Valid range for max_concurrent_subagents
-MIN_SUBAGENT_LIMIT = 2
+MIN_SUBAGENT_LIMIT = 1
 MAX_SUBAGENT_LIMIT = 4
 
 

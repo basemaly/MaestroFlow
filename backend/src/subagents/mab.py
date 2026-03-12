@@ -40,7 +40,7 @@ _BETA_PRIOR = 1.0
 _SUCCESS_THRESHOLD = 0.6
 
 # Arms available for selection
-_SUBAGENT_ARMS = ("general-purpose", "bash")
+_SUBAGENT_ARMS = ("general-purpose", "bash", "writing-refiner", "argument-critic")
 
 # Minimum samples before MAB overrides classify_task heuristic
 _MIN_SAMPLES_TO_TRUST = 5

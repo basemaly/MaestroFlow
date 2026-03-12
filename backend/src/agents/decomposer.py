@@ -69,6 +69,16 @@ _RESEARCH_SIGNALS = frozenset((
     "synthesize", "what is", "how does", "why does", "search for", "look up",
     "find information", "describe", "outline", "propose", "suggest",
 ))
+_WRITING_REFINER_SIGNALS = frozenset((
+    "humanize", "de-ai", "rewrite", "refine", "polish", "improve the writing",
+    "tone", "voice", "style", "clarity", "make this sound human",
+    "make this less robotic", "edit this text", "rewrite this draft",
+))
+_ARGUMENT_CRITIC_SIGNALS = frozenset((
+    "critique", "argument", "persuasion", "persuasive", "rhetoric",
+    "thesis", "evidence", "counterclaim", "rebuttal", "logical flow",
+    "essay", "memo", "position", "argument map",
+))
 
 
 def complexity_score(task: str) -> int:
@@ -181,6 +191,13 @@ def classify_task(description: str, prompt: str = "") -> str:
 
     bash_score = sum(1 for s in _BASH_SIGNALS if s in text)
     research_score = sum(1 for s in _RESEARCH_SIGNALS if s in text)
+    writing_score = sum(1 for s in _WRITING_REFINER_SIGNALS if s in text)
+    argument_score = sum(1 for s in _ARGUMENT_CRITIC_SIGNALS if s in text)
+
+    if writing_score > max(argument_score, bash_score, research_score):
+        return "writing-refiner"
+    if argument_score > max(writing_score, bash_score, research_score):
+        return "argument-critic"
 
     # Bash wins only when it clearly dominates; default to general-purpose
     # for ambiguous cases since general-purpose can also run commands.
