@@ -1,6 +1,6 @@
-# DeerFlow Frontend
+# MaestroFlow Frontend
 
-Like the original DeerFlow 1.0, we would love to give the community a minimalistic and easy-to-use web interface with a more modern and flexible architecture.
+This frontend is the standalone MaestroFlow web app. It is forked forward from DeerFlow's UI foundations, but packaged here as its own deployable product surface.
 
 ## Tech Stack
 
@@ -51,6 +51,19 @@ pnpm build
 pnpm start
 ```
 
+### Docker Production Build
+
+```bash
+docker compose -f docker-compose.prod.yaml up --build
+```
+
+Set these environment variables when deploying against a real backend:
+
+```bash
+NEXT_PUBLIC_BACKEND_BASE_URL="https://your-gateway.example.com"
+NEXT_PUBLIC_LANGGRAPH_BASE_URL="https://your-frontend.example.com/api/langgraph"
+```
+
 ## Site Map
 
 ```
@@ -67,11 +80,15 @@ pnpm start
 Key environment variables (see `.env.example` for full list):
 
 ```bash
-# Backend API URLs (optional, uses nginx proxy by default)
+# Backend API URL
 NEXT_PUBLIC_BACKEND_BASE_URL="http://localhost:8001"
-# LangGraph API URLs (optional, uses nginx proxy by default)
+# LangGraph API URL
 NEXT_PUBLIC_LANGGRAPH_BASE_URL="http://localhost:2024"
+# Optional static/demo-only mode
+NEXT_PUBLIC_STATIC_WEBSITE_ONLY="false"
 ```
+
+`BETTER_AUTH_SECRET` is optional in the current frontend packaging flow. Add it only if you wire up the Better Auth server routes for a real auth deployment.
 
 ## Project Structure
 
@@ -124,6 +141,7 @@ src/
 - Turbopack enabled by default in development for faster builds
 - Environment validation can be skipped with `SKIP_ENV_VALIDATION=1` (useful for Docker)
 - Backend API URLs are optional; nginx proxy is used by default in development
+- Production Docker builds exclude `public/demo` so the app can ship as a lean MaestroFlow frontend instead of a demo bundle
 
 ## License
 

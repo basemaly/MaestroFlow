@@ -1,0 +1,14 @@
+services:
+  maestroflow-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: maestroflow-frontend:latest
+    ports:
+      - "${MAESTROFLOW_FRONTEND_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_BACKEND_BASE_URL: ${NEXT_PUBLIC_BACKEND_BASE_URL:-}
+      NEXT_PUBLIC_LANGGRAPH_BASE_URL: ${NEXT_PUBLIC_LANGGRAPH_BASE_URL:-}
+      NEXT_PUBLIC_STATIC_WEBSITE_ONLY: ${NEXT_PUBLIC_STATIC_WEBSITE_ONLY:-}
+    restart: unless-stopped

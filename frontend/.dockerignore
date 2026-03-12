@@ -1,0 +1,9 @@
+node_modules
+.next
+public/demo
+coverage
+dist
+*.log
+tsconfig.tsbuildinfo
+.DS_Store
+.env

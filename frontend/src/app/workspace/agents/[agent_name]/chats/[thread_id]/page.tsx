@@ -7,9 +7,9 @@ import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
-import { AgentWelcome } from "@/components/workspace/agent-welcome";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
 import { ChatBox, useThreadChat } from "@/components/workspace/chats";
+import { DeerIntroOverlay } from "@/components/workspace/deer-intro-overlay";
 import { DocEditDialog } from "@/components/workspace/doc-edit-dialog";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
@@ -92,9 +92,9 @@ export default function AgentChatPage() {
         <div className="relative flex size-full min-h-0 justify-between">
           <header
             className={cn(
-              "absolute top-0 right-0 left-0 z-30 flex h-12 shrink-0 items-center gap-2 px-4",
+              "absolute top-0 right-0 left-0 z-30 flex h-12 shrink-0 items-center gap-2 px-4 transition-colors duration-500",
               isNewThread
-                ? "bg-background/0 backdrop-blur-none"
+                ? "bg-gradient-to-b from-background/45 to-transparent backdrop-blur-[2px]"
                 : "bg-background/80 shadow-xs backdrop-blur",
             )}
           >
@@ -130,6 +130,7 @@ export default function AgentChatPage() {
           </header>
 
           <main className="flex min-h-0 max-w-full grow flex-col">
+            <DeerIntroOverlay active={isNewThread} />
             <div className="flex size-full justify-center">
               <MessageList
                 className={cn("size-full", !isNewThread && "pt-10")}
@@ -161,17 +162,17 @@ export default function AgentChatPage() {
                 </div>
 
                 <InputBox
-                  className={cn("bg-background/5 w-full -translate-y-4")}
+                  className={cn(
+                    "w-full -translate-y-4 transition-all duration-500",
+                    isNewThread
+                      ? "bg-background/6 backdrop-blur-sm"
+                      : "bg-background/5",
+                  )}
                   isNewThread={isNewThread}
                   threadId={threadId}
                   autoFocus={isNewThread}
                   status={thread.isLoading ? "streaming" : "ready"}
                   context={settings.context}
-                  extraHeader={
-                    isNewThread && (
-                      <AgentWelcome agent={agent} agentName={agent_name} />
-                    )
-                  }
                   disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
                   onContextChange={(context) => setSettings("context", context)}
                   onSubmit={handleSubmit}
