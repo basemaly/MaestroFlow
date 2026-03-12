@@ -10,6 +10,8 @@ export async function startDocEditRun(input: {
   model_strength: "fast" | "cheap" | "strong";
   preferred_model?: string;
   selected_models?: string[];
+  project_key?: string;
+  surfsense_search_space_id?: number;
   token_budget: number;
 }): Promise<DocEditRun> {
   const response = await fetch(`${getBackendBaseURL()}/api/doc-edit`, {

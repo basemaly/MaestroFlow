@@ -72,6 +72,8 @@ def save_run_manifest(
         "model_strength": state["model_strength"],
         "preferred_model": state.get("preferred_model"),
         "selected_models": state.get("selected_models", []),
+        "project_key": state.get("project_key"),
+        "surfsense_search_space_id": state.get("surfsense_search_space_id"),
         "token_budget": state["token_budget"],
         "tokens_used": state.get("tokens_used", 0),
         "run_dir": str(run_dir),
@@ -81,6 +83,7 @@ def save_run_manifest(
             (selected_version if selected_version is not None else state.get("selected_version")) or {}
         ).get("version_id"),
         "final_path": final_path if final_path is not None else state.get("final_path"),
+        "surfsense_export": state.get("surfsense_export"),
         "status": "completed" if (final_path if final_path is not None else state.get("final_path")) else "awaiting_selection",
         "review_payload": state.get("review_payload"),
         "updated_at": datetime.now().isoformat(),

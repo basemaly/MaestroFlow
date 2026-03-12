@@ -26,6 +26,19 @@
       "env": {},
       "description": "PostgreSQL database access"
     },
+    "surfsense": {
+      "enabled": false,
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "python", "src/integrations/surfsense/mcp_server.py"],
+      "env": {
+        "SURFSENSE_BASE_URL": "$SURFSENSE_BASE_URL",
+        "SURFSENSE_SERVICE_TOKEN": "$SURFSENSE_SERVICE_TOKEN",
+        "SURFSENSE_DEFAULT_SEARCH_SPACE_ID": "$SURFSENSE_DEFAULT_SEARCH_SPACE_ID",
+        "SURFSENSE_PROJECT_MAPPING": "$SURFSENSE_PROJECT_MAPPING"
+      },
+      "description": "SurfSense retrieval bridge for internal documents, reports, and notes"
+    },
     "my-sse-server": {                                                                                                                                       
         "type": "sse",                                                                                                                                         
         "url": "https://api.example.com/mcp",                                                                                                                  

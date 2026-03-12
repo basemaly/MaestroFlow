@@ -6,6 +6,7 @@ import {
   Loader2Icon,
   MedalIcon,
   PaperclipIcon,
+  Settings2Icon,
   SparklesIcon,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -181,6 +182,10 @@ export function DocEditStudio({
   const [compareModelsEnabled, setCompareModelsEnabled] = useState(false);
   const [modelA, setModelA] = useState("");
   const [modelB, setModelB] = useState("");
+  const [projectKey, setProjectKey] = useState(initialRun?.project_key ?? "");
+  const [surfSenseSearchSpaceId, setSurfSenseSearchSpaceId] = useState(
+    initialRun?.surfsense_search_space_id ? String(initialRun.surfsense_search_space_id) : "",
+  );
   const [tokenBudget, setTokenBudget] = useState("4000");
   const [run, setRun] = useState<DocEditRun | null>(initialRun ?? null);
   const [compareVersionId, setCompareVersionId] = useState<string | null>(
@@ -202,6 +207,10 @@ export function DocEditStudio({
     setRun(initialRun);
     setDocument(initialRun.document ?? "");
     setWorkflowMode(initialRun.workflow_mode ?? "consensus");
+    setProjectKey(initialRun.project_key ?? "");
+    setSurfSenseSearchSpaceId(
+      initialRun.surfsense_search_space_id ? String(initialRun.surfsense_search_space_id) : "",
+    );
     if (initialRun.versions.length > 0) {
       setCompareVersionId(
         initialRun.selected_version_id ?? initialRun.versions[0]?.version_id ?? null,
@@ -217,7 +226,11 @@ export function DocEditStudio({
     setModelStrength(resolveModelStrength(mode));
   }, [mode, run, selectVersion.isPending, startRun.isPending]);
 
-  const wordCount = document.trim().split(/\s+/).filter(Boolean).length;
+  const deferredDocument = useDeferredValue(document);
+  const wordCount = useMemo(
+    () => deferredDocument.trim().split(/\s+/).filter(Boolean).length,
+    [deferredDocument],
+  );
   const runTitle = run?.title ?? "Parallel Document Editing";
   const invalidBudget =
     tokenBudget.trim().length > 0 &&
@@ -251,6 +264,7 @@ export function DocEditStudio({
   const selectedModels = [modelA, modelB].map((value) => value.trim()).filter(Boolean);
   const modelPassCount = compareModelsEnabled ? selectedModels.length || 1 : 1;
   const selectedSummary = `${skills.length} skill${skills.length === 1 ? "" : "s"} x ${modelPassCount} model${modelPassCount === 1 ? "" : "s"} · ${WORKFLOW_MODE_OPTIONS.find((option) => option.value === workflowMode)?.label ?? "Consensus"}`;
+  const isBusy = startRun.isPending || selectVersion.isPending || uploadFile.isPending;
 
   useEffect(() => {
     if (deferredVersions.length === 0) {
@@ -280,6 +294,8 @@ export function DocEditStudio({
     setCompareModelsEnabled(false);
     setModelA("");
     setModelB("");
+    setProjectKey("");
+    setSurfSenseSearchSpaceId("");
   }
 
   async function handleRun() {
@@ -300,6 +316,11 @@ export function DocEditStudio({
         model_strength: modelStrength,
         preferred_model: preferredModel.trim() || undefined,
         selected_models: compareModelsEnabled ? selectedModels : undefined,
+        project_key: projectKey.trim() || undefined,
+        surfsense_search_space_id:
+          surfSenseSearchSpaceId.trim().length > 0
+            ? Number.parseInt(surfSenseSearchSpaceId, 10)
+            : undefined,
         token_budget: Number.isNaN(parsedBudget) ? 4000 : parsedBudget,
       });
       setRun(nextRun);
@@ -452,60 +473,107 @@ export function DocEditStudio({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 rounded-2xl border border-border/70 bg-background/60 p-4">
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Model Location</div>
-              <Select
-                value={modelLocation}
-                onValueChange={(value) => {
-                  if (value === "local" || value === "remote" || value === "mixed") {
-                    setModelLocation(value);
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full bg-background">
-                  <SelectValue placeholder="Choose model location" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mixed">Mixed</SelectItem>
-                  <SelectItem value="remote">Remote</SelectItem>
-                  <SelectItem value="local">Local</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-4 rounded-2xl border border-border/70 bg-background/60 p-4">
+            <div className="flex items-center gap-2">
+              <Settings2Icon className="size-4 text-muted-foreground" />
+              <div>
+                <div className="text-sm font-medium">Model Routing</div>
+                <div className="text-muted-foreground text-xs">
+                  Choose where the models should run, how aggressive the quality target should be, and optionally hint a specific alias.
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Model Location</div>
+                <Select
+                  value={modelLocation}
+                  onValueChange={(value) => {
+                    if (value === "local" || value === "remote" || value === "mixed") {
+                      setModelLocation(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue placeholder="Choose model location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mixed">Mixed</SelectItem>
+                    <SelectItem value="remote">Remote</SelectItem>
+                    <SelectItem value="local">Local</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Model Strength</div>
+                <Select
+                  value={modelStrength}
+                  onValueChange={(value) => {
+                    if (value === "fast" || value === "cheap" || value === "strong") {
+                      setModelStrength(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue placeholder="Choose model strength" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fast">Fast</SelectItem>
+                    <SelectItem value="cheap">Cheap</SelectItem>
+                    <SelectItem value="strong">Strong</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Model Strength</div>
-              <Select
-                value={modelStrength}
-                onValueChange={(value) => {
-                  if (value === "fast" || value === "cheap" || value === "strong") {
-                    setModelStrength(value);
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full bg-background">
-                  <SelectValue placeholder="Choose model strength" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fast">Fast</SelectItem>
-                  <SelectItem value="cheap">Cheap</SelectItem>
-                  <SelectItem value="strong">Strong</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="text-sm font-medium">Preferred Model</div>
+              <Input
+                className="bg-background"
+                value={preferredModel}
+                placeholder="Optional: gpt-5.2-mini, gemini flash, qwen 32b..."
+                onChange={(event) => setPreferredModel(event.target.value)}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <div className="text-muted-foreground text-xs">
+                Routed through the closest configured LiteLLM model match when possible.
+              </div>
             </div>
           </div>
 
-          <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-4">
-            <div className="text-sm font-medium">Preferred Model</div>
-            <Input
-              className="bg-background"
-              value={preferredModel}
-              placeholder="Optional: gpt-5.2-mini, gemini flash, qwen 32b..."
-              onChange={(event) => setPreferredModel(event.target.value)}
-            />
-            <div className="text-muted-foreground text-xs">
-              Routed through the closest configured LiteLLM model match when possible.
+          <div className="grid gap-4 rounded-2xl border border-border/70 bg-background/60 p-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">SurfSense Project Key</div>
+              <Input
+                className="bg-background"
+                value={projectKey}
+                placeholder="Optional: client-alpha"
+                onChange={(event) => setProjectKey(event.target.value)}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <div className="text-muted-foreground text-xs">
+                Routes retrieval and export through a stable project-to-search-space mapping when configured.
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium">SurfSense Search Space</div>
+              <Input
+                className="bg-background"
+                value={surfSenseSearchSpaceId}
+                placeholder="Optional: 12"
+                inputMode="numeric"
+                onChange={(event) =>
+                  setSurfSenseSearchSpaceId(event.target.value.replace(/[^\d]/g, ""))
+                }
+              />
+              <div className="text-muted-foreground text-xs">
+                Use this for one-off exports into a specific SurfSense search space.
+              </div>
             </div>
           </div>
 
@@ -520,8 +588,12 @@ export function DocEditStudio({
               <Button
                 size="sm"
                 variant={compareModelsEnabled ? "default" : "outline"}
-                className="rounded-full border-2"
+                className={cn(
+                  "rounded-full border-2 px-4",
+                  compareModelsEnabled && "border-primary bg-primary/95 text-primary-foreground shadow-sm",
+                )}
                 onClick={() => setCompareModelsEnabled((value) => !value)}
+                aria-pressed={compareModelsEnabled}
               >
                 {compareModelsEnabled ? "Enabled" : "Enable"}
               </Button>
@@ -560,14 +632,19 @@ export function DocEditStudio({
                 </div>
               </div>
             )}
+            {compareModelsEnabled && modelA && modelB && modelA === modelB && (
+              <div className="text-xs text-destructive">
+                Choose two different models for a compare pass.
+              </div>
+            )}
           </div>
 
           <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-4">
             <div className="text-sm font-medium">Token Budget</div>
-            <Textarea
-              className="min-h-0 resize-none bg-background"
-              rows={1}
+            <Input
+              className="bg-background"
               value={tokenBudget}
+              inputMode="numeric"
               onChange={(event) =>
                 setTokenBudget(event.target.value.replace(/[^\d]/g, ""))
               }
@@ -579,7 +656,7 @@ export function DocEditStudio({
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button className="rounded-full border-2 border-transparent px-5" onClick={handleRun} disabled={!canSubmit || startRun.isPending}>
               {startRun.isPending ? (
                 <Loader2Icon className="size-4 animate-spin" />
@@ -592,12 +669,12 @@ export function DocEditStudio({
               variant="outline"
               className="rounded-full border-2 px-5"
               onClick={resetStudio}
-              disabled={startRun.isPending || selectVersion.isPending || uploadFile.isPending}
+              disabled={isBusy}
             >
               Reset
             </Button>
           </div>
-          <div className="text-muted-foreground text-xs">
+          <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-3 text-muted-foreground text-xs">
             {selectedSummary}
             {compareModelsEnabled && modelA && modelB ? `: ${modelA} + ${modelB}` : ""}
           </div>

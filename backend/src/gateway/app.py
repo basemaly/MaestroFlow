@@ -17,6 +17,7 @@ from src.gateway.routers import (
     quality,
     skills,
     suggestions,
+    surfsense,
     uploads,
 )
 
@@ -150,6 +151,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
                 "description": "Parallel document editing runs and saved versions",
             },
             {
+                "name": "surfsense",
+                "description": "SurfSense retrieval, export, and escalation integration",
+            },
+            {
                 "name": "health",
                 "description": "Health check and system status endpoints",
             },
@@ -191,6 +196,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Doc editing API is mounted at /api/doc-edit
     app.include_router(doc_editing.router)
+
+    # SurfSense integration API is mounted at /api/surfsense
+    app.include_router(surfsense.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:

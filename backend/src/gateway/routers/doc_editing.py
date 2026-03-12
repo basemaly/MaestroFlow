@@ -25,6 +25,8 @@ class DocEditRequest(BaseModel):
     model_strength: str = Field(default="fast", pattern="^(fast|cheap|strong)$")
     preferred_model: str | None = Field(default=None, max_length=120)
     selected_models: list[str] = Field(default_factory=list, max_length=3)
+    project_key: str | None = Field(default=None, max_length=120)
+    surfsense_search_space_id: int | None = Field(default=None, ge=1)
     token_budget: int = Field(default=4000, ge=250)
 
 
@@ -36,6 +38,8 @@ class DocEditStartResponse(BaseModel):
     run_dir: str
     status: str
     workflow_mode: str | None = None
+    project_key: str | None = None
+    surfsense_search_space_id: int | None = None
     final_path: str | None
     selected_skill: str | None
     selected_version_id: str | None = None
@@ -59,6 +63,8 @@ def _to_response_payload(run_id: str, run_dir: str, result: dict) -> DocEditStar
         run_dir=run_dir,
         status=status,
         workflow_mode=result.get("workflow_mode") or "consensus",
+        project_key=result.get("project_key"),
+        surfsense_search_space_id=result.get("surfsense_search_space_id"),
         final_path=result.get("final_path"),
         selected_skill=selected_version["skill_name"] if selected_version else None,
         selected_version_id=selected_version.get("version_id") if selected_version else None,
@@ -80,6 +86,8 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
         "model_strength": req.model_strength,
         "preferred_model": req.preferred_model.strip() if req.preferred_model else None,
         "selected_models": req.selected_models,
+        "project_key": req.project_key.strip() if req.project_key else None,
+        "surfsense_search_space_id": req.surfsense_search_space_id,
         "token_budget": req.token_budget,
         "run_id": run_id,
         "run_dir": str(run_dir),
@@ -106,6 +114,8 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
             "review_payload": pending.get("review_payload"),
             "final_path": pending.get("final_path"),
             "selected_version": pending.get("selected_version"),
+            "project_key": pending.get("project_key"),
+            "surfsense_search_space_id": pending.get("surfsense_search_space_id"),
         }
     return _to_response_payload(run_id, str(run_dir), result)
 

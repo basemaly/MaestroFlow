@@ -18,7 +18,7 @@ import { formatTimeAgo } from "@/core/utils/datetime";
 export default function DocEditsPage() {
   const { t } = useI18n();
   const [settings] = useLocalSettings();
-  const { data } = useDocEditRuns();
+  const { data, isLoading, isError } = useDocEditRuns();
   const runs = data?.runs ?? [];
 
   useEffect(() => {
@@ -36,12 +36,27 @@ export default function DocEditsPage() {
                 <CardTitle className="text-base">Recent Doc Edit Runs</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-3 px-4">
-                {runs.length === 0 && (
+                {isLoading && (
+                  <div className="space-y-3">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <div
+                        key={`doc-edit-skeleton-${index}`}
+                        className="h-[4.5rem] animate-pulse rounded-lg border bg-muted/30"
+                      />
+                    ))}
+                  </div>
+                )}
+                {!isLoading && isError && (
+                  <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
+                    Could not load recent doc edit runs.
+                  </div>
+                )}
+                {!isLoading && !isError && runs.length === 0 && (
                   <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
                     No doc edit runs yet.
                   </div>
                 )}
-                {runs.map((run) => (
+                {!isLoading && !isError && runs.map((run) => (
                   <Link key={run.run_id} href={`/workspace/doc-edits/${run.run_id}`}>
                     <div className="rounded-lg border p-3 text-sm hover:bg-accent/40">
                       <div className="font-medium">{run.title ?? run.run_id}</div>

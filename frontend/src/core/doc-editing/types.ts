@@ -37,6 +37,8 @@ export interface DocEditRun {
   status: "awaiting_selection" | "completed";
   workflow_mode?: "standard" | "consensus" | "debate-judge" | "critic-loop" | "strict-bold";
   document?: string;
+  project_key?: string | null;
+  surfsense_search_space_id?: number | null;
   final_path: string | null;
   selected_skill: string | null;
   selected_version_id?: string | null;

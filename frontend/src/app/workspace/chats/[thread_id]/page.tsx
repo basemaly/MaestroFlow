@@ -15,6 +15,7 @@ import { DocEditDialog } from "@/components/workspace/doc-edit-dialog";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import { SurfSenseActions } from "@/components/workspace/surfsense-actions";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { useI18n } from "@/core/i18n/hooks";
@@ -98,6 +99,7 @@ export default function ChatPage() {
               <ThreadTitle threadId={threadId} thread={thread} />
             </div>
             <div className="flex items-center gap-2">
+              <SurfSenseActions />
               <DocEditDialog
                 disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
                 mode={settings.context.mode}

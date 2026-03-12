@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
+from src.integrations.surfsense import export_doc_edit_winner_to_surfsense
 from src.doc_editing.run_tracker import get_reports_dir, persist_run, save_run_manifest, slugify
 from src.doc_editing.state import DocEditState
 from src.subagents.mab import record_outcome
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_final_path(base_path: Path) -> Path:
@@ -46,10 +50,21 @@ def finalizer(state: DocEditState) -> dict:
 
     persist_run(state, winner, str(final_path))
     record_outcome(winner["subagent_type"], winner["score"], task_category="doc-edit-selection")
+    try:
+        surfsense_export = export_doc_edit_winner_to_surfsense(
+            state=state,
+            winner=winner,
+            final_path=str(final_path),
+            project_key=state.get("project_key"),
+            explicit_search_space_id=state.get("surfsense_search_space_id"),
+        )
+    except Exception:
+        logger.exception("SurfSense export failed for doc-edit run %s", state["run_id"])
+        surfsense_export = {"status": "failed"}
     save_run_manifest(
         Path(state["run_dir"]),
-        state={**state, "final_path": str(final_path)},
+        state={**state, "final_path": str(final_path), "surfsense_export": surfsense_export},
         selected_version=winner,
         final_path=str(final_path),
     )
-    return {"final_path": str(final_path)}
+    return {"final_path": str(final_path), "surfsense_export": surfsense_export}
