@@ -10,8 +10,10 @@ from langchain.tools import InjectedToolCallId, ToolRuntime, tool
 from langgraph.config import get_stream_writer
 from langgraph.typing import ContextT
 
+from src.agents.artifacts import format_artifact_header, validate_subagent_result
 from src.agents.lead_agent.prompt import get_skills_prompt_section
 from src.agents.thread_state import ThreadState
+from src.models.routing import resolve_subagent_model_preference
 from src.subagents import SubagentExecutor, get_subagent_config
 from src.subagents.executor import SubagentStatus, cleanup_background_task, get_background_task_result
 
@@ -25,6 +27,7 @@ def task_tool(
     prompt: str,
     subagent_type: Literal["general-purpose", "bash"],
     tool_call_id: Annotated[str, InjectedToolCallId],
+    subagent_model: str | None = None,
     max_turns: int | None = None,
 ) -> str:
     """Delegate a task to a specialized subagent that runs in its own context.
@@ -55,6 +58,8 @@ def task_tool(
         description: A short (3-5 word) description of the task for logging/display. ALWAYS PROVIDE THIS PARAMETER FIRST.
         prompt: The task description for the subagent. Be specific and clear about what needs to be done. ALWAYS PROVIDE THIS PARAMETER SECOND.
         subagent_type: The type of subagent to use. ALWAYS PROVIDE THIS PARAMETER THIRD.
+        subagent_model: Optional model preference for the subagent. Use exact model names when possible,
+            or phrases like "fastest gemini model", "fastest local model", or "gpt-5.2-codex".
         max_turns: Optional maximum number of agent turns. Defaults to subagent's configured max.
     """
     # Get subagent configuration
@@ -93,6 +98,26 @@ def task_tool(
 
         # Get or generate trace_id for distributed tracing
         trace_id = metadata.get("trace_id") or str(uuid.uuid4())[:8]
+
+    resolved_subagent_model = resolve_subagent_model_preference(
+        subagent_model,
+        parent_model=parent_model,
+    )
+    if subagent_model:
+        if resolved_subagent_model:
+            config = replace(config, model=resolved_subagent_model)
+            logger.info(
+                "[trace=%s] Resolved subagent model preference '%s' -> '%s'",
+                trace_id,
+                subagent_model,
+                resolved_subagent_model,
+            )
+        else:
+            logger.warning(
+                "[trace=%s] Could not resolve subagent model preference '%s'; using default routing",
+                trace_id,
+                subagent_model,
+            )
 
     # Get available tools (excluding task tool to prevent nesting)
     # Lazy import to avoid circular dependency
@@ -163,10 +188,17 @@ def task_tool(
 
         # Check if task completed, failed, or timed out
         if result.status == SubagentStatus.COMPLETED:
+            artifact = validate_subagent_result(subagent_type, result.result)
+            artifact_header = format_artifact_header(artifact)
+            if not artifact.is_valid:
+                logger.warning(
+                    "[trace=%s] Task %s artifact quality warnings %s: %s",
+                    trace_id, task_id, artifact_header, artifact.quality_warnings,
+                )
             writer({"type": "task_completed", "task_id": task_id, "result": result.result})
             logger.info(f"[trace={trace_id}] Task {task_id} completed after {poll_count} polls")
             cleanup_background_task(task_id)
-            return f"Task Succeeded. Result: {result.result}"
+            return f"Task Succeeded {artifact_header}.\nResult: {result.result}"
         elif result.status == SubagentStatus.FAILED:
             writer({"type": "task_failed", "task_id": task_id, "error": result.error})
             logger.error(f"[trace={trace_id}] Task {task_id} failed: {result.error}")
