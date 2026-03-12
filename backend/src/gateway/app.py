@@ -10,6 +10,7 @@ from src.gateway.routers import (
     agents,
     artifacts,
     channels,
+    doc_editing,
     mcp,
     memory,
     models,
@@ -145,6 +146,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
                 "description": "Subagent output quality scores per thread",
             },
             {
+                "name": "doc-editing",
+                "description": "Parallel document editing runs and saved versions",
+            },
+            {
                 "name": "health",
                 "description": "Health check and system status endpoints",
             },
@@ -183,6 +188,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Quality API is mounted at /api/threads/{thread_id}/quality
     app.include_router(quality.router)
+
+    # Doc editing API is mounted at /api/doc-edit
+    app.include_router(doc_editing.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:

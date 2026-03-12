@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { AgentWelcome } from "@/components/workspace/agent-welcome";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
 import { ChatBox, useThreadChat } from "@/components/workspace/chats";
+import { DocEditDialog } from "@/components/workspace/doc-edit-dialog";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
@@ -108,7 +109,11 @@ export default function AgentChatPage() {
             <div className="flex w-full items-center text-sm font-medium">
               <ThreadTitle threadId={threadId} thread={thread} />
             </div>
-            <div className="mr-4 flex items-center">
+            <div className="mr-4 flex items-center gap-2">
+              <DocEditDialog
+                disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
+                mode={settings.context.mode}
+              />
               <Tooltip content={t.agents.newChat}>
                 <Button
                   size="sm"

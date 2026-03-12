@@ -105,6 +105,8 @@ export interface Translations {
     chats: string;
     demoChats: string;
     agents: string;
+    docEdits: string;
+    newDocEdit: string;
   };
 
   // Agents
