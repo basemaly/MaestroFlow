@@ -10,20 +10,13 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.config.app_config import get_app_config
 from src.doc_editing.skills.registry import get_skill_config
 from src.doc_editing.state import DocEditState, VersionRecord
 from src.models import create_chat_model
-from src.models.routing import resolve_lightweight_fallback_model, resolve_subagent_model_preference
+from src.models.routing import resolve_doc_edit_candidate_models
 from src.subagents.quality import score_async, score_result
 
 logger = logging.getLogger(__name__)
-
-_MODE_PREFERENCES = {
-    "local": "fastest local model",
-    "fast": "fastest gemini model",
-    "strong": "gemini-2-5-pro",
-}
 
 _DOC_EDIT_INSTRUCTION = """
 You are participating in a parallel document editing pipeline.
@@ -93,26 +86,15 @@ def _sanitize_skill_output(text: str) -> str:
     return cleaned or normalized
 
 
-def _candidate_models(mode: str) -> list[str]:
-    preference = _MODE_PREFERENCES.get(mode, _MODE_PREFERENCES["fast"])
-    candidates: list[str] = []
-    preferred = resolve_subagent_model_preference(preference)
-    if preferred:
-        candidates.append(preferred)
-    fallback = resolve_lightweight_fallback_model()
-    if fallback and fallback not in candidates:
-        candidates.append(fallback)
-    app_config = get_app_config()
-    if app_config.models:
-        default_name = app_config.models[0].name
-        if default_name not in candidates:
-            candidates.append(default_name)
-    return candidates
-
-
-@lru_cache(maxsize=16)
-def _cached_candidate_models(mode: str) -> tuple[str, ...]:
-    return tuple(_candidate_models(mode))
+@lru_cache(maxsize=64)
+def _cached_candidate_models(location: str, strength: str, preferred_model: str | None) -> tuple[str, ...]:
+    return tuple(
+        resolve_doc_edit_candidate_models(
+            location=location,
+            strength=strength,
+            preferred_model=preferred_model,
+        )
+    )
 
 
 async def skill_agent(state: DocEditState) -> dict:
@@ -131,7 +113,11 @@ async def skill_agent(state: DocEditState) -> dict:
     response_text = ""
     model_name = ""
     latency_ms = 0
-    for candidate in _cached_candidate_models(state["model_preference"]):
+    for candidate in _cached_candidate_models(
+        state["model_location"],
+        state["model_strength"],
+        state.get("preferred_model"),
+    ):
         try:
             model = create_chat_model(name=candidate, thinking_enabled=False)
             started = time.monotonic()

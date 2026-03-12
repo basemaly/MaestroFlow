@@ -5,7 +5,9 @@ import type { DocEditRun, DocEditRunsResponse } from "./types";
 export async function startDocEditRun(input: {
   document: string;
   skills: string[];
-  model_preference: "local" | "fast" | "strong";
+  model_location: "local" | "remote" | "mixed";
+  model_strength: "fast" | "cheap" | "strong";
+  preferred_model?: string;
   token_budget: number;
 }): Promise<DocEditRun> {
   const response = await fetch(`${getBackendBaseURL()}/api/doc-edit`, {

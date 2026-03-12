@@ -20,7 +20,9 @@ class DocEditRequest(BaseModel):
 
     document: str = Field(..., min_length=1, description="Markdown document to edit")
     skills: list[str] = Field(default_factory=lambda: ["writing-refiner", "argument-critic"])
-    model_preference: str = Field(default="fast", pattern="^(local|fast|strong)$")
+    model_location: str = Field(default="mixed", pattern="^(local|remote|mixed)$")
+    model_strength: str = Field(default="fast", pattern="^(fast|cheap|strong)$")
+    preferred_model: str | None = Field(default=None, max_length=120)
     token_budget: int = Field(default=4000, ge=250)
 
 
@@ -67,7 +69,9 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
     initial_state = {
         "document": req.document,
         "skills": req.skills,
-        "model_preference": req.model_preference,
+        "model_location": req.model_location,
+        "model_strength": req.model_strength,
+        "preferred_model": req.preferred_model.strip() if req.preferred_model else None,
         "token_budget": req.token_budget,
         "run_id": run_id,
         "run_dir": str(run_dir),

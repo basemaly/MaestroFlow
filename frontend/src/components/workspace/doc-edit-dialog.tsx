@@ -26,7 +26,15 @@ import {
   DialogContent,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -38,7 +46,8 @@ import type { DocEditRun } from "@/core/doc-editing/types";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
-type ModelPreference = "local" | "fast" | "strong";
+type ModelLocation = "local" | "remote" | "mixed";
+type ModelStrength = "fast" | "cheap" | "strong";
 
 const SKILL_OPTIONS = [
   { value: "writing-refiner", label: "Writing Refiner" },
@@ -49,9 +58,9 @@ const DEFAULT_SKILLS = ["writing-refiner", "argument-critic"];
 const selectedToggleItemClass =
   "data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-foreground data-[state=on]:shadow-sm";
 
-function resolveModelPreference(
+function resolveModelStrength(
   mode: "flash" | "thinking" | "pro" | "ultra" | undefined,
-): ModelPreference {
+): ModelStrength {
   if (mode === "pro" || mode === "ultra") {
     return "strong";
   }
@@ -88,9 +97,11 @@ export function DocEditStudio({
     initialRun?.versions?.map((version) => version.skill_name) ??
       DEFAULT_SKILLS,
   );
-  const [modelPreference, setModelPreference] = useState<ModelPreference>(
-    resolveModelPreference(mode),
+  const [modelLocation, setModelLocation] = useState<ModelLocation>("mixed");
+  const [modelStrength, setModelStrength] = useState<ModelStrength>(
+    resolveModelStrength(mode),
   );
+  const [preferredModel, setPreferredModel] = useState("");
   const [tokenBudget, setTokenBudget] = useState("4000");
   const [run, setRun] = useState<DocEditRun | null>(initialRun ?? null);
   const [compareSkill, setCompareSkill] = useState<string | null>(
@@ -122,7 +133,7 @@ export function DocEditStudio({
     if (run || startRun.isPending || selectVersion.isPending) {
       return;
     }
-    setModelPreference(resolveModelPreference(mode));
+    setModelStrength(resolveModelStrength(mode));
   }, [mode, run, selectVersion.isPending, startRun.isPending]);
 
   const wordCount = document.trim().split(/\s+/).filter(Boolean).length;
@@ -173,7 +184,9 @@ export function DocEditStudio({
     setCompareSkill(null);
     setTokenBudget("4000");
     setSkills(DEFAULT_SKILLS);
-    setModelPreference(resolveModelPreference(mode));
+    setModelLocation("mixed");
+    setModelStrength(resolveModelStrength(mode));
+    setPreferredModel("");
   }
 
   async function handleRun() {
@@ -189,7 +202,9 @@ export function DocEditStudio({
       const nextRun = await startRun.mutateAsync({
         document: document.trim(),
         skills,
-        model_preference: modelPreference,
+        model_location: modelLocation,
+        model_strength: modelStrength,
+        preferred_model: preferredModel.trim() || undefined,
         token_budget: Number.isNaN(parsedBudget) ? 4000 : parsedBudget,
       });
       setRun(nextRun);
@@ -304,22 +319,61 @@ export function DocEditStudio({
             </ToggleGroup>
           </div>
 
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Model Location</div>
+              <Select
+                value={modelLocation}
+                onValueChange={(value) => {
+                  if (value === "local" || value === "remote" || value === "mixed") {
+                    setModelLocation(value);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full bg-background">
+                  <SelectValue placeholder="Choose model location" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mixed">Mixed</SelectItem>
+                  <SelectItem value="remote">Remote</SelectItem>
+                  <SelectItem value="local">Local</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Model Strength</div>
+              <Select
+                value={modelStrength}
+                onValueChange={(value) => {
+                  if (value === "fast" || value === "cheap" || value === "strong") {
+                    setModelStrength(value);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full bg-background">
+                  <SelectValue placeholder="Choose model strength" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fast">Fast</SelectItem>
+                  <SelectItem value="cheap">Cheap</SelectItem>
+                  <SelectItem value="strong">Strong</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div className="space-y-2">
-            <div className="text-sm font-medium">Model Mode</div>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              value={modelPreference}
-              onValueChange={(value) => {
-                if (value === "local" || value === "fast" || value === "strong") {
-                  setModelPreference(value);
-                }
-              }}
-            >
-              <ToggleGroupItem className={selectedToggleItemClass} value="local">Local</ToggleGroupItem>
-              <ToggleGroupItem className={selectedToggleItemClass} value="fast">Fast</ToggleGroupItem>
-              <ToggleGroupItem className={selectedToggleItemClass} value="strong">Strong</ToggleGroupItem>
-            </ToggleGroup>
+            <div className="text-sm font-medium">Preferred Model</div>
+            <Input
+              className="bg-background"
+              value={preferredModel}
+              placeholder="Optional: gpt-5.2-mini, gemini flash, qwen 32b..."
+              onChange={(event) => setPreferredModel(event.target.value)}
+            />
+            <div className="text-muted-foreground text-xs">
+              Routed through the closest configured LiteLLM model match when possible.
+            </div>
           </div>
 
           <div className="space-y-2">

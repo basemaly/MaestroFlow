@@ -14,7 +14,9 @@ def test_dispatch_skills_trims_to_budget():
     state = {
         "document": document,
         "skills": ["writing-refiner", "argument-critic", "humanizer"],
-        "model_preference": "fast",
+        "model_location": "mixed",
+        "model_strength": "fast",
+        "preferred_model": None,
         "token_budget": 920,
         "run_id": "run12345",
         "run_dir": "/tmp/doc-edit-test",
@@ -31,7 +33,9 @@ def test_dispatch_skills_deduplicates_requested_skills():
     state = {
         "document": "word " * 20,
         "skills": ["writing-refiner", "writing-refiner", "argument-critic"],
-        "model_preference": "fast",
+        "model_location": "mixed",
+        "model_strength": "fast",
+        "preferred_model": None,
         "token_budget": 4000,
         "run_id": "run12345",
         "run_dir": "/tmp/doc-edit-test",
@@ -48,7 +52,9 @@ def test_collector_writes_report_and_selects_top_version(tmp_path: Path):
     state = {
         "document": "Example document",
         "skills": ["writing-refiner", "argument-critic"],
-        "model_preference": "fast",
+        "model_location": "mixed",
+        "model_strength": "fast",
+        "preferred_model": None,
         "token_budget": 4000,
         "run_id": "run-1",
         "run_dir": str(run_dir),
@@ -94,7 +100,9 @@ def test_persist_run_round_trip(tmp_path: Path, monkeypatch):
     state = {
         "document": "Example document for persistence",
         "skills": ["writing-refiner"],
-        "model_preference": "fast",
+        "model_location": "mixed",
+        "model_strength": "fast",
+        "preferred_model": None,
         "token_budget": 4000,
         "run_id": "persist01",
         "run_dir": str(tmp_path / "persist01"),
@@ -146,7 +154,9 @@ def test_list_runs_includes_human_readable_title(tmp_path: Path, monkeypatch):
     state = {
         "document": "A useful title for the run list view",
         "skills": ["writing-refiner"],
-        "model_preference": "fast",
+        "model_location": "mixed",
+        "model_strength": "fast",
+        "preferred_model": None,
         "token_budget": 4000,
         "run_id": "list01",
         "run_dir": str(tmp_path / "list01"),
@@ -225,8 +235,11 @@ Notes: removed repetition.
 
 
 def test_start_doc_edit_returns_graph_result(monkeypatch, tmp_path: Path):
+    captured = {}
+
     class FakeGraph:
         async def ainvoke(self, state, config=None):
+            captured["state"] = state
             return {
                 **state,
                 "title": "Hello world",
@@ -244,7 +257,13 @@ def test_start_doc_edit_returns_graph_result(monkeypatch, tmp_path: Path):
 
     response = asyncio.run(
         doc_editing.start_doc_edit(
-            doc_editing.DocEditRequest(document="Hello world", skills=["writing-refiner"])
+            doc_editing.DocEditRequest(
+                document="Hello world",
+                skills=["writing-refiner"],
+                model_location="remote",
+                model_strength="cheap",
+                preferred_model="gpt-5.2-mini",
+            )
         )
     )
 
@@ -253,6 +272,9 @@ def test_start_doc_edit_returns_graph_result(monkeypatch, tmp_path: Path):
     assert response.status == "completed"
     assert response.token_count == 321
     assert response.versions[0]["skill_name"] == "writing-refiner"
+    assert captured["state"]["model_location"] == "remote"
+    assert captured["state"]["model_strength"] == "cheap"
+    assert captured["state"]["preferred_model"] == "gpt-5.2-mini"
 
 
 def test_start_doc_edit_returns_pending_selection(monkeypatch, tmp_path: Path):

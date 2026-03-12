@@ -23,7 +23,9 @@ class DocEditState(TypedDict):
 
     document: str
     skills: list[str]
-    model_preference: Literal["local", "fast", "strong"]
+    model_location: Literal["local", "remote", "mixed"]
+    model_strength: Literal["fast", "cheap", "strong"]
+    preferred_model: str | None
     token_budget: int
     run_id: str
     run_dir: str

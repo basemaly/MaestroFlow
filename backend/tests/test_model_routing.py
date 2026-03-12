@@ -2,6 +2,7 @@ from src.config.app_config import AppConfig, set_app_config, reset_app_config
 from src.config.model_config import ModelConfig
 from src.config.sandbox_config import SandboxConfig
 from src.models.routing import (
+    resolve_doc_edit_candidate_models,
     resolve_lightweight_fallback_model,
     resolve_subagent_model_preference,
 )
@@ -86,5 +87,75 @@ def test_resolve_lightweight_fallback_skips_gpt4_floor():
 
     try:
         assert resolve_lightweight_fallback_model() == "gemini-2-5-flash"
+    finally:
+        reset_app_config()
+
+
+def test_resolve_doc_edit_candidate_models_prefers_closest_requested_match():
+    set_app_config(
+        AppConfig(
+            models=[
+                _make_model("gemini-2-5-pro"),
+                _make_model("gpt-5-2-mini"),
+                _make_model("qwen-7b-coder-lan", "Qwen 2.5 7B Coder (Ollama LAN)"),
+            ],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+
+    try:
+        candidates = resolve_doc_edit_candidate_models(
+            location="mixed",
+            strength="cheap",
+            preferred_model="gpt-5.2-mini",
+        )
+        assert candidates[0] == "gpt-5-2-mini"
+    finally:
+        reset_app_config()
+
+
+def test_resolve_doc_edit_candidate_models_does_not_downgrade_gpt5_request_to_gpt4():
+    set_app_config(
+        AppConfig(
+            models=[
+                _make_model("gpt-5-2-codex"),
+                _make_model("gpt-4-1-mini"),
+                _make_model("o3-mini"),
+            ],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+
+    try:
+        candidates = resolve_doc_edit_candidate_models(
+            location="mixed",
+            strength="cheap",
+            preferred_model="gpt-5.2-mini",
+        )
+        assert candidates[0] == "gpt-5-2-codex"
+        assert "gpt-4-1-mini" in candidates
+    finally:
+        reset_app_config()
+
+
+def test_resolve_doc_edit_candidate_models_remote_strong_prefers_remote_pro():
+    set_app_config(
+        AppConfig(
+            models=[
+                _make_model("gemini-2-5-flash"),
+                _make_model("gemini-2-5-pro"),
+                _make_model("qwen-32b-coder-lan", "Qwen 2.5 32B Coder (Ollama LAN)"),
+            ],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+
+    try:
+        candidates = resolve_doc_edit_candidate_models(
+            location="remote",
+            strength="strong",
+            preferred_model=None,
+        )
+        assert candidates[0] == "gemini-2-5-pro"
     finally:
         reset_app_config()

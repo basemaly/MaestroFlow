@@ -67,7 +67,9 @@ def save_run_manifest(
         "document_word_count": len(state["document"].split()),
         "document": state["document"],
         "skills": state["skills"],
-        "model_preference": state["model_preference"],
+        "model_location": state["model_location"],
+        "model_strength": state["model_strength"],
+        "preferred_model": state.get("preferred_model"),
         "token_budget": state["token_budget"],
         "tokens_used": state.get("tokens_used", 0),
         "run_dir": str(run_dir),
@@ -200,7 +202,8 @@ def list_runs(limit: int = 25) -> dict[str, list[dict[str, Any]]]:
                 "selected_skill": None,
                 "composite_score": None,
                 "token_count": payload.get("tokens_used", 0),
-                "model_used": payload.get("model_preference"),
+                "model_used": payload.get("preferred_model")
+                or f"{payload.get('model_location', 'mixed')}/{payload.get('model_strength', 'fast')}",
                 "final_path": payload.get("final_path"),
                 "status": "awaiting_selection",
             }
