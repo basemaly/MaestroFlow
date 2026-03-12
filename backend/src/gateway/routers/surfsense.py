@@ -9,12 +9,12 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from src.client import DeerFlowClient
 from src.integrations.surfsense import SurfSenseClient, get_surfsense_config, resolve_surfsense_search_space_id
 from src.models.routing import resolve_doc_edit_candidate_models
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/surfsense", tags=["surfsense"])
+DEFAULT_LANGGRAPH_URL = "http://127.0.0.1:2024"
 
 
 class SurfSenseSearchRequest(BaseModel):
@@ -42,6 +42,88 @@ class SurfSenseResearchRequest(BaseModel):
     thread_id: str | None = None
     context_blocks: list[dict] = Field(default_factory=list)
     preferred_model: str | None = None
+
+
+def _extract_response_text(result: dict | list) -> str:
+    if isinstance(result, list):
+        messages = result
+    elif isinstance(result, dict):
+        messages = result.get("messages", [])
+    else:
+        return ""
+
+    for msg in reversed(messages):
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("type") == "human":
+            break
+        if msg.get("type") == "ai":
+            content = msg.get("content", "")
+            if isinstance(content, str) and content:
+                return content
+            if isinstance(content, list):
+                parts = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        parts.append(block.get("text", ""))
+                    elif isinstance(block, str):
+                        parts.append(block)
+                text = "".join(parts).strip()
+                if text:
+                    return text
+    return ""
+
+
+async def _resolve_live_surfsense_scope(
+    *,
+    search_space_id: int | None,
+    project_key: str | None,
+) -> tuple[int | None, str | None, list[dict[str, str]]]:
+    if search_space_id is None:
+        return None, project_key, []
+
+    try:
+        search_spaces = await SurfSenseClient().list_search_spaces()
+    except httpx.HTTPError as exc:
+        return None, None, [
+            {
+                "type": "surfsense_access_notice",
+                "summary": (
+                    "Live SurfSense retrieval is unavailable from MaestroFlow for this run. "
+                    "Use only the provided SurfSense context blocks."
+                ),
+                "error": str(exc),
+            }
+        ]
+
+    accessible_ids = {int(item["id"]) for item in search_spaces if item.get("id") is not None}
+    if search_space_id in accessible_ids:
+        return search_space_id, project_key, []
+
+    return None, None, [
+        {
+            "type": "surfsense_access_notice",
+            "summary": (
+                f"MaestroFlow's SurfSense integration token cannot access search space {search_space_id}. "
+                "Use only the provided SurfSense context blocks and do not rely on live SurfSense tool calls."
+            ),
+        }
+    ]
+
+
+async def _create_or_resolve_langgraph_thread(thread_id: str | None) -> str:
+    from langgraph_sdk import get_client
+
+    if thread_id:
+        try:
+            uuid.UUID(thread_id)
+            return thread_id
+        except ValueError:
+            logger.warning("Ignoring non-UUID thread_id for SurfSense escalation: %s", thread_id)
+
+    client = get_client(url=DEFAULT_LANGGRAPH_URL)
+    thread = await client.threads.create()
+    return thread["thread_id"]
 
 
 @router.get("/config")
@@ -136,14 +218,21 @@ async def export_note_to_surfsense(req: SurfSenseExportRequest) -> dict:
 
 @router.post("/research")
 async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict:
-    search_space_id = resolve_surfsense_search_space_id(
+    requested_search_space_id = resolve_surfsense_search_space_id(
         explicit_search_space_id=req.search_space_id,
         project_key=req.project_key,
     )
+    live_search_space_id, live_project_key, access_notes = await _resolve_live_surfsense_scope(
+        search_space_id=requested_search_space_id,
+        project_key=req.project_key,
+    )
+    context_blocks = [*req.context_blocks, *access_notes]
     context_lines: list[str] = []
-    if search_space_id is not None:
-        context_lines.append(f"SurfSense search space ID: {search_space_id}")
-    for index, block in enumerate(req.context_blocks, start=1):
+    if requested_search_space_id is not None:
+        context_lines.append(f"Requested SurfSense search space ID: {requested_search_space_id}")
+    if live_search_space_id is not None:
+        context_lines.append(f"Live SurfSense search space ID available to MaestroFlow: {live_search_space_id}")
+    for index, block in enumerate(context_blocks, start=1):
         context_lines.append(f"Context block {index}: {block}")
     context_blob = "\n".join(context_lines).strip() or "No SurfSense context was supplied."
     prompt = (
@@ -154,7 +243,7 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
         f"SurfSense context:\n{context_blob}\n"
     )
 
-    thread_id = req.thread_id or f"surfsense-{search_space_id or 'default'}-{uuid.uuid4().hex[:8]}"
+    thread_id = await _create_or_resolve_langgraph_thread(req.thread_id)
     resolved_candidates = resolve_doc_edit_candidate_models(
         location="mixed",
         strength="fast",
@@ -162,16 +251,27 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
     )
     resolved_model_name = resolved_candidates[0] if resolved_candidates else None
     try:
-        response = DeerFlowClient(
-            model_name=resolved_model_name,
-            thinking_enabled=True,
-            subagent_enabled=True,
-        ).chat(prompt, thread_id=thread_id)
+        from langgraph_sdk import get_client
+
+        client = get_client(url=DEFAULT_LANGGRAPH_URL)
+        response = await client.runs.wait(
+            thread_id,
+            "lead_agent",
+            input={"messages": [{"role": "human", "content": prompt}]},
+            config={"recursion_limit": 100},
+            context={
+                "thread_id": thread_id,
+                "model_name": resolved_model_name,
+                "thinking_enabled": True,
+                "subagent_enabled": True,
+                "is_plan_mode": False,
+            },
+        )
     except Exception as exc:
         logger.error("SurfSense escalation failed for thread %s", thread_id, exc_info=True)
         raise HTTPException(status_code=500, detail=f"MaestroFlow research failed: {exc}") from exc
 
-    final_answer = response.strip() if isinstance(response, str) else ""
+    final_answer = _extract_response_text(response)
     if not final_answer:
         final_answer = (
             "Research launched in MaestroFlow. Open the linked thread to review the live result and continue the investigation."
@@ -179,13 +279,15 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
 
     return {
         "thread_id": thread_id,
-        "search_space_id": search_space_id,
+        "search_space_id": requested_search_space_id,
         "final_answer": final_answer,
         "provenance": {
             "source_system": "maestroflow",
             "thread_id": thread_id,
-            "project_key": req.project_key,
-            "search_space_id": search_space_id,
+            "project_key": live_project_key,
+            "requested_project_key": req.project_key,
+            "search_space_id": requested_search_space_id,
+            "live_search_space_id": live_search_space_id,
             "requested_model": req.preferred_model,
             "resolved_model": resolved_model_name,
         },

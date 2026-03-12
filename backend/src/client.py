@@ -24,7 +24,7 @@ import shutil
 import tempfile
 import uuid
 import zipfile
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -381,6 +381,87 @@ class DeerFlowClient:
         """
         last_text = ""
         for event in self.stream(message, thread_id=thread_id, **kwargs):
+            if event.type == "messages-tuple" and event.data.get("type") == "ai":
+                content = event.data.get("content", "")
+                if content:
+                    last_text = content
+        return last_text
+
+    async def astream(
+        self,
+        message: str,
+        *,
+        thread_id: str | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """Async variant of :meth:`stream` for async-only tools such as MCP stdio servers."""
+        if thread_id is None:
+            thread_id = str(uuid.uuid4())
+
+        config = self._get_runnable_config(thread_id, **kwargs)
+        self._ensure_agent(config)
+
+        state: dict[str, Any] = {"messages": [HumanMessage(content=message)]}
+        context = {"thread_id": thread_id}
+
+        seen_ids: set[str] = set()
+
+        async for chunk in self._agent.astream(state, config=config, context=context, stream_mode="values"):
+            messages = chunk.get("messages", [])
+
+            for msg in messages:
+                msg_id = getattr(msg, "id", None)
+                if msg_id and msg_id in seen_ids:
+                    continue
+                if msg_id:
+                    seen_ids.add(msg_id)
+
+                if isinstance(msg, AIMessage):
+                    if msg.tool_calls:
+                        yield StreamEvent(
+                            type="messages-tuple",
+                            data={
+                                "type": "ai",
+                                "content": "",
+                                "id": msg_id,
+                                "tool_calls": [{"name": tc["name"], "args": tc["args"], "id": tc.get("id")} for tc in msg.tool_calls],
+                            },
+                        )
+
+                    text = self._extract_text(msg.content)
+                    if text:
+                        yield StreamEvent(
+                            type="messages-tuple",
+                            data={"type": "ai", "content": text, "id": msg_id},
+                        )
+
+                elif isinstance(msg, ToolMessage):
+                    yield StreamEvent(
+                        type="messages-tuple",
+                        data={
+                            "type": "tool",
+                            "content": msg.content if isinstance(msg.content, str) else str(msg.content),
+                            "name": getattr(msg, "name", None),
+                            "tool_call_id": getattr(msg, "tool_call_id", None),
+                            "id": msg_id,
+                        },
+                    )
+
+            yield StreamEvent(
+                type="values",
+                data={
+                    "title": chunk.get("title"),
+                    "messages": [self._serialize_message(m) for m in messages],
+                    "artifacts": chunk.get("artifacts", []),
+                },
+            )
+
+        yield StreamEvent(type="end", data={})
+
+    async def achat(self, message: str, *, thread_id: str | None = None, **kwargs) -> str:
+        """Async variant of :meth:`chat` to preserve async tool execution."""
+        last_text = ""
+        async for event in self.astream(message, thread_id=thread_id, **kwargs):
             if event.type == "messages-tuple" and event.data.get("type") == "ai":
                 content = event.data.get("content", "")
                 if content:

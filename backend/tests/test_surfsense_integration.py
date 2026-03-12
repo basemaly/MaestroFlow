@@ -1,8 +1,10 @@
 import asyncio
 import json
+from unittest.mock import AsyncMock, patch
 
 import httpx
 
+from src.gateway.routers import surfsense as surfsense_router
 from src.integrations.surfsense.client import SurfSenseClient
 from src.integrations.surfsense.config import get_surfsense_config
 from src.integrations.surfsense.exporter import export_doc_edit_winner_to_surfsense
@@ -73,3 +75,44 @@ def test_exporter_updates_existing_note(monkeypatch):
 
     assert result == {"search_space_id": 7, "note_id": 55, "status": "updated"}
     assert seen["updated"] is True
+
+
+def test_resolve_live_surfsense_scope_drops_inaccessible_space():
+    async def run():
+        with patch.object(
+            surfsense_router.SurfSenseClient,
+            "list_search_spaces",
+            new=AsyncMock(return_value=[{"id": 1, "name": "My Search Space"}]),
+        ):
+            return await surfsense_router._resolve_live_surfsense_scope(
+                search_space_id=2,
+                project_key="surfsense",
+            )
+
+    live_search_space_id, live_project_key, access_notes = asyncio.run(run())
+
+    assert live_search_space_id is None
+    assert live_project_key is None
+    assert access_notes
+    assert "cannot access search space 2" in access_notes[0]["summary"]
+
+
+def test_create_or_resolve_langgraph_thread_replaces_non_uuid_id():
+    fake_client = type(
+        "FakeClient",
+        (),
+        {
+            "threads": type(
+                "FakeThreads",
+                (),
+                {"create": AsyncMock(return_value={"thread_id": "123e4567-e89b-12d3-a456-426614174000"})},
+            )()
+        },
+    )()
+
+    async def run():
+        with patch("langgraph_sdk.get_client", return_value=fake_client):
+            return await surfsense_router._create_or_resolve_langgraph_thread("surfsense-2-not-a-uuid")
+
+    thread_id = asyncio.run(run())
+    assert thread_id == "123e4567-e89b-12d3-a456-426614174000"

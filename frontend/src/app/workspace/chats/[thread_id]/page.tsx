@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -30,8 +31,10 @@ export default function ChatPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
   const [isHydrated, setIsHydrated] = useState(false);
+  const router = useRouter();
 
-  const { threadId, isNewThread, setIsNewThread, isMock } = useThreadChat();
+  const { threadId, isNewThread, setIsNewThread, isMock, isInvalidThreadRoute } =
+    useThreadChat();
   useSpecificChatMode();
 
   const { showNotification } = useNotification();
@@ -40,8 +43,16 @@ export default function ChatPage() {
     setIsHydrated(true);
   }, []);
 
+  useEffect(() => {
+    if (!isInvalidThreadRoute) {
+      return;
+    }
+    toast.error("That chat link is no longer valid. Starting a new thread instead.");
+    router.replace("/workspace/chats/new");
+  }, [isInvalidThreadRoute, router]);
+
   const [thread, sendMessage] = useThreadStream({
-    threadId: isNewThread ? undefined : threadId,
+    threadId: isNewThread || isInvalidThreadRoute ? undefined : threadId,
     context: settings.context,
     isMock,
     onStart: () => {

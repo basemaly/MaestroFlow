@@ -2,7 +2,7 @@
 
 import { BotIcon, PlusSquare } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
@@ -38,11 +38,20 @@ export default function AgentChatPage() {
 
   const { agent } = useAgent(agent_name);
 
-  const { threadId, isNewThread, setIsNewThread } = useThreadChat();
+  const { threadId, isNewThread, setIsNewThread, isInvalidThreadRoute } =
+    useThreadChat();
+
+  useEffect(() => {
+    if (!isInvalidThreadRoute) {
+      return;
+    }
+    toast.error("That chat link is no longer valid. Starting a new thread instead.");
+    router.replace(`/workspace/agents/${agent_name}/chats/new`);
+  }, [agent_name, isInvalidThreadRoute, router]);
 
   const { showNotification } = useNotification();
   const [thread, sendMessage] = useThreadStream({
-    threadId: isNewThread ? undefined : threadId,
+    threadId: isNewThread || isInvalidThreadRoute ? undefined : threadId,
     context: { ...settings.context, agent_name: agent_name },
     onStart: () => {
       setIsNewThread(false);
