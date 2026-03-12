@@ -11,7 +11,7 @@ This document provides a comprehensive overview of the DeerFlow backend architec
                                   │
                                   ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                          Nginx (Port 2026)                               │
+│                          Nginx (Port 2027)                               │
 │                    Unified Reverse Proxy Entry Point                      │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
 │  │  /api/langgraph/*  →  LangGraph Server (2024)                      │  │

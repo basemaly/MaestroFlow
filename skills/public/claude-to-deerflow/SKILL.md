@@ -23,7 +23,7 @@ All URLs are configurable via environment variables. **Read these env vars befor
 
 | Variable                | Default                                  | Description                        |
 |-------------------------|------------------------------------------|------------------------------------|
-| `DEERFLOW_URL`          | `http://localhost:2026`                  | Unified proxy base URL             |
+| `DEERFLOW_URL`          | `http://localhost:2027`                  | Unified proxy base URL             |
 | `DEERFLOW_GATEWAY_URL`  | `${DEERFLOW_URL}`                        | Gateway API base (models, skills, memory, uploads) |
 | `DEERFLOW_LANGGRAPH_URL`| `${DEERFLOW_URL}/api/langgraph`          | LangGraph API base (threads, runs) |
 
@@ -31,7 +31,7 @@ When making curl calls, always resolve the URL like this:
 
 ```bash
 # Resolve base URLs from env (do this FIRST before any API call)
-DEERFLOW_URL="${DEERFLOW_URL:-http://localhost:2026}"
+DEERFLOW_URL="${DEERFLOW_URL:-http://localhost:2027}"
 DEERFLOW_GATEWAY_URL="${DEERFLOW_GATEWAY_URL:-$DEERFLOW_URL}"
 DEERFLOW_LANGGRAPH_URL="${DEERFLOW_LANGGRAPH_URL:-$DEERFLOW_URL/api/langgraph}"
 ```

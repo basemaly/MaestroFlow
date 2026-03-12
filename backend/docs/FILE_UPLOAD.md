@@ -142,20 +142,20 @@ read_file(path="/mnt/user-data/uploads/document.md")
 
 ```bash
 # 1. 上传单个文件
-curl -X POST http://localhost:2026/api/threads/test-thread/uploads \
+curl -X POST http://localhost:2027/api/threads/test-thread/uploads \
   -F "files=@/path/to/document.pdf"
 
 # 2. 上传多个文件
-curl -X POST http://localhost:2026/api/threads/test-thread/uploads \
+curl -X POST http://localhost:2027/api/threads/test-thread/uploads \
   -F "files=@/path/to/document.pdf" \
   -F "files=@/path/to/presentation.pptx" \
   -F "files=@/path/to/spreadsheet.xlsx"
 
 # 3. 列出已上传文件
-curl http://localhost:2026/api/threads/test-thread/uploads/list
+curl http://localhost:2027/api/threads/test-thread/uploads/list
 
 # 4. 删除文件
-curl -X DELETE http://localhost:2026/api/threads/test-thread/uploads/document.pdf
+curl -X DELETE http://localhost:2027/api/threads/test-thread/uploads/document.pdf
 ```
 
 ### 使用 Python 测试
@@ -164,7 +164,7 @@ curl -X DELETE http://localhost:2026/api/threads/test-thread/uploads/document.pd
 import requests
 
 thread_id = "test-thread"
-base_url = "http://localhost:2026"
+base_url = "http://localhost:2027"
 
 # 上传文件
 files = [

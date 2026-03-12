@@ -49,16 +49,16 @@ Docker provides a consistent, isolated environment with all dependencies pre-con
    - LangGraph server supports hot-reload
 
 4. **Access the application**:
-   - Web Interface: http://localhost:2026
-   - API Gateway: http://localhost:2026/api/*
-   - LangGraph: http://localhost:2026/api/langgraph/*
+   - Web Interface: http://localhost:2027
+   - API Gateway: http://localhost:2027/api/*
+   - LangGraph: http://localhost:2027/api/langgraph/*
 
 #### Docker Commands
 
 ```bash
 # Build the custom k3s image (with pre-cached sandbox image)
 make docker-init
-# Start Docker services (mode-aware, localhost:2026)
+# Start Docker services (mode-aware, localhost:2027)
 make docker-start
 # Stop Docker development services
 make docker-stop
@@ -76,7 +76,7 @@ make docker-logs-gateway
 Host Machine
   ↓
 Docker Compose (deer-flow-dev)
-  ├→ nginx (port 2026) ← Reverse proxy
+  ├→ nginx (port 2027) ← Reverse proxy
   ├→ web (port 3000) ← Frontend with hot-reload
   ├→ api (port 8001) ← Gateway API with hot-reload
    ├→ langgraph (port 2024) ← LangGraph server with hot-reload
@@ -124,7 +124,7 @@ Required tools:
    ```
 
 4. **Access the application**:
-   - Web Interface: http://localhost:2026
+   - Web Interface: http://localhost:2027
    - All API requests are automatically proxied through nginx
 
 #### Manual Service Control
@@ -153,12 +153,12 @@ If you need to start services individually:
    ```
 
 3. **Access the application**:
-   - Web Interface: http://localhost:2026
+   - Web Interface: http://localhost:2027
 
 #### Nginx Configuration
 
 The nginx configuration provides:
-- Unified entry point on port 2026
+- Unified entry point on port 2027
 - Routes `/api/langgraph/*` to LangGraph Server (2024)
 - Routes other `/api/*` endpoints to Gateway API (8001)
 - Routes non-API requests to Frontend (3000)
@@ -201,7 +201,7 @@ deer-flow/
 ```
 Browser
   ↓
-Nginx (port 2026) ← Unified entry point
+Nginx (port 2027) ← Unified entry point
   ├→ Frontend (port 3000) ← / (non-API requests)
   ├→ Gateway API (port 8001) ← /api/models, /api/mcp, /api/skills, /api/threads/*/artifacts
   └→ LangGraph Server (port 2024) ← /api/langgraph/* (agent interactions)

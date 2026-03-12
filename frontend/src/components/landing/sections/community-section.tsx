@@ -16,11 +16,11 @@ export function CommunitySection() {
           Join the Community
         </AuroraText>
       }
-      subtitle="Contribute brilliant ideas to shape the future of DeerFlow. Collaborate, innovate, and make impacts."
+      subtitle="Contribute ideas to shape the future of MaestroFlow. Collaborate, iterate, and extend it."
     >
       <div className="flex justify-center">
         <Button className="text-xl" size="lg" asChild>
-          <Link href="https://github.com/bytedance/deer-flow" target="_blank">
+          <Link href="https://github.com/basemaly/MaestroFlow" target="_blank">
             <GitHubLogoIcon />
             Contribute Now
           </Link>

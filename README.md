@@ -139,7 +139,7 @@ The fastest way to get started with a consistent environment:
 
    `make docker-start` now starts `provisioner` only when `config.yaml` uses provisioner mode (`sandbox.use: src.community.aio_sandbox:AioSandboxProvider` with `provisioner_url`).
 
-2. **Access**: http://localhost:2026
+2. **Access**: http://localhost:2027
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed Docker development guide.
 
@@ -170,7 +170,7 @@ Prerequisite: complete the "Configuration" steps above first (`make config` and 
    make dev
    ```
 
-5. **Access**: http://localhost:2026
+5. **Access**: http://localhost:2027
 
 ### Advanced
 #### Sandbox Mode
@@ -346,7 +346,7 @@ The `claude-to-deerflow` skill lets you interact with a running DeerFlow instanc
 npx skills add https://github.com/bytedance/deer-flow --skill claude-to-deerflow
 ```
 
-Then make sure DeerFlow is running (default at `http://localhost:2026`) and use the `/claude-to-deerflow` command in Claude Code.
+Then make sure DeerFlow is running (default at `http://localhost:2027`) and use the `/claude-to-deerflow` command in Claude Code.
 
 **What you can do**:
 - Send messages to DeerFlow and get streaming responses
@@ -358,9 +358,9 @@ Then make sure DeerFlow is running (default at `http://localhost:2026`) and use 
 **Environment variables** (optional, for custom endpoints):
 
 ```bash
-DEERFLOW_URL=http://localhost:2026            # Unified proxy base URL
-DEERFLOW_GATEWAY_URL=http://localhost:2026    # Gateway API
-DEERFLOW_LANGGRAPH_URL=http://localhost:2026/api/langgraph  # LangGraph API
+DEERFLOW_URL=http://localhost:2027            # Unified proxy base URL
+DEERFLOW_GATEWAY_URL=http://localhost:2027    # Gateway API
+DEERFLOW_LANGGRAPH_URL=http://localhost:2027/api/langgraph  # LangGraph API
 ```
 
 See [`skills/public/claude-to-deerflow/SKILL.md`](skills/public/claude-to-deerflow/SKILL.md) for the full API reference.

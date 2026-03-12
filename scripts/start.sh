@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# start.sh - Start all DeerFlow development services
+# start.sh - Start all MaestroFlow development services
 #
 # Must be run from the repo root directory.
 
@@ -25,7 +25,7 @@ sleep 1
 
 echo ""
 echo "=========================================="
-echo "  Starting DeerFlow Development Server"
+echo "  Starting MaestroFlow Development Server"
 echo "=========================================="
 echo ""
 echo "Services starting up..."
@@ -41,7 +41,7 @@ if ! { \
         [ -f backend/config.yaml ] || \
         [ -f config.yaml ]; \
     }; then
-    echo "✗ No DeerFlow config file found."
+    echo "✗ No MaestroFlow config file found."
     echo "  Checked these locations:"
     echo "    - $DEER_FLOW_CONFIG_PATH (when DEER_FLOW_CONFIG_PATH is set)"
     echo "    - backend/config.yaml"
@@ -73,6 +73,11 @@ trap cleanup INT TERM
 # ── Start services ────────────────────────────────────────────────────────────
 
 mkdir -p logs
+mkdir -p .cache/uv
+export XDG_CACHE_HOME="$REPO_ROOT/.cache"
+export UV_CACHE_DIR="$REPO_ROOT/.cache/uv"
+export HOST=127.0.0.1
+export HOSTNAME=127.0.0.1
 
 echo "Starting LangGraph server..."
 (cd backend && NO_COLOR=1 uv run langgraph dev --no-browser --allow-blocking --no-reload > ../logs/langgraph.log 2>&1) &
@@ -96,33 +101,33 @@ echo "Starting Gateway API..."
 echo "✓ Gateway API started on localhost:8001"
 
 echo "Starting Frontend..."
-(cd frontend && pnpm run dev > ../logs/frontend.log 2>&1) &
-./scripts/wait-for-port.sh 3000 120 "Frontend" || {
+(cd frontend && pnpm exec next dev --turbopack --hostname 127.0.0.1 --port 3010 > ../logs/frontend.log 2>&1) &
+./scripts/wait-for-port.sh 3010 120 "Frontend" || {
     echo "  See logs/frontend.log for details"
     tail -20 logs/frontend.log
     cleanup
 }
-echo "✓ Frontend started on localhost:3000"
+echo "✓ Frontend started on localhost:3010"
 
 echo "Starting Nginx reverse proxy..."
 nginx -g 'daemon off;' -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" > logs/nginx.log 2>&1 &
-./scripts/wait-for-port.sh 2026 10 "Nginx" || {
+./scripts/wait-for-port.sh 2027 10 "Nginx" || {
     echo "  See logs/nginx.log for details"
     tail -10 logs/nginx.log
     cleanup
 }
-echo "✓ Nginx started on localhost:2026"
+echo "✓ Nginx started on localhost:2027"
 
 # ── Ready ─────────────────────────────────────────────────────────────────────
 
 echo ""
 echo "=========================================="
-echo "  DeerFlow is ready!"
+echo "  MaestroFlow is ready!"
 echo "=========================================="
 echo ""
-echo "  🌐 Application: http://localhost:2026"
-echo "  📡 API Gateway: http://localhost:2026/api/*"
-echo "  🤖 LangGraph:   http://localhost:2026/api/langgraph/*"
+echo "  🌐 Application: http://localhost:2027"
+echo "  📡 API Gateway: http://localhost:2027/api/*"
+echo "  🤖 LangGraph:   http://localhost:2027/api/langgraph/*"
 echo ""
 echo "  📋 Logs:"
 echo "     - LangGraph: logs/langgraph.log"

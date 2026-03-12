@@ -9,7 +9,7 @@ DeerFlow backend exposes two sets of APIs:
 1. **LangGraph API** - Agent interactions, threads, and streaming (`/api/langgraph/*`)
 2. **Gateway API** - Models, MCP, skills, uploads, and artifacts (`/api/*`)
 
-All APIs are accessed through the Nginx reverse proxy at port 2026.
+All APIs are accessed through the Nginx reverse proxy at port 2027.
 
 ## LangGraph API
 
@@ -536,7 +536,7 @@ location /api/ {
 The LangGraph server supports WebSocket connections for real-time streaming. Connect to:
 
 ```
-ws://localhost:2026/api/langgraph/threads/{thread_id}/runs/stream
+ws://localhost:2027/api/langgraph/threads/{thread_id}/runs/stream
 ```
 
 ---
@@ -548,7 +548,7 @@ ws://localhost:2026/api/langgraph/threads/{thread_id}/runs/stream
 ```python
 from langgraph_sdk import get_client
 
-client = get_client(url="http://localhost:2026/api/langgraph")
+client = get_client(url="http://localhost:2027/api/langgraph")
 
 # Create thread
 thread = await client.threads.create()
@@ -585,24 +585,24 @@ eventSource.onmessage = (event) => {
 
 ```bash
 # List models
-curl http://localhost:2026/api/models
+curl http://localhost:2027/api/models
 
 # Get MCP config
-curl http://localhost:2026/api/mcp/config
+curl http://localhost:2027/api/mcp/config
 
 # Upload file
-curl -X POST http://localhost:2026/api/threads/abc123/uploads \
+curl -X POST http://localhost:2027/api/threads/abc123/uploads \
   -F "files=@document.pdf"
 
 # Enable skill
-curl -X POST http://localhost:2026/api/skills/pdf-processing/enable
+curl -X POST http://localhost:2027/api/skills/pdf-processing/enable
 
 # Create thread and run agent
-curl -X POST http://localhost:2026/api/langgraph/threads \
+curl -X POST http://localhost:2027/api/langgraph/threads \
   -H "Content-Type: application/json" \
   -d '{}'
 
-curl -X POST http://localhost:2026/api/langgraph/threads/abc123/runs \
+curl -X POST http://localhost:2027/api/langgraph/threads/abc123/runs \
   -H "Content-Type: application/json" \
   -d '{
     "input": {"messages": [{"role": "user", "content": "Hello"}]},
