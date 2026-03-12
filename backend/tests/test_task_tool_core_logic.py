@@ -110,6 +110,11 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _: next(responses))
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        task_tool_module,
+        "resolve_subagent_model_preference",
+        lambda preference, parent_model=None: "gemini-2-5-flash" if preference else None,
+    )
     # task_tool lazily imports from src.tools at call time, so patch that module-level function.
     monkeypatch.setattr("src.tools.get_available_tools", get_available_tools)
 
@@ -119,15 +124,18 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
         prompt="collect diagnostics",
         subagent_type="general-purpose",
         tool_call_id="tc-123",
+        subagent_model="fastest gemini model",
         max_turns=7,
     )
 
-    assert output == "Task Succeeded. Result: all done"
+    assert output.startswith("Task Succeeded")
+    assert "all done" in output
     assert captured["prompt"] == "collect diagnostics"
     assert captured["task_id"] == "tc-123"
     assert captured["executor_kwargs"]["thread_id"] == "thread-1"
     assert captured["executor_kwargs"]["parent_model"] == "ark-model"
     assert captured["executor_kwargs"]["config"].max_turns == 7
+    assert captured["executor_kwargs"]["config"].model == "gemini-2-5-flash"
     assert "Skills Appendix" in captured["executor_kwargs"]["config"].system_prompt
 
     get_available_tools.assert_called_once_with(model_name="ark-model", subagent_enabled=False)
@@ -277,7 +285,8 @@ def test_cleanup_called_on_completed(monkeypatch):
         tool_call_id="tc-cleanup-completed",
     )
 
-    assert output == "Task Succeeded. Result: done"
+    assert output.startswith("Task Succeeded")
+    assert "done" in output
     assert cleanup_calls == ["tc-cleanup-completed"]
 
 

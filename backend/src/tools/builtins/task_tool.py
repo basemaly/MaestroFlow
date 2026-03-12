@@ -10,6 +10,7 @@ from langchain.tools import InjectedToolCallId, ToolRuntime, tool
 from langgraph.config import get_stream_writer
 from langgraph.typing import ContextT
 
+from src.agents.artifacts import format_artifact_header, validate_subagent_result
 from src.agents.decomposer import classify_task
 from src.agents.lead_agent.prompt import get_skills_prompt_section
 from src.agents.thread_state import ThreadState
@@ -211,10 +212,17 @@ def task_tool(
         # Check if task completed, failed, or timed out
         if result.status == SubagentStatus.COMPLETED:
             score_async(task_id, result.result, subagent_type, thread_id=thread_id, task_category=task_category)
+            artifact = validate_subagent_result(subagent_type, result.result)
+            artifact_header = format_artifact_header(artifact)
+            if not artifact.is_valid:
+                logger.warning(
+                    "[trace=%s] Task %s artifact quality warnings %s: %s",
+                    trace_id, task_id, artifact_header, artifact.quality_warnings,
+                )
             writer({"type": "task_completed", "task_id": task_id, "result": result.result})
             logger.info(f"[trace={trace_id}] Task {task_id} completed after {poll_count} polls")
             cleanup_background_task(task_id)
-            return f"Task Succeeded. Result: {result.result}"
+            return f"Task Succeeded {artifact_header}.\nResult: {result.result}"
         elif result.status == SubagentStatus.FAILED:
             writer({"type": "task_failed", "task_id": task_id, "error": result.error})
             logger.error(f"[trace={trace_id}] Task {task_id} failed: {result.error}")
