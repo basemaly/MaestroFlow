@@ -96,6 +96,80 @@ class TestValidateBash:
         assert not a.has_sources
 
 
+class TestValidateEditorialRewrite:
+    def test_valid_editorial_rewrite_passes(self):
+        text = """
+## Summary
+Rewrote the draft for clarity and rhythm.
+
+## Revised Text
+This version sounds more direct and less robotic. It keeps the original meaning while reading more naturally across sentences.
+
+## Notes
+- Reduced filler
+- Varied sentence length
+"""
+        a = validate_subagent_result("writing-refiner", text)
+        assert a.schema == ArtifactSchema.EDITORIAL_REWRITE
+        assert a.is_valid
+        assert "revised_text" in a.sections_present
+
+    def test_missing_editorial_section_warns(self):
+        text = """
+## Summary
+Changed tone.
+
+## Notes
+- Missing rewrite section
+"""
+        a = validate_subagent_result("writing-refiner", text)
+        assert not a.is_valid
+        assert any("missing required sections" in w for w in a.quality_warnings)
+
+
+class TestValidateArgumentCritique:
+    def test_valid_argument_critique_passes(self):
+        text = """
+## Overall Assessment
+The thesis is clear but the evidence is uneven.
+
+## Argument Map
+- Thesis: remote work improves retention
+- Claim: flexibility helps parents
+- Evidence: survey data
+- Counterclaim: collaboration weakens
+- Rebuttal: async processes reduce the risk
+
+## Weak Points
+- Evidence is thin in the middle section.
+
+## Suggested Revisions
+- Add stronger evidence and a fuller rebuttal.
+"""
+        a = validate_subagent_result("argument-critic", text)
+        assert a.schema == ArtifactSchema.ARGUMENT_CRITIQUE
+        assert a.is_valid
+        assert a.has_sources is False
+
+    def test_missing_rubric_language_warns(self):
+        text = """
+## Overall Assessment
+This is okay.
+
+## Argument Map
+- A few points
+
+## Weak Points
+- Not enough detail.
+
+## Suggested Revisions
+- Improve it.
+"""
+        a = validate_subagent_result("argument-critic", text)
+        assert not a.is_valid
+        assert any("rubric coverage" in w for w in a.quality_warnings)
+
+
 # ---------------------------------------------------------------------------
 # validate_subagent_result — unknown / generic fallback
 # ---------------------------------------------------------------------------

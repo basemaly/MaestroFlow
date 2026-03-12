@@ -43,6 +43,14 @@ class TestClassifyTask:
         result = self.classify_task("write report", "analyze data and summarize findings in a report")
         assert result == "general-purpose"
 
+    def test_humanize_text_signals_writing_refiner(self):
+        result = self.classify_task("humanize draft", "rewrite this text to sound less robotic and more natural")
+        assert result == "writing-refiner"
+
+    def test_argument_critique_signals_argument_critic(self):
+        result = self.classify_task("critique essay", "evaluate the thesis, evidence, counterclaims, and rebuttals")
+        assert result == "argument-critic"
+
     def test_empty_description_returns_general_purpose(self):
         result = self.classify_task("", "")
         assert result == "general-purpose"
@@ -207,6 +215,36 @@ class TestQualityScore:
     def test_bash_schema(self):
         q = self._score("ls -la output\nfile1 file2", subagent_type="bash")
         assert q.subagent_type == "bash"
+        assert q.schema == "generic"
+
+    def test_writing_refiner_profile_ignores_missing_sources(self):
+        text = "## Summary\nShort summary.\n\n## Revised Text\n" + ("This sentence is more natural now. " * 8) + "\n\n## Notes\n- tightened phrasing"
+        q = self._score(text, subagent_type="writing-refiner")
+        assert q.profile == "editorial-rewrite"
+        assert q.source_quality > 0
+        assert q.composite > 0.4
+
+    def test_argument_critic_rewards_rubric_coverage(self):
+        text = """
+## Overall Assessment
+Clear argument with room to strengthen evidence.
+
+## Argument Map
+- Thesis: the policy should pass
+- Claim: costs decrease
+- Evidence: pilot data
+- Counterclaim: rollout risk
+- Rebuttal: phased deployment
+
+## Weak Points
+- Evidence is too thin.
+
+## Suggested Revisions
+- Add stronger evidence and address rebuttal depth.
+"""
+        q = self._score(text, subagent_type="argument-critic")
+        assert q.profile == "argument-critique"
+        assert q.dimensions["rubric_coverage"] > 0.5
 
 
 class TestScoreAsync:
@@ -237,6 +275,8 @@ class TestScoreAsync:
             assert len(scores) == 1
             assert scores[0]["task_id"] == "task-42"
             assert scores[0]["subagent_type"] == "general-purpose"
+            assert "schema" in scores[0]
+            assert "dimensions" in scores[0]
 
     def test_get_scores_excludes_other_threads(self, tmp_path):
         from src.subagents.quality import _persist, _score, get_scores_for_thread
@@ -258,7 +298,7 @@ class TestMAB:
         from src.subagents.mab import select_subagent
         with patch("src.subagents.mab._get_db_path", return_value=tmp_path / "mab.db"):
             result = select_subagent(task_category="test")
-            assert result in ("general-purpose", "bash")
+            assert result in ("general-purpose", "bash", "writing-refiner", "argument-critic")
 
     def test_select_subagent_from_candidates(self, tmp_path):
         from src.subagents.mab import select_subagent
