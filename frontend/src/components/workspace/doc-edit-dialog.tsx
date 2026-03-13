@@ -25,6 +25,9 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -657,7 +660,11 @@ export function DocEditStudio({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button className="rounded-full border-2 border-transparent px-5" onClick={handleRun} disabled={!canSubmit || startRun.isPending}>
+            <Button
+              className="min-w-[10rem] rounded-full border-2 border-transparent px-5"
+              onClick={handleRun}
+              disabled={!canSubmit || startRun.isPending}
+            >
               {startRun.isPending ? (
                 <Loader2Icon className="size-4 animate-spin" />
               ) : (
@@ -667,15 +674,24 @@ export function DocEditStudio({
             </Button>
             <Button
               variant="outline"
-              className="rounded-full border-2 px-5"
+              className="min-w-[8rem] rounded-full border-2 px-5"
               onClick={resetStudio}
               disabled={isBusy}
             >
               Reset
             </Button>
           </div>
-          <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-3 text-muted-foreground text-xs">
-            {selectedSummary}
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+            <Badge variant="outline">{selectedSummary}</Badge>
+            {!!preferredModel.trim() && (
+              <Badge variant="outline">Hint {preferredModel.trim()}</Badge>
+            )}
+            {!!projectKey.trim() && (
+              <Badge variant="outline">Project {projectKey.trim()}</Badge>
+            )}
+            {!!surfSenseSearchSpaceId.trim() && (
+              <Badge variant="outline">SurfSense {surfSenseSearchSpaceId.trim()}</Badge>
+            )}
             {compareModelsEnabled && modelA && modelB ? `: ${modelA} + ${modelB}` : ""}
           </div>
         </div>
@@ -841,15 +857,19 @@ export function DocEditStudio({
                         <Button
                           size="sm"
                           variant="outline"
-                          className="rounded-full border-2"
+                          className={cn(
+                            "rounded-full border-2",
+                            compareVersionId === version.version_id && "border-primary bg-primary/5 text-foreground",
+                          )}
                           onClick={() => setCompareVersionId(version.version_id ?? null)}
+                          disabled={compareVersionId === version.version_id}
                         >
-                          Compare
+                          {compareVersionId === version.version_id ? "Comparing" : "Compare"}
                         </Button>
                         {run?.status === "awaiting_selection" && (
                           <Button
                             size="sm"
-                            className="rounded-full border-2 border-transparent"
+                            className="rounded-full border-2 border-transparent shadow-sm"
                             onClick={() => void handleSelect(version.version_id ?? version.skill_name)}
                             disabled={selectVersion.isPending}
                           >
@@ -909,6 +929,7 @@ export function DocEditDialog({
         <Button
           size="sm"
           variant="outline"
+          className="rounded-full border-2 px-4"
           disabled={(disabled ?? false) || env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
         >
           <FilePenLineIcon className="size-4" />
@@ -916,6 +937,12 @@ export function DocEditDialog({
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden p-0">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Parallel Document Editing</DialogTitle>
+          <DialogDescription>
+            Paste or upload a document, run multiple editorial passes, then compare and select the final version.
+          </DialogDescription>
+        </DialogHeader>
         <DocEditStudio disabled={disabled} mode={mode} />
       </DialogContent>
     </Dialog>

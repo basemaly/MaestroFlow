@@ -9,6 +9,7 @@ from src.agents.middlewares.clarification_middleware import ClarificationMiddlew
 from src.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
 from src.agents.middlewares.decomposer_scheduler_middleware import DecomposerSchedulerMiddleware
 from src.agents.middlewares.memory_middleware import MemoryMiddleware
+from src.agents.middlewares.message_normalization_middleware import MessageNormalizationMiddleware
 from src.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
 from src.agents.middlewares.title_middleware import TitleMiddleware
 from src.agents.middlewares.todo_middleware import TodoMiddleware
@@ -217,6 +218,7 @@ Being proactive with task management demonstrates thoroughness and ensures all r
 # TitleMiddleware generates title after first exchange
 # MemoryMiddleware queues conversation for memory update (after TitleMiddleware)
 # ViewImageMiddleware should be before ClarificationMiddleware to inject image details before LLM
+# MessageNormalizationMiddleware should run late so all prior middleware output is provider-safe
 # ClarificationMiddleware should be last to intercept clarification requests after model calls
 def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_name: str | None = None):
     """Build middleware chain based on runtime configuration.
@@ -260,6 +262,8 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     if subagent_enabled:
         max_concurrent_subagents = config.get("configurable", {}).get("max_concurrent_subagents", 3)
         middlewares.append(DecomposerSchedulerMiddleware(max_concurrent=max_concurrent_subagents))
+
+    middlewares.append(MessageNormalizationMiddleware())
 
     # ClarificationMiddleware should always be last
     middlewares.append(ClarificationMiddleware())

@@ -210,13 +210,15 @@ export function SurfSenseActions() {
   }, []);
 
   const canSearch = query.trim().length > 0 && !isSearching;
+  const hasResults = results.length > 0;
+  const trimmedProjectKey = projectKey.trim();
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-background/70 p-1 shadow-sm backdrop-blur-sm">
       <Button
         size="sm"
         variant="outline"
-        className="rounded-full border-2 px-4"
+        className="rounded-full border-2 px-4 shadow-none"
         asChild
       >
         <a href={surfSenseBaseUrl} target="_blank" rel="noreferrer">
@@ -231,11 +233,13 @@ export function SurfSenseActions() {
           if (!nextOpen) {
             configAbortRef.current?.abort();
             searchAbortRef.current?.abort();
+            setQuery("");
+            setResults([]);
           }
         }}
       >
         <DialogTrigger asChild>
-          <Button size="sm" variant="outline" className="rounded-full border-2 px-4">
+          <Button size="sm" variant="outline" className="rounded-full border-2 px-4 shadow-none">
             <SearchIcon className="size-4" />
             Search SurfSense
           </Button>
@@ -283,6 +287,11 @@ export function SurfSenseActions() {
                     Default search space: {config.default_search_space_id ?? "None"} · Resolved search space:{" "}
                     {config.resolved_search_space_id ?? "None"}
                   </div>
+                  {!!config.project_mapping_keys?.length && (
+                    <div className="text-muted-foreground text-xs">
+                      Mapped keys: {config.project_mapping_keys.join(", ")}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-muted-foreground">SurfSense status unavailable.</div>
@@ -315,6 +324,7 @@ export function SurfSenseActions() {
             <div className="flex items-center justify-between gap-3">
               <div className="text-muted-foreground text-xs">
                 Use a mapped project key for stable routing, or a specific search space ID for one-off lookup.
+                {trimmedProjectKey ? ` Current key: ${trimmedProjectKey}.` : ""}
               </div>
               <Button
                 type="submit"
@@ -327,9 +337,16 @@ export function SurfSenseActions() {
             </div>
             <ScrollArea className="h-[24rem] rounded-2xl border border-border/70">
               <div className="space-y-3 p-4">
-                {results.length === 0 ? (
-                  <div className="text-muted-foreground text-sm">
-                    {isSearching ? "Searching SurfSense..." : "No results yet."}
+                {!hasResults ? (
+                  <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-6 text-sm">
+                    <div className="font-medium">
+                      {isSearching ? "Searching SurfSense..." : "No results yet"}
+                    </div>
+                    <div className="text-muted-foreground mt-2">
+                      {query.trim()
+                        ? "Try a broader query, a mapped project key, or a specific search space ID."
+                        : "Enter a query to search notes, documents, and reports from SurfSense."}
+                    </div>
                   </div>
                 ) : (
                   results.map((result, index) => (

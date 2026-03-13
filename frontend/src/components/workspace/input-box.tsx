@@ -375,7 +375,7 @@ export function InputBox({
     <div ref={promptRootRef} className="relative">
       <PromptInput
         className={cn(
-          "bg-background/85 rounded-2xl backdrop-blur-sm transition-all duration-300 ease-out *:data-[slot='input-group']:rounded-2xl",
+          "bg-background/90 rounded-[1.4rem] border border-border/70 shadow-sm backdrop-blur-sm transition-all duration-300 ease-out *:data-[slot='input-group']:rounded-[1.4rem]",
           className,
         )}
         disabled={disabled}
@@ -403,7 +403,7 @@ export function InputBox({
             defaultValue={initialValue}
           />
         </PromptInputBody>
-        <PromptInputFooter className="flex">
+        <PromptInputFooter className="flex border-t border-border/60 bg-background/65">
           <PromptInputTools>
           {/* TODO: Add more connectors here
           <PromptInputActionMenu>
@@ -728,7 +728,7 @@ export function InputBox({
             </ModelSelectorContent>
           </ModelSelector>
           <PromptInputSubmit
-            className="rounded-full"
+            className="rounded-full border-2"
             disabled={disabled}
             variant="outline"
             status={status}
@@ -752,11 +752,11 @@ export function InputBox({
           <div className="absolute right-0 -top-20 left-0 z-20 flex items-center justify-center">
             <div className="flex items-center gap-2">
               {followupsLoading ? (
-                <div className="text-muted-foreground bg-background/80 rounded-full border px-4 py-2 text-xs backdrop-blur-sm">
+                <div className="text-muted-foreground bg-background/90 rounded-full border border-border/70 px-4 py-2 text-xs shadow-sm backdrop-blur-sm">
                   {t.inputBox.followupLoading}
                 </div>
               ) : (
-                <Suggestions className="min-h-16 w-fit items-start">
+                <Suggestions className="min-h-16 w-fit items-start rounded-full border border-border/70 bg-background/90 px-2 py-1 shadow-sm backdrop-blur-sm">
                   {followups.map((s) => (
                     <Suggestion
                       key={s}
@@ -766,7 +766,7 @@ export function InputBox({
                   ))}
                   <Button
                     aria-label={t.common.close}
-                    className="text-muted-foreground cursor-pointer rounded-full px-3 text-xs font-normal"
+                    className="text-muted-foreground cursor-pointer rounded-full border-2 px-3 text-xs font-normal"
                     variant="outline"
                     size="sm"
                     type="button"
@@ -829,9 +829,9 @@ function SuggestionList() {
     [textInput],
   );
   return (
-    <Suggestions className="min-h-16 w-fit items-start">
+    <Suggestions className="min-h-16 w-fit items-start rounded-full border border-border/70 bg-background/88 px-2 py-1 shadow-sm backdrop-blur-sm">
       <ConfettiButton
-        className="text-muted-foreground cursor-pointer rounded-full px-4 text-xs font-normal"
+        className="text-muted-foreground cursor-pointer rounded-full border-2 px-4 text-xs font-normal"
         variant="outline"
         size="sm"
         onClick={() => handleSuggestionClick(t.inputBox.surpriseMePrompt)}
@@ -880,7 +880,7 @@ function AddAttachmentsButton({ className }: { className?: string }) {
   return (
     <Tooltip content={t.inputBox.addAttachments}>
       <PromptInputButton
-        className={cn("px-2!", className)}
+        className={cn("rounded-full border-2 px-2!", className)}
         onClick={() => attachments.openFileDialog()}
       >
         <PaperclipIcon className="size-3" />

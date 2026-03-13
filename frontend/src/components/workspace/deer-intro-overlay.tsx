@@ -14,22 +14,45 @@ export function DeerIntroOverlay({
   className?: string;
 }) {
   const [visible, setVisible] = useState(false);
+  const [hasCheckedSession, setHasCheckedSession] = useState(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const seen = window.sessionStorage.getItem("maestroflow-deer-intro-seen");
+    if (seen === "1") {
+      setVisible(false);
+    }
+    setHasCheckedSession(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasCheckedSession) {
+      return;
+    }
+
     if (!active) {
       setVisible(false);
       return;
     }
 
+    if (window.sessionStorage.getItem("maestroflow-deer-intro-seen") === "1") {
+      setVisible(false);
+      return;
+    }
+
     setVisible(true);
+    window.sessionStorage.setItem("maestroflow-deer-intro-seen", "1");
     const timer = window.setTimeout(() => {
       setVisible(false);
     }, 3000);
 
     return () => window.clearTimeout(timer);
-  }, [active]);
+  }, [active, hasCheckedSession]);
 
-  if (!active && !visible) {
+  if ((!active && !visible) || !hasCheckedSession) {
     return null;
   }
 
