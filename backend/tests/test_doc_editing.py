@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 from pathlib import Path
 
 from src.doc_editing.nodes.collector import collector
@@ -8,6 +9,8 @@ from src.doc_editing.nodes.post_process import post_process_versions
 from src.doc_editing.nodes.skill_agent import _sanitize_skill_output
 from src.doc_editing.run_tracker import get_run, list_runs, persist_run
 from src.gateway.routers import doc_editing
+
+finalizer_module = importlib.import_module("src.doc_editing.nodes.finalizer")
 
 
 def test_dispatch_skills_trims_to_budget():
@@ -397,6 +400,83 @@ def test_resolve_final_path_avoids_collisions(tmp_path: Path):
     resolved = _resolve_final_path(base)
 
     assert resolved == tmp_path / "report-2.md"
+
+
+def test_finalizer_logs_langfuse_scores(tmp_path: Path, monkeypatch):
+    run_dir = tmp_path / "run-final"
+    reports_dir = tmp_path / "reports"
+    run_dir.mkdir(parents=True)
+    reports_dir.mkdir(parents=True)
+
+    scores: list[dict] = []
+
+    class _FakeObservation:
+        observation_id = "obs-final"
+
+        def update(self, **_kwargs):
+            return None
+
+    class _FakeObserveSpan:
+        def __enter__(self):
+            return _FakeObservation()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(finalizer_module, "get_reports_dir", lambda: reports_dir)
+    monkeypatch.setattr(finalizer_module, "persist_run", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(finalizer_module, "record_outcome", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(finalizer_module, "save_run_manifest", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(finalizer_module, "export_doc_edit_winner_to_surfsense", lambda **_kwargs: {"status": "skipped"})
+    monkeypatch.setattr(finalizer_module, "observe_span", lambda *args, **kwargs: _FakeObserveSpan())
+    monkeypatch.setattr(finalizer_module, "score_current_trace", lambda **kwargs: scores.append(kwargs))
+
+    winner = {
+        "version_id": "v2",
+        "skill_name": "argument-critic",
+        "subagent_type": "argument-critic",
+        "requested_model": None,
+        "output": "Final output",
+        "score": 0.93,
+        "quality_dims": {"clarity": 0.94},
+        "token_count": 120,
+        "latency_ms": 12,
+        "file_path": str(run_dir / "02-argument-critic.md"),
+        "model_name": "gpt-5-2-codex",
+    }
+    state = {
+        "document": "Original draft",
+        "skills": ["writing-refiner", "argument-critic"],
+        "workflow_mode": "consensus",
+        "model_location": "mixed",
+        "model_strength": "strong",
+        "preferred_model": "gpt-5.2-mini",
+        "selected_models": [],
+        "token_budget": 4000,
+        "run_id": "run-final",
+        "run_dir": str(run_dir),
+        "versions": [
+            {**winner, "version_id": "v1", "skill_name": "writing-refiner", "score": 0.88, "file_path": str(run_dir / "01-writing-refiner.md")},
+            winner,
+        ],
+        "ranked_versions": [
+            winner,
+            {**winner, "version_id": "v1", "skill_name": "writing-refiner", "score": 0.88, "file_path": str(run_dir / "01-writing-refiner.md")},
+        ],
+        "selected_version": winner,
+        "review_payload": {"suggested_version_id": "v2"},
+    }
+
+    result = finalizer_module.finalizer(state)
+
+    assert result["surfsense_export"]["status"] == "skipped"
+    assert [score["name"] for score in scores] == [
+        "doc_edit_winner_score",
+        "doc_edit_followed_suggestion",
+        "doc_edit_selected_rank",
+    ]
+    assert scores[1]["value"] == 1.0
+    assert scores[2]["value"] == 1.0
 
 
 def test_sanitize_skill_output_prefers_revised_text_section():

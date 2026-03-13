@@ -130,6 +130,25 @@ def classes(_setup_executor_classes):
     return _setup_executor_classes
 
 
+@pytest.fixture(autouse=True)
+def _patch_observability(monkeypatch):
+    class _FakeObservation:
+        observation_id = "obs-subagent-1"
+
+        def update(self, **_kwargs):
+            return None
+
+    class _FakeObserveSpan:
+        def __enter__(self):
+            return _FakeObservation()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr("src.subagents.executor.observe_span", lambda *args, **kwargs: _FakeObserveSpan())
+    monkeypatch.setattr("src.subagents.executor.get_current_observation_id", lambda: "obs-current-1")
+
+
 @pytest.fixture
 def base_config(classes):
     """Return a basic subagent config for testing."""
@@ -211,6 +230,30 @@ class TestAsyncExecutionPath:
         assert result.error is None
         assert result.started_at is not None
         assert result.completed_at is not None
+
+    def test_create_agent_threads_parent_observation_id(self, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+
+        executor = SubagentExecutor(
+            config=base_config,
+            tools=[],
+            thread_id="thread-1",
+            trace_id="a" * 32,
+            parent_observation_id="feedfacefeedface",
+        )
+
+        with (
+            patch("src.subagents.executor.create_chat_model", return_value=MagicMock()) as create_chat_model,
+            patch("src.subagents.executor.create_agent", return_value=MagicMock()),
+        ):
+            executor._create_agent()
+
+        create_chat_model.assert_called_once_with(
+            name=executor.model_name,
+            thinking_enabled=False,
+            trace_id="a" * 32,
+            parent_observation_id="obs-current-1",
+        )
 
     @pytest.mark.anyio
     async def test_aexecute_collects_ai_messages(self, classes, base_config, mock_agent, msg):

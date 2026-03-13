@@ -4,6 +4,7 @@ from langchain.chat_models import BaseChatModel
 
 from src.config import get_app_config, get_tracing_config, is_tracing_enabled
 from src.models.routing import is_rate_limited_model, resolve_lightweight_fallback_model
+from src.observability import get_langfuse_callback_handler
 from src.reflection import resolve_class
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,8 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     Returns:
         A chat model instance.
     """
+    trace_id = kwargs.pop("trace_id", None)
+    parent_observation_id = kwargs.pop("parent_observation_id", None)
     config = get_app_config()
     if name is None:
         name = config.models[0].name
@@ -187,4 +190,14 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             logger.debug(f"LangSmith tracing attached to model '{name}' (project='{tracing_config.project}')")
         except Exception as e:
             logger.warning(f"Failed to attach LangSmith tracing to model '{name}': {e}")
+    try:
+        langfuse_handler = get_langfuse_callback_handler(
+            trace_id=trace_id,
+            parent_observation_id=parent_observation_id,
+        )
+        if langfuse_handler is not None:
+            existing_callbacks = model_instance.callbacks or []
+            model_instance.callbacks = [*existing_callbacks, langfuse_handler]
+    except Exception as e:
+        logger.warning(f"Failed to attach Langfuse tracing to model '{name}': {e}")
     return model_instance

@@ -5,6 +5,8 @@ from enum import Enum
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.subagents.config import SubagentConfig
 
 # Use module import so tests can patch the exact symbols referenced inside task_tool().
@@ -18,6 +20,27 @@ class FakeSubagentStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     TIMED_OUT = "timed_out"
+
+
+class _FakeObservation:
+    observation_id = "obs-task-1234"
+
+    def update(self, **_kwargs):
+        return None
+
+
+class _FakeObserveSpan:
+    def __enter__(self):
+        return _FakeObservation()
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+@pytest.fixture(autouse=True)
+def _patch_observability(monkeypatch):
+    monkeypatch.setattr(task_tool_module, "observe_span", lambda *args, **kwargs: _FakeObserveSpan())
+    monkeypatch.setattr(task_tool_module, "get_current_observation_id", lambda: "obs-parent-1")
 
 
 def _make_runtime() -> SimpleNamespace:
@@ -176,6 +199,7 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
     assert captured["task_id"] == "tc-123"
     assert captured["executor_kwargs"]["thread_id"] == "thread-1"
     assert captured["executor_kwargs"]["parent_model"] == "ark-model"
+    assert captured["executor_kwargs"]["parent_observation_id"] == "obs-task-1234"
     assert captured["executor_kwargs"]["config"].max_turns == 7
     assert captured["executor_kwargs"]["config"].model == "gemini-2-5-flash"
     assert "Skills Appendix" in captured["executor_kwargs"]["config"].system_prompt

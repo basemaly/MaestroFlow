@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from src.integrations.surfsense import SurfSenseClient, get_surfsense_config, resolve_surfsense_search_space_id
 from src.models.routing import resolve_doc_edit_candidate_models
+from src.observability import make_trace_id, observe_span, summarize_for_trace
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/surfsense", tags=["surfsense"])
@@ -153,15 +154,23 @@ async def search_surfsense(req: SurfSenseSearchRequest) -> dict:
         explicit_search_space_id=req.search_space_id,
         project_key=req.project_key,
     )
-    try:
-        return await SurfSenseClient().search_documents(
-            query=req.query,
-            search_space_id=search_space_id,
-            top_k=req.top_k,
-            document_types=req.document_types or None,
-        )
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"SurfSense request failed: {exc}") from exc
+    with observe_span(
+        "surfsense.search",
+        trace_id=make_trace_id(seed=f"surfsense-search:{req.query}:{search_space_id or req.project_key or ''}"),
+        input=req.model_dump(),
+    ) as observation:
+        try:
+            result = await SurfSenseClient().search_documents(
+                query=req.query,
+                search_space_id=search_space_id,
+                top_k=req.top_k,
+                document_types=req.document_types or None,
+            )
+            observation.update(output=summarize_for_trace(result))
+            return result
+        except httpx.HTTPError as exc:
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=502, detail=f"SurfSense request failed: {exc}") from exc
 
 
 @router.post("/export-note")
@@ -182,38 +191,49 @@ async def export_note_to_surfsense(req: SurfSenseExportRequest) -> dict:
         "project_key": req.project_key,
     }
     title = req.title.strip()
-    try:
-        client = SurfSenseClient()
-        notes = await client.list_notes(search_space_id, limit=100)
-        existing = next(
-            (
-                item
-                for item in notes.get("items", [])
-                if (item.get("document_metadata") or {}).get("source_system") == "maestroflow"
-                and (item.get("document_metadata") or {}).get("source_run_id") == req.source_run_id
-                and (item.get("document_metadata") or {}).get("source_type") == req.source_type
-            ),
-            None,
-        )
-        if existing is None:
-            payload = await client.create_note(
+    with observe_span(
+        "surfsense.export_note",
+        trace_id=make_trace_id(seed=req.source_run_id or title),
+        input=req.model_dump(exclude={"content_markdown"}),
+        metadata={"search_space_id": search_space_id, "source_type": req.source_type},
+    ) as observation:
+        try:
+            client = SurfSenseClient()
+            notes = await client.list_notes(search_space_id, limit=100)
+            existing = next(
+                (
+                    item
+                    for item in notes.get("items", [])
+                    if (item.get("document_metadata") or {}).get("source_system") == "maestroflow"
+                    and (item.get("document_metadata") or {}).get("source_run_id") == req.source_run_id
+                    and (item.get("document_metadata") or {}).get("source_type") == req.source_type
+                ),
+                None,
+            )
+            if existing is None:
+                payload = await client.create_note(
+                    search_space_id=search_space_id,
+                    title=title,
+                    source_markdown=req.content_markdown,
+                    document_metadata=metadata,
+                )
+                result = {"status": "created", "search_space_id": search_space_id, "note_id": payload["id"]}
+                observation.update(output=result)
+                return result
+
+            await client.update_note(
                 search_space_id=search_space_id,
+                note_id=existing["id"],
                 title=title,
                 source_markdown=req.content_markdown,
                 document_metadata=metadata,
             )
-            return {"status": "created", "search_space_id": search_space_id, "note_id": payload["id"]}
-
-        await client.update_note(
-            search_space_id=search_space_id,
-            note_id=existing["id"],
-            title=title,
-            source_markdown=req.content_markdown,
-            document_metadata=metadata,
-        )
-        return {"status": "updated", "search_space_id": search_space_id, "note_id": existing["id"]}
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"SurfSense export failed: {exc}") from exc
+            result = {"status": "updated", "search_space_id": search_space_id, "note_id": existing["id"]}
+            observation.update(output=result)
+            return result
+        except httpx.HTTPError as exc:
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=502, detail=f"SurfSense export failed: {exc}") from exc
 
 
 @router.post("/research")
@@ -244,51 +264,67 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
     )
 
     thread_id = await _create_or_resolve_langgraph_thread(req.thread_id)
+    trace_id = make_trace_id(seed=thread_id)
     resolved_candidates = resolve_doc_edit_candidate_models(
         location="mixed",
         strength="fast",
         preferred_model=req.preferred_model,
     )
     resolved_model_name = resolved_candidates[0] if resolved_candidates else None
-    try:
-        from langgraph_sdk import get_client
+    with observe_span(
+        "surfsense.research",
+        trace_id=trace_id,
+        input=req.model_dump(),
+        metadata={"thread_id": thread_id, "resolved_model_name": resolved_model_name},
+    ) as observation:
+        try:
+            from langgraph_sdk import get_client
 
-        client = get_client(url=DEFAULT_LANGGRAPH_URL)
-        response = await client.runs.wait(
-            thread_id,
-            "lead_agent",
-            input={"messages": [{"role": "human", "content": prompt}]},
-            config={"recursion_limit": 100},
-            context={
-                "thread_id": thread_id,
-                "model_name": resolved_model_name,
-                "thinking_enabled": True,
-                "subagent_enabled": True,
-                "is_plan_mode": False,
-            },
-        )
-    except Exception as exc:
-        logger.error("SurfSense escalation failed for thread %s", thread_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"MaestroFlow research failed: {exc}") from exc
+            client = get_client(url=DEFAULT_LANGGRAPH_URL)
+            response = await client.runs.wait(
+                thread_id,
+                "lead_agent",
+                input={"messages": [{"role": "human", "content": prompt}]},
+                config={
+                    "recursion_limit": 100,
+                    "metadata": {
+                        "trace_id": trace_id,
+                        "source": "surfsense.research",
+                    },
+                },
+                context={
+                    "thread_id": thread_id,
+                    "model_name": resolved_model_name,
+                    "thinking_enabled": True,
+                    "subagent_enabled": True,
+                    "is_plan_mode": False,
+                },
+            )
+        except Exception as exc:
+            logger.error("SurfSense escalation failed for thread %s", thread_id, exc_info=True)
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=500, detail=f"MaestroFlow research failed: {exc}") from exc
 
-    final_answer = _extract_response_text(response)
-    if not final_answer:
-        final_answer = (
-            "Research launched in MaestroFlow. Open the linked thread to review the live result and continue the investigation."
-        )
+        final_answer = _extract_response_text(response)
+        if not final_answer:
+            final_answer = (
+                "Research launched in MaestroFlow. Open the linked thread to review the live result and continue the investigation."
+            )
 
-    return {
-        "thread_id": thread_id,
-        "search_space_id": requested_search_space_id,
-        "final_answer": final_answer,
-        "provenance": {
-            "source_system": "maestroflow",
+        result = {
             "thread_id": thread_id,
-            "project_key": live_project_key,
-            "requested_project_key": req.project_key,
             "search_space_id": requested_search_space_id,
-            "live_search_space_id": live_search_space_id,
-            "requested_model": req.preferred_model,
-            "resolved_model": resolved_model_name,
-        },
-    }
+            "final_answer": final_answer,
+            "provenance": {
+                "source_system": "maestroflow",
+                "thread_id": thread_id,
+                "project_key": live_project_key,
+                "requested_project_key": req.project_key,
+                "search_space_id": requested_search_space_id,
+                "live_search_space_id": live_search_space_id,
+                "requested_model": req.preferred_model,
+                "resolved_model": resolved_model_name,
+            },
+        }
+        observation.update(output=summarize_for_trace(result))
+        return result

@@ -19,6 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from src.agents.thread_state import SandboxState, ThreadDataState, ThreadState
 from src.models import create_chat_model
 from src.models.routing import is_rate_limited_model, resolve_lightweight_fallback_model
+from src.observability import get_current_observation_id, make_trace_id, observe_span
 from src.subagents.config import SubagentConfig
 
 logger = logging.getLogger(__name__)
@@ -137,6 +138,7 @@ class SubagentExecutor:
         thread_data: ThreadDataState | None = None,
         thread_id: str | None = None,
         trace_id: str | None = None,
+        parent_observation_id: str | None = None,
     ):
         """Initialize the executor.
 
@@ -148,6 +150,7 @@ class SubagentExecutor:
             thread_data: Thread data from parent agent.
             thread_id: Thread ID for sandbox operations.
             trace_id: Trace ID from parent for distributed tracing.
+            parent_observation_id: Parent observation ID for nested tracing.
         """
         self.config = config
         self.parent_model = parent_model
@@ -155,7 +158,8 @@ class SubagentExecutor:
         self.thread_data = thread_data
         self.thread_id = thread_id
         # Generate trace_id if not provided (for top-level calls)
-        self.trace_id = trace_id or str(uuid.uuid4())[:8]
+        self.trace_id = trace_id or make_trace_id(seed=f"subagent:{config.name}:{thread_id or uuid.uuid4()}")
+        self.parent_observation_id = parent_observation_id
 
         self.model_name = _get_model_name(config, parent_model)
 
@@ -177,7 +181,12 @@ class SubagentExecutor:
 
     def _create_agent(self):
         """Create the agent instance."""
-        model = create_chat_model(name=self.model_name, thinking_enabled=False)
+        model = create_chat_model(
+            name=self.model_name,
+            thinking_enabled=False,
+            trace_id=self.trace_id,
+            parent_observation_id=get_current_observation_id() or self.parent_observation_id,
+        )
 
         # Subagents need minimal middlewares to ensure tools can access sandbox and thread_data
         # These middlewares will reuse the sandbox/thread_data from parent agent
@@ -242,91 +251,105 @@ class SubagentExecutor:
             )
 
         try:
-            agent = self._create_agent()
-            state = self._build_initial_state(task)
+            with observe_span(
+                "subagent.execute",
+                trace_id=self.trace_id,
+                parent_observation_id=self.parent_observation_id,
+                input={"subagent": self.config.name, "task": task, "thread_id": self.thread_id},
+                metadata={"model_name": self.model_name, "max_turns": self.config.max_turns},
+            ) as observation:
+                agent = self._create_agent()
+                state = self._build_initial_state(task)
 
-            # Build config with thread_id for sandbox access and recursion limit
-            run_config: RunnableConfig = {
-                "recursion_limit": self.config.max_turns,
-            }
-            context = {}
-            if self.thread_id:
-                run_config["configurable"] = {"thread_id": self.thread_id}
-                context["thread_id"] = self.thread_id
+                # Build config with thread_id for sandbox access and recursion limit
+                run_config: RunnableConfig = {
+                    "recursion_limit": self.config.max_turns,
+                }
+                context = {}
+                if self.thread_id:
+                    run_config["configurable"] = {"thread_id": self.thread_id}
+                    context["thread_id"] = self.thread_id
 
-            logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} starting async execution with max_turns={self.config.max_turns}")
+                logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} starting async execution with max_turns={self.config.max_turns}")
 
-            # Use stream instead of invoke to get real-time updates
-            # This allows us to collect AI messages as they are generated
-            final_state = None
-            async for chunk in agent.astream(state, config=run_config, context=context, stream_mode="values"):  # type: ignore[arg-type]
-                final_state = chunk
+                # Use stream instead of invoke to get real-time updates
+                # This allows us to collect AI messages as they are generated
+                final_state = None
+                async for chunk in agent.astream(state, config=run_config, context=context, stream_mode="values"):  # type: ignore[arg-type]
+                    final_state = chunk
 
-                # Extract AI messages from the current state
-                messages = chunk.get("messages", [])
-                if messages:
-                    last_message = messages[-1]
-                    # Check if this is a new AI message
-                    if isinstance(last_message, AIMessage):
-                        # Convert message to dict for serialization
-                        message_dict = last_message.model_dump()
-                        # Only add if it's not already in the list (avoid duplicates)
-                        # Check by comparing message IDs if available, otherwise compare full dict
-                        message_id = message_dict.get("id")
-                        is_duplicate = False
-                        if message_id:
-                            is_duplicate = any(msg.get("id") == message_id for msg in result.ai_messages)
-                        else:
-                            is_duplicate = message_dict in result.ai_messages
+                    # Extract AI messages from the current state
+                    messages = chunk.get("messages", [])
+                    if messages:
+                        last_message = messages[-1]
+                        # Check if this is a new AI message
+                        if isinstance(last_message, AIMessage):
+                            # Convert message to dict for serialization
+                            message_dict = last_message.model_dump()
+                            # Only add if it's not already in the list (avoid duplicates)
+                            # Check by comparing message IDs if available, otherwise compare full dict
+                            message_id = message_dict.get("id")
+                            is_duplicate = False
+                            if message_id:
+                                is_duplicate = any(msg.get("id") == message_id for msg in result.ai_messages)
+                            else:
+                                is_duplicate = message_dict in result.ai_messages
 
-                        if not is_duplicate:
-                            result.ai_messages.append(message_dict)
-                            logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} captured AI message #{len(result.ai_messages)}")
+                            if not is_duplicate:
+                                result.ai_messages.append(message_dict)
+                                logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} captured AI message #{len(result.ai_messages)}")
 
-            logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} completed async execution")
+                logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} completed async execution")
 
-            if final_state is None:
-                logger.warning(f"[trace={self.trace_id}] Subagent {self.config.name} no final state")
-                result.result = "No response generated"
-            else:
-                # Extract the final message - find the last AIMessage
-                messages = final_state.get("messages", [])
-                logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} final messages count: {len(messages)}")
-
-                # Find the last AIMessage in the conversation
-                last_ai_message = None
-                for msg in reversed(messages):
-                    if isinstance(msg, AIMessage):
-                        last_ai_message = msg
-                        break
-
-                if last_ai_message is not None:
-                    content = last_ai_message.content
-                    # Handle both str and list content types for the final result
-                    if isinstance(content, str):
-                        result.result = content
-                    elif isinstance(content, list):
-                        # Extract text from list of content blocks for final result only
-                        text_parts = []
-                        for block in content:
-                            if isinstance(block, str):
-                                text_parts.append(block)
-                            elif isinstance(block, dict) and "text" in block:
-                                text_parts.append(block["text"])
-                        result.result = "\n".join(text_parts) if text_parts else "No text content in response"
-                    else:
-                        result.result = str(content)
-                elif messages:
-                    # Fallback: use the last message if no AIMessage found
-                    last_message = messages[-1]
-                    logger.warning(f"[trace={self.trace_id}] Subagent {self.config.name} no AIMessage found, using last message: {type(last_message)}")
-                    result.result = str(last_message.content) if hasattr(last_message, "content") else str(last_message)
-                else:
-                    logger.warning(f"[trace={self.trace_id}] Subagent {self.config.name} no messages in final state")
+                if final_state is None:
+                    logger.warning(f"[trace={self.trace_id}] Subagent {self.config.name} no final state")
                     result.result = "No response generated"
+                else:
+                    # Extract the final message - find the last AIMessage
+                    messages = final_state.get("messages", [])
+                    logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} final messages count: {len(messages)}")
 
-            result.status = SubagentStatus.COMPLETED
-            result.completed_at = datetime.now()
+                    # Find the last AIMessage in the conversation
+                    last_ai_message = None
+                    for msg in reversed(messages):
+                        if isinstance(msg, AIMessage):
+                            last_ai_message = msg
+                            break
+
+                    if last_ai_message is not None:
+                        content = last_ai_message.content
+                        # Handle both str and list content types for the final result
+                        if isinstance(content, str):
+                            result.result = content
+                        elif isinstance(content, list):
+                            # Extract text from list of content blocks for final result only
+                            text_parts = []
+                            for block in content:
+                                if isinstance(block, str):
+                                    text_parts.append(block)
+                                elif isinstance(block, dict) and "text" in block:
+                                    text_parts.append(block["text"])
+                            result.result = "\n".join(text_parts) if text_parts else "No text content in response"
+                        else:
+                            result.result = str(content)
+                    elif messages:
+                        # Fallback: use the last message if no AIMessage found
+                        last_message = messages[-1]
+                        logger.warning(f"[trace={self.trace_id}] Subagent {self.config.name} no AIMessage found, using last message: {type(last_message)}")
+                        result.result = str(last_message.content) if hasattr(last_message, "content") else str(last_message)
+                    else:
+                        logger.warning(f"[trace={self.trace_id}] Subagent {self.config.name} no messages in final state")
+                        result.result = "No response generated"
+
+                result.status = SubagentStatus.COMPLETED
+                result.completed_at = datetime.now()
+                observation.update(
+                    output={
+                        "status": result.status.value,
+                        "result": result.result,
+                        "message_count": len(result.ai_messages),
+                    }
+                )
 
         except Exception as e:
             logger.exception(f"[trace={self.trace_id}] Subagent {self.config.name} async execution failed")

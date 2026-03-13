@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 # Make 'src' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -31,3 +33,26 @@ _executor_mock.MAX_CONCURRENT_SUBAGENTS = 3
 _executor_mock.get_background_task_result = MagicMock()
 
 sys.modules["src.subagents.executor"] = _executor_mock
+
+
+@pytest.fixture(autouse=True)
+def _reset_langfuse_state():
+    try:
+        from src.config import langfuse_config as langfuse_config_module
+        from src.observability import langfuse as langfuse_module
+
+        langfuse_config_module._langfuse_config = None
+        langfuse_module._provider = None
+        langfuse_module._tracer = None
+    except Exception:
+        pass
+    yield
+    try:
+        from src.config import langfuse_config as langfuse_config_module
+        from src.observability import langfuse as langfuse_module
+
+        langfuse_config_module._langfuse_config = None
+        langfuse_module._provider = None
+        langfuse_module._tracer = None
+    except Exception:
+        pass

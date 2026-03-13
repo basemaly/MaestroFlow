@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware
@@ -21,6 +22,7 @@ from src.config.app_config import get_app_config
 from src.config.summarization_config import get_summarization_config
 from src.models import create_chat_model
 from src.models.routing import is_rate_limited_model
+from src.observability import make_trace_id
 from src.sandbox.middleware import SandboxMiddleware
 
 logger = logging.getLogger(__name__)
@@ -330,13 +332,18 @@ def make_lead_agent(config: RunnableConfig):
             "subagent_enabled": subagent_enabled,
         }
     )
+    config["metadata"].setdefault("trace_id", make_trace_id(seed=str(cfg.get("thread_id") or uuid.uuid4())))
 
     if is_bootstrap:
         # Special bootstrap agent with minimal prompt for initial custom agent creation flow
         system_prompt = apply_prompt_template(subagent_enabled=subagent_enabled, max_concurrent_subagents=max_concurrent_subagents, available_skills=set(["bootstrap"]))
 
         return create_agent(
-            model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled),
+            model=create_chat_model(
+                name=model_name,
+                thinking_enabled=thinking_enabled,
+                trace_id=config["metadata"].get("trace_id"),
+            ),
             tools=get_available_tools(model_name=model_name, subagent_enabled=subagent_enabled) + [setup_agent],
             middleware=_build_middlewares(config, model_name=model_name),
             system_prompt=system_prompt,
@@ -345,7 +352,12 @@ def make_lead_agent(config: RunnableConfig):
 
     # Default lead agent (unchanged behavior)
     return create_agent(
-        model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort),
+        model=create_chat_model(
+            name=model_name,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+            trace_id=config["metadata"].get("trace_id"),
+        ),
         tools=get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled),
         middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name),
         system_prompt=apply_prompt_template(subagent_enabled=subagent_enabled, max_concurrent_subagents=max_concurrent_subagents, agent_name=agent_name),

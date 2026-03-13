@@ -10,6 +10,7 @@ from langgraph.types import Command
 
 from src.doc_editing.graph import get_doc_edit_graph, make_run_id
 from src.doc_editing.run_tracker import convert_doc_edit_upload, ensure_run_dir, get_run, list_runs
+from src.observability import make_trace_id, observe_span, summarize_for_trace
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/doc-edit", tags=["doc-editing"])
@@ -96,28 +97,38 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
     config = {"configurable": {"thread_id": run_id}}
     graph = await get_doc_edit_graph()
 
-    try:
-        result = await graph.ainvoke(initial_state, config=config)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.error("Doc edit run %s failed", run_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Doc edit run failed: {exc}") from exc
+    with observe_span(
+        "doc_edit.start",
+        trace_id=make_trace_id(seed=run_id),
+        input=req.model_dump(),
+        metadata={"run_id": run_id, "workflow_mode": req.workflow_mode},
+    ) as observation:
+        try:
+            result = await graph.ainvoke(initial_state, config=config)
+        except ValueError as exc:
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Doc edit run %s failed", run_id, exc_info=True)
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=500, detail=f"Doc edit run failed: {exc}") from exc
 
-    if "__interrupt__" in result:
-        pending = get_run(run_id)
-        result = {
-            "title": pending.get("title"),
-            "workflow_mode": pending.get("workflow_mode"),
-            "ranked_versions": pending.get("versions", []),
-            "tokens_used": pending.get("tokens_used", 0),
-            "review_payload": pending.get("review_payload"),
-            "final_path": pending.get("final_path"),
-            "selected_version": pending.get("selected_version"),
-            "project_key": pending.get("project_key"),
-            "surfsense_search_space_id": pending.get("surfsense_search_space_id"),
-        }
-    return _to_response_payload(run_id, str(run_dir), result)
+        if "__interrupt__" in result:
+            pending = get_run(run_id)
+            result = {
+                "title": pending.get("title"),
+                "workflow_mode": pending.get("workflow_mode"),
+                "ranked_versions": pending.get("versions", []),
+                "tokens_used": pending.get("tokens_used", 0),
+                "review_payload": pending.get("review_payload"),
+                "final_path": pending.get("final_path"),
+                "selected_version": pending.get("selected_version"),
+                "project_key": pending.get("project_key"),
+                "surfsense_search_space_id": pending.get("surfsense_search_space_id"),
+            }
+        response = _to_response_payload(run_id, str(run_dir), result)
+        observation.update(output=summarize_for_trace(response.model_dump()))
+        return response
 
 
 @router.get("/runs")
@@ -137,27 +148,45 @@ async def get_doc_run(run_id: str) -> dict:
 async def select_doc_run_version(run_id: str, version_id: str) -> DocEditStartResponse:
     config = {"configurable": {"thread_id": run_id}}
     graph = await get_doc_edit_graph()
-    try:
-        result = await graph.ainvoke(Command(resume=version_id), config=config)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"Doc edit run '{run_id}' not found") from exc
-    except Exception as exc:
-        logger.error("Doc edit selection failed for run %s", run_id, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Doc edit selection failed: {exc}") from exc
+    with observe_span(
+        "doc_edit.select",
+        trace_id=make_trace_id(seed=run_id),
+        input={"run_id": run_id, "version_id": version_id},
+    ) as observation:
+        try:
+            result = await graph.ainvoke(Command(resume=version_id), config=config)
+        except FileNotFoundError as exc:
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=404, detail=f"Doc edit run '{run_id}' not found") from exc
+        except Exception as exc:
+            logger.error("Doc edit selection failed for run %s", run_id, exc_info=True)
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=500, detail=f"Doc edit selection failed: {exc}") from exc
 
-    return _to_response_payload(run_id, str(ensure_run_dir(run_id)), result)
+        response = _to_response_payload(run_id, str(ensure_run_dir(run_id)), result)
+        observation.update(output=summarize_for_trace(response.model_dump()))
+        return response
 
 
 @router.post("/upload", response_model=DocEditUploadResponse)
 async def upload_doc_edit_file(file: UploadFile = File(...)) -> DocEditUploadResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required")
-    try:
-        content = await file.read()
-        document = await convert_doc_edit_upload(file.filename, content)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.error("Doc edit upload failed for %s", file.filename, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Doc edit upload failed: {exc}") from exc
-    return DocEditUploadResponse(filename=file.filename, document=document)
+    with observe_span(
+        "doc_edit.upload",
+        trace_id=make_trace_id(seed=file.filename),
+        input={"filename": file.filename},
+    ) as observation:
+        try:
+            content = await file.read()
+            document = await convert_doc_edit_upload(file.filename, content)
+        except ValueError as exc:
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Doc edit upload failed for %s", file.filename, exc_info=True)
+            observation.update(output={"error": str(exc)})
+            raise HTTPException(status_code=500, detail=f"Doc edit upload failed: {exc}") from exc
+        response = DocEditUploadResponse(filename=file.filename, document=document)
+        observation.update(output=summarize_for_trace(response.model_dump()))
+        return response

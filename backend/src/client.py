@@ -40,6 +40,7 @@ from src.config.app_config import get_app_config, reload_app_config
 from src.config.extensions_config import ExtensionsConfig, SkillStateConfig, get_extensions_config, reload_extensions_config
 from src.config.paths import get_paths
 from src.models import create_chat_model
+from src.observability import make_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ class DeerFlowClient:
         return RunnableConfig(
             configurable=configurable,
             recursion_limit=overrides.get("recursion_limit", 100),
+            metadata={"thread_id": thread_id, "trace_id": make_trace_id(seed=thread_id)},
         )
 
     def _ensure_agent(self, config: RunnableConfig):
@@ -199,7 +201,11 @@ class DeerFlowClient:
         max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
 
         kwargs: dict[str, Any] = {
-            "model": create_chat_model(name=model_name, thinking_enabled=thinking_enabled),
+            "model": create_chat_model(
+                name=model_name,
+                thinking_enabled=thinking_enabled,
+                trace_id=config.get("metadata", {}).get("trace_id"),
+            ),
             "tools": self._get_tools(model_name=model_name, subagent_enabled=subagent_enabled),
             "middleware": _build_middlewares(config, model_name=model_name),
             "system_prompt": apply_prompt_template(
