@@ -25,6 +25,11 @@ DEFAULT_RUN_CONTEXT: dict[str, Any] = {
 }
 
 
+def _langgraph_unavailable_text(exc: Exception) -> str:
+    detail = str(exc).strip() or exc.__class__.__name__
+    return f"MaestroFlow could not reach LangGraph right now. Please try again in a moment. Details: {detail}"
+
+
 def _as_dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
 
@@ -349,7 +354,12 @@ class ChannelManager:
         return thread_id
 
     async def _handle_chat(self, msg: InboundMessage) -> None:
-        client = self._get_client()
+        try:
+            client = self._get_client()
+        except Exception as exc:
+            logger.warning("[Manager] failed to initialize LangGraph client: %s", exc)
+            await self._send_error(msg, _langgraph_unavailable_text(exc))
+            return
 
         # Look up existing DeerFlow thread by topic_id (if present)
         thread_id = None
@@ -360,17 +370,27 @@ class ChannelManager:
 
         # No existing thread found — create a new one
         if thread_id is None:
-            thread_id = await self._create_thread(client, msg)
+            try:
+                thread_id = await self._create_thread(client, msg)
+            except Exception as exc:
+                logger.warning("[Manager] failed to create LangGraph thread: %s", exc)
+                await self._send_error(msg, _langgraph_unavailable_text(exc))
+                return
 
         assistant_id, run_config, run_context = self._resolve_run_params(msg, thread_id)
         logger.info("[Manager] invoking runs.wait(thread_id=%s, text=%r)", thread_id, msg.text[:100])
-        result = await client.runs.wait(
-            thread_id,
-            assistant_id,
-            input={"messages": [{"role": "human", "content": msg.text}]},
-            config=run_config,
-            context=run_context,
-        )
+        try:
+            result = await client.runs.wait(
+                thread_id,
+                assistant_id,
+                input={"messages": [{"role": "human", "content": msg.text}]},
+                config=run_config,
+                context=run_context,
+            )
+        except Exception as exc:
+            logger.warning("[Manager] LangGraph run failed: %s", exc)
+            await self._send_error(msg, _langgraph_unavailable_text(exc))
+            return
 
         response_text = _extract_response_text(result)
         artifacts = _extract_artifacts(result)
@@ -424,17 +444,21 @@ class ChannelManager:
 
         if command == "new":
             # Create a new thread on the LangGraph Server
-            client = self._get_client()
-            thread = await client.threads.create()
-            new_thread_id = thread["thread_id"]
-            self.store.set_thread_id(
-                msg.channel_name,
-                msg.chat_id,
-                new_thread_id,
-                topic_id=msg.topic_id,
-                user_id=msg.user_id,
-            )
-            reply = "New conversation started."
+            try:
+                client = self._get_client()
+                thread = await client.threads.create()
+                new_thread_id = thread["thread_id"]
+                self.store.set_thread_id(
+                    msg.channel_name,
+                    msg.chat_id,
+                    new_thread_id,
+                    topic_id=msg.topic_id,
+                    user_id=msg.user_id,
+                )
+                reply = "New conversation started."
+            except Exception as exc:
+                logger.warning("[Manager] /new failed because LangGraph is unavailable: %s", exc)
+                reply = _langgraph_unavailable_text(exc)
         elif command == "status":
             thread_id = self.store.get_thread_id(msg.channel_name, msg.chat_id, topic_id=msg.topic_id)
             reply = f"Active thread: {thread_id}" if thread_id else "No active conversation."

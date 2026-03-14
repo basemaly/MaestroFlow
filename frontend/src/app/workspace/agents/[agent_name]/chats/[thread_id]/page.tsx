@@ -2,15 +2,17 @@
 
 import { BotIcon, PlusSquare } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
 import { ChatBox, useThreadChat } from "@/components/workspace/chats";
 import { DeerIntroOverlay } from "@/components/workspace/deer-intro-overlay";
 import { DocEditDialog } from "@/components/workspace/doc-edit-dialog";
+import { ExternalServiceBanner } from "@/components/workspace/external-service-banner";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
@@ -30,6 +32,7 @@ import { cn } from "@/lib/utils";
 export default function AgentChatPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
+  const [submitWarning, setSubmitWarning] = useState<string | null>(null);
   const router = useRouter();
 
   const { agent_name } = useParams<{
@@ -50,7 +53,7 @@ export default function AgentChatPage() {
   }, [agent_name, isInvalidThreadRoute, router]);
 
   const { showNotification } = useNotification();
-  const [thread, sendMessage] = useThreadStream({
+  const [thread, sendMessage, serviceWarning] = useThreadStream({
     threadId: isNewThread || isInvalidThreadRoute ? undefined : threadId,
     context: { ...settings.context, agent_name: agent_name },
     onStart: () => {
@@ -81,10 +84,12 @@ export default function AgentChatPage() {
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
+      setSubmitWarning(null);
       void sendMessage(threadId, message, { agent_name }).catch(
         (error: unknown) => {
           const errorMessage =
             error instanceof Error ? error.message : String(error);
+          setSubmitWarning(errorMessage);
           toast.error(errorMessage);
         },
       );
@@ -142,6 +147,13 @@ export default function AgentChatPage() {
 
           <main className="flex min-h-0 max-w-full grow flex-col">
             <DeerIntroOverlay active={isNewThread} />
+            <ExternalServiceBanner />
+            {(serviceWarning ?? submitWarning) && (
+              <Alert className="mx-auto mt-2 mb-2 max-w-(--container-width-md) border-amber-500/30 bg-amber-500/8 text-amber-950 dark:text-amber-100">
+                <AlertTitle>Chat service warning</AlertTitle>
+                <AlertDescription>{serviceWarning ?? submitWarning}</AlertDescription>
+              </Alert>
+            )}
             <div className="flex size-full justify-center">
               <MessageList
                 className={cn("size-full", !isNewThread && "pt-10")}

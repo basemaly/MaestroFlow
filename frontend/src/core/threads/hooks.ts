@@ -16,6 +16,7 @@ import type { TaskArtifact, TaskQuality } from "../tasks/types";
 import type { UploadedFileInfo } from "../uploads";
 import { uploadFiles } from "../uploads";
 
+import { normalizeThreadError } from "./errors";
 import type { AgentThread, AgentThreadState } from "./types";
 
 export type ToolEndEvent = {
@@ -86,6 +87,7 @@ export function useThreadStream({
 
   const queryClient = useQueryClient();
   const updateSubtask = useUpdateSubtask();
+  const [serviceWarning, setServiceWarning] = useState<string | null>(null);
 
   const thread = useStream<AgentThreadState>({
     client: getAPIClient(isMock),
@@ -208,8 +210,14 @@ export function useThreadStream({
       }
     },
     onFinish(state) {
+      setServiceWarning(null);
       listeners.current.onFinish?.(state.values);
       void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });
+    },
+    onError(error) {
+      const message = normalizeThreadError(error);
+      setServiceWarning(message);
+      toast.error(message);
     },
   });
 
@@ -345,10 +353,8 @@ export function useThreadStream({
             }
           } catch (error) {
             console.error("Failed to upload files:", error);
-            const errorMessage =
-              error instanceof Error
-                ? error.message
-                : "Failed to upload files.";
+            const errorMessage = normalizeThreadError(error);
+            setServiceWarning(errorMessage);
             toast.error(errorMessage);
             setOptimisticMessages([]);
             throw error;
@@ -400,8 +406,9 @@ export function useThreadStream({
         );
         void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });
       } catch (error) {
+        setServiceWarning(normalizeThreadError(error));
         setOptimisticMessages([]);
-        throw error;
+        throw new Error(normalizeThreadError(error));
       }
     },
     [thread, _handleOnStart, t.uploads.uploadingFiles, context, queryClient],
@@ -416,7 +423,7 @@ export function useThreadStream({
         } as typeof thread)
       : thread;
 
-  return [mergedThread, sendMessage] as const;
+  return [mergedThread, sendMessage, serviceWarning] as const;
 }
 
 export function useThreads(
@@ -431,55 +438,60 @@ export function useThreads(
   return useQuery<AgentThread[]>({
     queryKey: ["threads", "search", params],
     queryFn: async () => {
-      const maxResults = params.limit;
-      const initialOffset = params.offset ?? 0;
-      const DEFAULT_PAGE_SIZE = 50;
+      try {
+        const maxResults = params.limit;
+        const initialOffset = params.offset ?? 0;
+        const DEFAULT_PAGE_SIZE = 50;
 
-      // Preserve prior semantics: if a non-positive limit is explicitly provided,
-      // delegate to a single search call with the original parameters.
-      if (maxResults !== undefined && maxResults <= 0) {
-        const response = await apiClient.threads.search<AgentThreadState>(params);
-        return response as AgentThread[];
+        // Preserve prior semantics: if a non-positive limit is explicitly provided,
+        // delegate to a single search call with the original parameters.
+        if (maxResults !== undefined && maxResults <= 0) {
+          const response = await apiClient.threads.search<AgentThreadState>(params);
+          return response as AgentThread[];
+        }
+
+        const pageSize =
+          typeof maxResults === "number" && maxResults > 0
+            ? Math.min(DEFAULT_PAGE_SIZE, maxResults)
+            : DEFAULT_PAGE_SIZE;
+
+        const threads: AgentThread[] = [];
+        let offset = initialOffset;
+
+        while (true) {
+          if (typeof maxResults === "number" && threads.length >= maxResults) {
+            break;
+          }
+
+          const currentLimit =
+            typeof maxResults === "number"
+              ? Math.min(pageSize, maxResults - threads.length)
+              : pageSize;
+
+          if (typeof maxResults === "number" && currentLimit <= 0) {
+            break;
+          }
+
+          const response = (await apiClient.threads.search<AgentThreadState>({
+            ...params,
+            limit: currentLimit,
+            offset,
+          })) as AgentThread[];
+
+          threads.push(...response);
+
+          if (response.length < currentLimit) {
+            break;
+          }
+
+          offset += response.length;
+        }
+
+        return threads;
+      } catch (error) {
+        console.warn("Failed to load threads:", error);
+        return [];
       }
-
-      const pageSize =
-        typeof maxResults === "number" && maxResults > 0
-          ? Math.min(DEFAULT_PAGE_SIZE, maxResults)
-          : DEFAULT_PAGE_SIZE;
-
-      const threads: AgentThread[] = [];
-      let offset = initialOffset;
-
-      while (true) {
-        if (typeof maxResults === "number" && threads.length >= maxResults) {
-          break;
-        }
-
-        const currentLimit =
-          typeof maxResults === "number"
-            ? Math.min(pageSize, maxResults - threads.length)
-            : pageSize;
-
-        if (typeof maxResults === "number" && currentLimit <= 0) {
-          break;
-        }
-
-        const response = (await apiClient.threads.search<AgentThreadState>({
-          ...params,
-          limit: currentLimit,
-          offset,
-        })) as AgentThread[];
-
-        threads.push(...response);
-
-        if (response.length < currentLimit) {
-          break;
-        }
-
-        offset += response.length;
-      }
-
-      return threads;
     },
     refetchOnWindowFocus: false,
   });

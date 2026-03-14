@@ -6,9 +6,10 @@ import logging
 import uuid
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from src.gateway.services.external_services import get_external_services_status
 from src.integrations.surfsense import SurfSenseClient, get_surfsense_config, resolve_surfsense_search_space_id
 from src.models.routing import resolve_doc_edit_candidate_models
 from src.observability import make_trace_id, observe_span, summarize_for_trace
@@ -43,6 +44,10 @@ class SurfSenseResearchRequest(BaseModel):
     thread_id: str | None = None
     context_blocks: list[dict] = Field(default_factory=list)
     preferred_model: str | None = None
+
+
+def _surfsense_unavailable_message(error: str) -> str:
+    return f"SurfSense is temporarily unavailable: {error}"
 
 
 def _extract_response_text(result: dict | list) -> str:
@@ -130,10 +135,14 @@ async def _create_or_resolve_langgraph_thread(thread_id: str | None) -> str:
 @router.get("/config")
 async def get_surfsense_integration_config(project_key: str | None = None) -> dict:
     config = get_surfsense_config()
+    external = await get_external_services_status()
+    surfsense_status = next((item for item in external["services"] if item["service"] == "surfsense"), None)
     return {
         "base_url": config.base_url,
         "sync_enabled": config.sync_enabled,
         "configured": bool(config.bearer_token),
+        "available": surfsense_status["available"] if surfsense_status else False,
+        "warning": surfsense_status["message"] if surfsense_status else None,
         "default_search_space_id": config.default_search_space_id,
         "resolved_search_space_id": resolve_surfsense_search_space_id(project_key=project_key),
         "project_mapping_keys": sorted(config.project_mapping),
@@ -141,36 +150,66 @@ async def get_surfsense_integration_config(project_key: str | None = None) -> di
 
 
 @router.get("/search-spaces")
-async def list_surfsense_search_spaces() -> list[dict]:
+async def list_surfsense_search_spaces() -> dict:
     try:
-        return await SurfSenseClient().list_search_spaces()
+        return {"available": True, "items": await SurfSenseClient().list_search_spaces()}
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"SurfSense request failed: {exc}") from exc
+        return {"available": False, "items": [], "warning": _surfsense_unavailable_message(str(exc))}
 
 
 @router.post("/search")
 async def search_surfsense(req: SurfSenseSearchRequest) -> dict:
-    search_space_id = resolve_surfsense_search_space_id(
+    requested_search_space_id = resolve_surfsense_search_space_id(
         explicit_search_space_id=req.search_space_id,
+        project_key=req.project_key,
+    )
+    live_search_space_id, _live_project_key, access_notes = await _resolve_live_surfsense_scope(
+        search_space_id=requested_search_space_id,
         project_key=req.project_key,
     )
     with observe_span(
         "surfsense.search",
-        trace_id=make_trace_id(seed=f"surfsense-search:{req.query}:{search_space_id or req.project_key or ''}"),
+        trace_id=make_trace_id(
+            seed=f"surfsense-search:{req.query}:{live_search_space_id or requested_search_space_id or req.project_key or ''}"
+        ),
         input=req.model_dump(),
     ) as observation:
         try:
             result = await SurfSenseClient().search_documents(
                 query=req.query,
-                search_space_id=search_space_id,
+                search_space_id=live_search_space_id,
                 top_k=req.top_k,
                 document_types=req.document_types or None,
             )
+            result = {
+                **result,
+                "available": True,
+                "warning": access_notes[0]["summary"] if access_notes else None,
+            }
+            if access_notes:
+                result = {
+                    **result,
+                    "access_notes": access_notes,
+                    "requested_search_space_id": requested_search_space_id,
+                    "search_space_id": live_search_space_id,
+                }
             observation.update(output=summarize_for_trace(result))
             return result
         except httpx.HTTPError as exc:
-            observation.update(output={"error": str(exc)})
-            raise HTTPException(status_code=502, detail=f"SurfSense request failed: {exc}") from exc
+            warning = _surfsense_unavailable_message(str(exc))
+            result = {
+                "items": [],
+                "total": 0,
+                "page": 0,
+                "page_size": req.top_k,
+                "has_more": False,
+                "available": False,
+                "warning": warning,
+                "requested_search_space_id": requested_search_space_id,
+                "search_space_id": live_search_space_id,
+            }
+            observation.update(output=result)
+            return result
 
 
 @router.post("/export-note")
@@ -180,7 +219,7 @@ async def export_note_to_surfsense(req: SurfSenseExportRequest) -> dict:
         project_key=req.project_key,
     )
     if search_space_id is None:
-        raise HTTPException(status_code=400, detail="No SurfSense search space is configured")
+        return {"status": "skipped", "available": False, "warning": "No SurfSense search space is configured."}
 
     metadata = {
         "NOTE": True,
@@ -232,8 +271,13 @@ async def export_note_to_surfsense(req: SurfSenseExportRequest) -> dict:
             observation.update(output=result)
             return result
         except httpx.HTTPError as exc:
-            observation.update(output={"error": str(exc)})
-            raise HTTPException(status_code=502, detail=f"SurfSense export failed: {exc}") from exc
+            result = {
+                "status": "skipped",
+                "available": False,
+                "warning": _surfsense_unavailable_message(str(exc)),
+            }
+            observation.update(output=result)
+            return result
 
 
 @router.post("/research")
@@ -263,7 +307,23 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
         f"SurfSense context:\n{context_blob}\n"
     )
 
-    thread_id = await _create_or_resolve_langgraph_thread(req.thread_id)
+    try:
+        thread_id = await _create_or_resolve_langgraph_thread(req.thread_id)
+    except Exception as exc:
+        warning = f"LangGraph is temporarily unavailable: {exc}"
+        return {
+            "thread_id": req.thread_id,
+            "final_answer": (
+                "MaestroFlow research is temporarily unavailable because LangGraph could not be reached. "
+                "Please try again once the service is back online."
+            ),
+            "warning": warning,
+            "provenance": {
+                "search_space_id": live_search_space_id,
+                "project_key": live_project_key,
+                "context_blocks": len(context_blocks),
+            },
+        }
     trace_id = make_trace_id(seed=thread_id)
     resolved_candidates = resolve_doc_edit_candidate_models(
         location="mixed",
@@ -302,8 +362,27 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
             )
         except Exception as exc:
             logger.error("SurfSense escalation failed for thread %s", thread_id, exc_info=True)
-            observation.update(output={"error": str(exc)})
-            raise HTTPException(status_code=500, detail=f"MaestroFlow research failed: {exc}") from exc
+            result = {
+                "thread_id": thread_id,
+                "search_space_id": requested_search_space_id,
+                "final_answer": (
+                    "MaestroFlow research is temporarily unavailable. "
+                    "The rest of the app is still usable, but deep research could not be started right now."
+                ),
+                "warning": f"MaestroFlow research failed: {exc}",
+                "provenance": {
+                    "source_system": "maestroflow",
+                    "thread_id": thread_id,
+                    "project_key": live_project_key,
+                    "requested_project_key": req.project_key,
+                    "search_space_id": requested_search_space_id,
+                    "live_search_space_id": live_search_space_id,
+                    "requested_model": req.preferred_model,
+                    "resolved_model": resolved_model_name,
+                },
+            }
+            observation.update(output=summarize_for_trace(result))
+            return result
 
         final_answer = _extract_response_text(response)
         if not final_answer:
@@ -315,6 +394,7 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
             "thread_id": thread_id,
             "search_space_id": requested_search_space_id,
             "final_answer": final_answer,
+            "warning": access_notes[0]["summary"] if access_notes else None,
             "provenance": {
                 "source_system": "maestroflow",
                 "thread_id": thread_id,

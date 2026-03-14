@@ -15,11 +15,20 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getBackendBaseURL } from "@/core/config";
 import { env } from "@/env";
 
 type SurfSenseConfig = {
   configured: boolean;
+  available?: boolean;
+  warning?: string | null;
   sync_enabled: boolean;
   default_search_space_id?: number | null;
   resolved_search_space_id?: number | null;
@@ -33,6 +42,33 @@ type SurfSenseResult = {
   search_space_id?: number;
   document_type?: string;
 };
+
+type SurfSenseSearchSpace = {
+  id: number;
+  name: string;
+};
+
+function normalizeSearchSpaces(payload: unknown): SurfSenseSearchSpace[] {
+  const rawItems = Array.isArray(payload)
+    ? payload
+    : Array.isArray((payload as { items?: unknown })?.items)
+      ? ((payload as { items: unknown[] }).items ?? [])
+      : [];
+
+  return rawItems
+    .map((item) => {
+      const record = item as Record<string, unknown>;
+      return {
+        id: typeof record.id === "number" ? record.id : Number.NaN,
+        name:
+          asText(record.name) ??
+          (typeof record.id === "number"
+            ? `Search Space ${record.id}`
+            : "Untitled Search Space"),
+      };
+    })
+    .filter((item) => Number.isFinite(item.id));
+}
 
 function asText(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -106,8 +142,10 @@ export function SurfSenseActions() {
   const [projectKey, setProjectKey] = useState("");
   const [searchSpaceId, setSearchSpaceId] = useState("");
   const [config, setConfig] = useState<SurfSenseConfig | null>(null);
+  const [searchSpaces, setSearchSpaces] = useState<SurfSenseSearchSpace[]>([]);
   const [results, setResults] = useState<SurfSenseResult[]>([]);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const configAbortRef = useRef<AbortController | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -146,7 +184,10 @@ export function SurfSenseActions() {
         const payload = (await response.json().catch(() => ({}))) as { detail?: string };
         throw new Error(payload.detail ?? "SurfSense search failed");
       }
-      const payload = (await response.json()) as unknown;
+      const payload = (await response.json()) as { warning?: string } & unknown;
+      if (payload && typeof payload === "object" && typeof payload.warning === "string" && payload.warning) {
+        toast.warning(payload.warning);
+      }
       setResults(normalizeResults(payload));
     } catch (error) {
       if (controller.signal.aborted) {
@@ -180,11 +221,35 @@ export function SurfSenseActions() {
             throw new Error("Failed to load SurfSense integration status");
           }
           const payload = (await response.json()) as SurfSenseConfig;
+          const spacesResponse = await fetch(`${getBackendBaseURL()}/api/surfsense/search-spaces`, {
+            signal: controller.signal,
+          });
+          const spacesPayload = spacesResponse.ok ? await spacesResponse.json() : null;
+          const nextSearchSpaces = normalizeSearchSpaces(spacesPayload);
+
           setConfig(payload);
+          setSearchSpaces(nextSearchSpaces);
           setSearchSpaceId((currentValue) =>
-            !currentValue && payload.resolved_search_space_id
-              ? String(payload.resolved_search_space_id)
-              : currentValue,
+            {
+              const currentId = Number.parseInt(currentValue, 10);
+              if (
+                currentValue &&
+                !Number.isNaN(currentId) &&
+                nextSearchSpaces.some((space) => space.id === currentId)
+              ) {
+                return currentValue;
+              }
+              if (
+                payload.resolved_search_space_id &&
+                nextSearchSpaces.some((space) => space.id === payload.resolved_search_space_id)
+              ) {
+                return String(payload.resolved_search_space_id);
+              }
+              if (nextSearchSpaces.length === 1) {
+                return String(nextSearchSpaces[0]!.id);
+              }
+              return "";
+            },
           );
         } catch (error) {
           if (controller.signal.aborted) {
@@ -235,6 +300,7 @@ export function SurfSenseActions() {
             searchAbortRef.current?.abort();
             setQuery("");
             setResults([]);
+            setShowAdvanced(false);
           }
         }}
       >
@@ -272,21 +338,33 @@ export function SurfSenseActions() {
                     <span className="text-muted-foreground">Status:</span>
                     <span
                       className={
-                        config.configured
+                        config.configured && config.available !== false
                           ? "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-700"
                           : "rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700"
                       }
                     >
-                      {config.configured ? "Connected" : "Token Missing"}
+                      {config.configured
+                        ? config.available === false
+                          ? "Unavailable"
+                          : "Connected"
+                        : "Token Missing"}
                     </span>
                     <span className="text-muted-foreground text-xs">
                       Sync {config.sync_enabled ? "enabled" : "disabled"}
                     </span>
                   </div>
+                  {config.warning && (
+                    <div className="text-amber-700 text-xs">{config.warning}</div>
+                  )}
                   <div className="text-muted-foreground text-xs">
                     Default search space: {config.default_search_space_id ?? "None"} · Resolved search space:{" "}
                     {config.resolved_search_space_id ?? "None"}
                   </div>
+                  {!!config.warning && (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800">
+                      {config.warning}
+                    </div>
+                  )}
                   {!!config.project_mapping_keys?.length && (
                     <div className="text-muted-foreground text-xs">
                       Mapped keys: {config.project_mapping_keys.join(", ")}
@@ -297,7 +375,7 @@ export function SurfSenseActions() {
                 <div className="text-muted-foreground">SurfSense status unavailable.</div>
               )}
             </div>
-            <div className="grid gap-3 md:grid-cols-[1.3fr_0.7fr]">
+            <div className="grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -305,26 +383,57 @@ export function SurfSenseActions() {
                 autoCapitalize="off"
                 autoCorrect="off"
               />
-              <div className="grid gap-3 sm:grid-cols-2">
+              <Select value={searchSpaceId || "__all__"} onValueChange={(value) => setSearchSpaceId(value === "__all__" ? "" : value)}>
+                <SelectTrigger className="w-full bg-background">
+                  <SelectValue placeholder="Choose a SurfSense space" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All accessible SurfSense spaces</SelectItem>
+                  {searchSpaces.map((space) => (
+                    <SelectItem key={space.id} value={String(space.id)}>
+                      {space.name} (#{space.id})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <div className="text-muted-foreground">
+                {searchSpaces.length
+                  ? "Search spaces shown here are the ones your SurfSense integration token can actually access."
+                  : "No accessible SurfSense search spaces were returned. Search will fall back to any token-visible content."}
+              </div>
+              {!!config?.project_mapping_keys?.length && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full px-3"
+                  onClick={() => setShowAdvanced((current) => !current)}
+                >
+                  {showAdvanced ? "Hide advanced" : "Show advanced"}
+                </Button>
+              )}
+            </div>
+            {showAdvanced && (
+              <div className="grid gap-2 rounded-2xl border border-border/70 bg-muted/10 p-4">
+                <div className="text-sm font-medium">Project Key</div>
                 <Input
                   value={projectKey}
                   onChange={(event) => setProjectKey(event.target.value)}
-                  placeholder="Project key"
+                  placeholder="Optional mapped key, if your setup uses one"
                   autoCapitalize="off"
                   autoCorrect="off"
                 />
-                <Input
-                  value={searchSpaceId}
-                  onChange={(event) => setSearchSpaceId(event.target.value.replace(/[^\d]/g, ""))}
-                  placeholder="Search space ID"
-                  inputMode="numeric"
-                />
+                <div className="text-muted-foreground text-xs">
+                  Project keys are optional aliases defined in MaestroFlow. Most of the time, choosing a SurfSense search space above is simpler.
+                </div>
               </div>
-            </div>
+            )}
             <div className="flex items-center justify-between gap-3">
               <div className="text-muted-foreground text-xs">
-                Use a mapped project key for stable routing, or a specific search space ID for one-off lookup.
-                {trimmedProjectKey ? ` Current key: ${trimmedProjectKey}.` : ""}
+                Search by named SurfSense space when possible.
+                {trimmedProjectKey ? ` Advanced key: ${trimmedProjectKey}.` : ""}
               </div>
               <Button
                 type="submit"

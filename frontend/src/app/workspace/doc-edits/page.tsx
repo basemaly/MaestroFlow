@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocEditStudio } from "@/components/workspace/doc-edit-dialog";
+import { ExternalServiceBanner } from "@/components/workspace/external-service-banner";
 import {
   WorkspaceBody,
   WorkspaceContainer,
@@ -29,6 +30,7 @@ export default function DocEditsPage() {
     <WorkspaceContainer>
       <WorkspaceHeader />
       <WorkspaceBody>
+        <ExternalServiceBanner />
         <div className="grid size-full min-h-0 grid-cols-1 gap-6 p-6 xl:grid-cols-[20rem_minmax(0,1fr)]">
           <div className="min-h-0">
             <Card className="h-full py-4">

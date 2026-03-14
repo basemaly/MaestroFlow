@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
 import {
   ChatBox,
@@ -13,6 +14,7 @@ import {
 } from "@/components/workspace/chats";
 import { DeerIntroOverlay } from "@/components/workspace/deer-intro-overlay";
 import { DocEditDialog } from "@/components/workspace/doc-edit-dialog";
+import { ExternalServiceBanner } from "@/components/workspace/external-service-banner";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
@@ -31,6 +33,7 @@ export default function ChatPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
   const [isHydrated, setIsHydrated] = useState(false);
+  const [submitWarning, setSubmitWarning] = useState<string | null>(null);
   const router = useRouter();
 
   const { threadId, isNewThread, setIsNewThread, isMock, isInvalidThreadRoute } =
@@ -51,7 +54,7 @@ export default function ChatPage() {
     router.replace("/workspace/chats/new");
   }, [isInvalidThreadRoute, router]);
 
-  const [thread, sendMessage] = useThreadStream({
+  const [thread, sendMessage, serviceWarning] = useThreadStream({
     threadId: isNewThread || isInvalidThreadRoute ? undefined : threadId,
     context: settings.context,
     isMock,
@@ -79,8 +82,10 @@ export default function ChatPage() {
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
+      setSubmitWarning(null);
       void sendMessage(threadId, message).catch((error: unknown) => {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        setSubmitWarning(errorMessage);
         toast.error(errorMessage);
       });
     },
@@ -120,6 +125,13 @@ export default function ChatPage() {
           </header>
           <main className="flex min-h-0 max-w-full grow flex-col">
             <DeerIntroOverlay active={isNewThread} />
+            <ExternalServiceBanner />
+            {(serviceWarning ?? submitWarning) && (
+              <Alert className="mx-auto mt-2 mb-2 max-w-(--container-width-md) border-amber-500/30 bg-amber-500/8 text-amber-950 dark:text-amber-100">
+                <AlertTitle>Chat service warning</AlertTitle>
+                <AlertDescription>{serviceWarning ?? submitWarning}</AlertDescription>
+              </Alert>
+            )}
             <div className="flex size-full justify-center">
               <MessageList
                 className={cn("size-full", !isNewThread && "pt-10")}

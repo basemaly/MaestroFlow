@@ -11,6 +11,7 @@ from src.gateway.routers import (
     artifacts,
     channels,
     doc_editing,
+    health,
     mcp,
     memory,
     models,
@@ -199,6 +200,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # SurfSense integration API is mounted at /api/surfsense
     app.include_router(surfsense.router)
+
+    # External service health API is mounted at /api/health
+    app.include_router(health.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:
