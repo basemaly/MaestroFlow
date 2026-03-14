@@ -195,8 +195,21 @@ export default function Galaxy({
   const targetMouseActive = useRef(0.0);
   const smoothMouseActive = useRef(0.0);
 
+  function supportsWebGL() {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return false;
+    }
+    const canvas = document.createElement("canvas");
+    return !!(
+      canvas.getContext("webgl") ||
+      canvas.getContext("experimental-webgl") ||
+      canvas.getContext("webgl2")
+    );
+  }
+
   useEffect(() => {
     if (!ctnDom.current) return;
+    if (!supportsWebGL()) return;
     const ctn = ctnDom.current;
     /** @type {Renderer | undefined} */
     let renderer;
