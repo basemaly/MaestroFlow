@@ -136,6 +136,16 @@ function getSafeSurfSenseBaseUrl(rawBaseUrl: string | undefined): string {
   }
 }
 
+function describeSearchSpace(
+  id: number | null | undefined,
+  searchSpaceNameById: Map<number, string>,
+): string {
+  if (!id) {
+    return "None";
+  }
+  return searchSpaceNameById.get(id) ?? `Space ${id}`;
+}
+
 export function SurfSenseActions() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -153,6 +163,10 @@ export function SurfSenseActions() {
   const surfSenseBaseUrl = useMemo(
     () => getSafeSurfSenseBaseUrl(env.NEXT_PUBLIC_SURFSENSE_BASE_URL),
     [],
+  );
+  const searchSpaceNameById = useMemo(
+    () => new Map(searchSpaces.map((space) => [space.id, space.name])),
+    [searchSpaces],
   );
   const resolvedSearchSpaceId = useMemo(() => {
     const parsed = Number.parseInt(searchSpaceId, 10);
@@ -307,14 +321,14 @@ export function SurfSenseActions() {
         <DialogTrigger asChild>
           <Button size="sm" variant="outline" className="rounded-full border-2 px-4 shadow-none">
             <SearchIcon className="size-4" />
-            Search SurfSense
+            Search SurfSense Documents
           </Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>SurfSense Search</DialogTitle>
+            <DialogTitle>Search SurfSense Documents</DialogTitle>
             <DialogDescription>
-              Query your SurfSense knowledge base from inside MaestroFlow before you branch into deeper research or editing.
+              Search documents, notes, and reports stored in your SurfSense search spaces before branching into deeper research or editing.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -357,8 +371,8 @@ export function SurfSenseActions() {
                     <div className="text-amber-700 text-xs">{config.warning}</div>
                   )}
                   <div className="text-muted-foreground text-xs">
-                    Default search space: {config.default_search_space_id ?? "None"} · Resolved search space:{" "}
-                    {config.resolved_search_space_id ?? "None"}
+                    Default space: {describeSearchSpace(config.default_search_space_id, searchSpaceNameById)} · Resolved space:{" "}
+                    {describeSearchSpace(config.resolved_search_space_id, searchSpaceNameById)}
                   </div>
                   {!!config.warning && (
                     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800">
@@ -376,13 +390,13 @@ export function SurfSenseActions() {
               )}
             </div>
             <div className="grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search notes, documents, or reports..."
-                autoCapitalize="off"
-                autoCorrect="off"
-              />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search document titles and contents..."
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                />
               <Select value={searchSpaceId || "__all__"} onValueChange={(value) => setSearchSpaceId(value === "__all__" ? "" : value)}>
                 <SelectTrigger className="w-full bg-background">
                   <SelectValue placeholder="Choose a SurfSense space" />
@@ -426,7 +440,7 @@ export function SurfSenseActions() {
                   autoCorrect="off"
                 />
                 <div className="text-muted-foreground text-xs">
-                  Project keys are optional aliases defined in MaestroFlow. Most of the time, choosing a SurfSense search space above is simpler.
+                  Project keys are optional aliases defined in MaestroFlow. Most of the time, choosing a named SurfSense search space above is simpler.
                 </div>
               </div>
             )}
@@ -449,11 +463,11 @@ export function SurfSenseActions() {
                 {!hasResults ? (
                   <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-6 text-sm">
                     <div className="font-medium">
-                      {isSearching ? "Searching SurfSense..." : "No results yet"}
+                      {isSearching ? "Searching SurfSense documents..." : "No results yet"}
                     </div>
                     <div className="text-muted-foreground mt-2">
                       {query.trim()
-                        ? "Try a broader query, a mapped project key, or a specific search space ID."
+                        ? "Try a broader query or switch to a different named SurfSense space."
                         : "Enter a query to search notes, documents, and reports from SurfSense."}
                     </div>
                   </div>
@@ -468,7 +482,9 @@ export function SurfSenseActions() {
                           <div className="font-medium">{result.title}</div>
                           <div className="text-muted-foreground mt-1 text-xs">
                             {result.document_type ?? "Document"}
-                            {result.search_space_id ? ` · Space ${result.search_space_id}` : ""}
+                            {result.search_space_id
+                              ? ` · ${searchSpaceNameById.get(result.search_space_id) ?? `Space ${result.search_space_id}`}`
+                              : ""}
                           </div>
                         </div>
                         <Button

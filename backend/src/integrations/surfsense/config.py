@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from functools import lru_cache
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field
 
@@ -40,6 +41,19 @@ class SurfSenseConfig(BaseModel):
     project_mapping: dict[str, int] = Field(default_factory=dict)
     timeout_seconds: float = 20.0
 
+    @staticmethod
+    def _normalize_base_url(raw_url: str) -> str:
+        try:
+            parts = urlsplit(raw_url.strip())
+        except Exception:
+            return raw_url
+        if parts.hostname != "localhost":
+            return raw_url
+        netloc = "127.0.0.1"
+        if parts.port is not None:
+            netloc = f"{netloc}:{parts.port}"
+        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
     @property
     def api_base_url(self) -> str:
         return f"{self.base_url.rstrip('/')}/api/v1"
@@ -69,7 +83,7 @@ class SurfSenseConfig(BaseModel):
             "SURFSENSE_BEARER_TOKEN"
         )
         return cls(
-            base_url=os.getenv("SURFSENSE_BASE_URL", "http://localhost:3004"),
+            base_url=cls._normalize_base_url(os.getenv("SURFSENSE_BASE_URL", "http://localhost:3004")),
             bearer_token=bearer_token,
             default_search_space_id=int(default_search_space) if default_search_space else None,
             sync_enabled=_parse_bool(os.getenv("SURFSENSE_SYNC_ENABLED"), default=False),
