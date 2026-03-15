@@ -712,8 +712,7 @@ export function InputBox({
             </PromptInputActionMenu>
           )}
         </PromptInputTools>
-        {context.mode === "ultra" && (
-          <PromptInputTools>
+        <PromptInputTools className={context.mode === "ultra" ? undefined : "hidden"}>
             <ModelSelector
               open={subagentModelDialogOpen}
               onOpenChange={setSubagentModelDialogOpen}
@@ -757,7 +756,6 @@ export function InputBox({
               </ModelSelectorContent>
             </ModelSelector>
           </PromptInputTools>
-        )}
         <PromptInputTools>
           <ModelSelector
             open={modelDialogOpen}
