@@ -75,7 +75,7 @@ async def search_surfsense(
 async def get_surfsense_document(document_id: int) -> dict[str, Any]:
     try:
         return await SurfSenseClient().get_document(document_id)
-    except httpx.HTTPError as exc:
+    except Exception as exc:
         return _tool_error_payload(operation="get_document", error=exc)
 
 
@@ -111,7 +111,7 @@ async def list_surfsense_reports(
 async def get_surfsense_report(report_id: int) -> dict[str, Any]:
     try:
         return await SurfSenseClient().get_report_content(report_id)
-    except httpx.HTTPError as exc:
+    except Exception as exc:
         return _tool_error_payload(operation="get_report", error=exc)
 
 

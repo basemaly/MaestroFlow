@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
 from .config import SurfSenseConfig, get_surfsense_config
+
+logger = logging.getLogger(__name__)
 
 
 def _build_doc_edit_markdown(state: dict[str, Any], winner: dict[str, Any], final_path: str) -> str:
@@ -40,9 +43,13 @@ def _find_existing_note(
     search_space_id: int,
     run_id: str,
 ) -> dict[str, Any] | None:
-    response = client.get(f"/search-spaces/{search_space_id}/notes", params={"page_size": 100})
-    response.raise_for_status()
-    payload = response.json()
+    try:
+        response = client.get(f"/search-spaces/{search_space_id}/notes", params={"page_size": 100})
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        logger.warning("Failed to list SurfSense notes for deduplication (search_space_id=%s): %s", search_space_id, exc)
+        return None
     for item in payload.get("items", []):
         metadata = item.get("document_metadata") or {}
         if metadata.get("source_system") == "maestroflow" and metadata.get("source_run_id") == run_id:
