@@ -15,6 +15,10 @@ class SubagentOverrideConfig(BaseModel):
         ge=1,
         description="Timeout in seconds for this subagent (None = use global default)",
     )
+    model: str | None = Field(
+        default=None,
+        description="Model name for this subagent (None = use builtin default, 'inherit' = use parent model)",
+    )
 
 
 class SubagentsAppConfig(BaseModel):
@@ -29,6 +33,13 @@ class SubagentsAppConfig(BaseModel):
         default_factory=dict,
         description="Per-agent configuration overrides keyed by agent name",
     )
+
+    def get_model_for(self, agent_name: str) -> str | None:
+        """Get the model override for a specific agent, or None if not set."""
+        override = self.agents.get(agent_name)
+        if override is not None and override.model is not None:
+            return override.model
+        return None
 
     def get_timeout_for(self, agent_name: str) -> int:
         """Get the effective timeout for a specific agent.

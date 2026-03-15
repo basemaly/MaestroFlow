@@ -5,11 +5,16 @@ import json
 import logging
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Iterator
 from urllib import error, request
+
+# Background executor for non-blocking Langfuse REST calls.
+# Daemon threads so they don't block process shutdown.
+_http_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="langfuse-http")
 
 from langchain_core.callbacks import BaseCallbackHandler
 from opentelemetry import trace
@@ -78,6 +83,7 @@ def _make_observation_id(seed: str | None = None) -> str:
 
 
 def _post_json(path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Synchronous Langfuse REST call. Prefer _post_json_fire_and_forget for non-critical writes."""
     if not is_langfuse_enabled():
         return None
     config = get_langfuse_config()
@@ -91,7 +97,7 @@ def _post_json(path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         },
     )
     try:
-        with request.urlopen(req, timeout=10) as resp:
+        with request.urlopen(req, timeout=3) as resp:
             raw = resp.read().decode("utf-8")
     except error.HTTPError as exc:
         payload_text = exc.read().decode("utf-8", errors="ignore")
@@ -108,6 +114,13 @@ def _post_json(path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         return {"raw": raw}
 
 
+def _post_json_fire_and_forget(path: str, payload: dict[str, Any]) -> None:
+    """Submit a Langfuse REST call to the background executor; never blocks the caller."""
+    if not is_langfuse_enabled():
+        return
+    _http_executor.submit(_post_json, path, payload)
+
+
 def _ensure_tracer() -> Any | None:
     global _provider, _tracer
     if not is_langfuse_enabled():
@@ -122,7 +135,7 @@ def _ensure_tracer() -> Any | None:
         exporter = OTLPSpanExporter(
             endpoint=f"{_normalize_host(config.host)}/api/public/otel/v1/traces",
             headers={"Authorization": _basic_auth_header()},
-            timeout=10000,
+            timeout=3000,
         )
         provider = TracerProvider(
             resource=Resource.create(
@@ -187,7 +200,7 @@ def _upsert_trace(
         payload["sessionId"] = session_id
     if user_id:
         payload["userId"] = user_id
-    _post_json("/api/public/traces", payload)
+    _post_json_fire_and_forget("/api/public/traces", payload)
 
 
 @dataclass
@@ -374,4 +387,4 @@ def score_current_trace(*, name: str, value: float | str | bool, comment: str | 
         payload["dataType"] = data_type
     if metadata is not None:
         payload["metadata"] = _summarize_for_trace(metadata)
-    _post_json("/api/public/scores", payload)
+    _post_json_fire_and_forget("/api/public/scores", payload)

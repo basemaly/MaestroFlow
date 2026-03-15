@@ -170,6 +170,12 @@ def task_tool(
 
         # Get or generate trace_id for distributed tracing
         trace_id = metadata.get("trace_id") or make_trace_id(seed=f"task:{tool_call_id}")
+
+        # Session-level subagent model set from UI (used when LLM doesn't specify one)
+        if subagent_model is None:
+            ui_subagent_model = runtime.context.get("subagent_model")
+            if ui_subagent_model:
+                subagent_model = str(ui_subagent_model)
     else:
         trace_id = make_trace_id(seed=f"task:{tool_call_id}")
 

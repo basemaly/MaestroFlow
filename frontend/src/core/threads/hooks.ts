@@ -392,7 +392,7 @@ export function useThreadStream({
             streamSubgraphs: true,
             streamResumable: true,
             config: {
-              recursion_limit: 1000,
+              recursion_limit: 50,
             },
             context: {
               ...extraContext,

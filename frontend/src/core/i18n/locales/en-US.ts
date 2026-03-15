@@ -93,6 +93,9 @@ export const enUS: Translations = {
     reasoningEffortHigh: "High",
     reasoningEffortHighDescription:
       "Full-dimensional Logic Deduction + Multi-path Verification + Backward Check",
+    subagentModel: "Subagents",
+    subagentModelAuto: "Auto (Flash)",
+    subagentModelDescription: "Model used by parallel subagents in Ultra mode",
     searchModels: "Search models...",
     surpriseMe: "Surprise",
     surpriseMePrompt: "Surprise me",

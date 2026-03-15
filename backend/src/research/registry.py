@@ -16,10 +16,44 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from enum import Enum
+from urllib import error, request
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Reachability cache — avoids probing on every subagent creation
+# ---------------------------------------------------------------------------
+
+_REACHABILITY_CACHE: dict[str, tuple[bool, float]] = {}
+_REACHABILITY_TTL = 60.0  # seconds
+
+
+def _is_url_reachable(url: str, timeout: float = 0.5) -> bool:
+    """HEAD request with a short timeout. Returns True if the host responds."""
+    try:
+        req = request.Request(url, method="HEAD")
+        with request.urlopen(req, timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def _check_reachable(url: str) -> bool:
+    """Cached reachability probe. Re-probes after TTL expires."""
+    now = time.monotonic()
+    cached = _REACHABILITY_CACHE.get(url)
+    if cached is not None:
+        reachable, ts = cached
+        if now - ts < _REACHABILITY_TTL:
+            return reachable
+    reachable = _is_url_reachable(url)
+    _REACHABILITY_CACHE[url] = (reachable, now)
+    if not reachable:
+        logger.debug("Research service at %s is not reachable — skipping hint injection", url)
+    return reachable
 
 
 class ResearchCapability(str, Enum):
@@ -48,9 +82,22 @@ class ResearchTool:
             return True  # Built-in / always-available tool
         return bool(os.environ.get(self.env_var, "").strip())
 
+    def is_reachable(self) -> bool:
+        """Return True when is_available() and the service URL responds to a probe.
+
+        URL-valued env-vars are probed with a short timeout (cached for 60 s).
+        Non-URL values (e.g. API keys) rely on is_available() alone.
+        """
+        if not self.is_available():
+            return False
+        url = os.environ.get(self.env_var or "", "").strip()
+        if url.startswith("http://") or url.startswith("https://"):
+            return _check_reachable(url)
+        return True
+
     def inject_prompt_hint(self, base_prompt: str) -> str:
-        """Append the tool hint to a subagent prompt when this tool is available."""
-        if not self.prompt_hint or not self.is_available():
+        """Append the tool hint to a subagent prompt only when the service is reachable."""
+        if not self.prompt_hint or not self.is_reachable():
             return base_prompt
         expanded = os.path.expandvars(self.prompt_hint)
         return f"{base_prompt}\n\n[Research hint: {expanded}]"

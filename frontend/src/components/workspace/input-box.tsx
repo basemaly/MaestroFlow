@@ -142,6 +142,7 @@ export function InputBox({
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [subagentModelDialogOpen, setSubagentModelDialogOpen] = useState(false);
   const { models } = useModels();
   const { thread, isMock } = useThread();
   const { textInput } = usePromptInputController();
@@ -233,6 +234,22 @@ export function InputBox({
     },
     [onContextChange, context],
   );
+
+  const handleSubagentModelSelect = useCallback(
+    (model_name: string | undefined) => {
+      onContextChange?.({
+        ...context,
+        subagent_model: model_name,
+      });
+      setSubagentModelDialogOpen(false);
+    },
+    [onContextChange, context],
+  );
+
+  const subagentDisplayName = useMemo(() => {
+    if (!context.subagent_model) return t.inputBox.subagentModelAuto;
+    return models.find((m) => m.name === context.subagent_model)?.display_name ?? context.subagent_model;
+  }, [context.subagent_model, models, t.inputBox.subagentModelAuto]);
 
   const handleSubmit = useCallback(
     async (message: PromptInputMessage) => {
@@ -695,6 +712,52 @@ export function InputBox({
             </PromptInputActionMenu>
           )}
         </PromptInputTools>
+        {context.mode === "ultra" && (
+          <PromptInputTools>
+            <ModelSelector
+              open={subagentModelDialogOpen}
+              onOpenChange={setSubagentModelDialogOpen}
+            >
+              <ModelSelectorTrigger asChild>
+                <PromptInputButton>
+                  <ModelSelectorName className="text-xs font-normal">
+                    {`${t.inputBox.subagentModel}: ${subagentDisplayName}`}
+                  </ModelSelectorName>
+                </PromptInputButton>
+              </ModelSelectorTrigger>
+              <ModelSelectorContent>
+                <ModelSelectorInput placeholder={t.inputBox.searchModels} />
+                <ModelSelectorList>
+                  <ModelSelectorItem
+                    value=""
+                    onSelect={() => handleSubagentModelSelect(undefined)}
+                  >
+                    <ModelSelectorName>{t.inputBox.subagentModelAuto}</ModelSelectorName>
+                    {!context.subagent_model ? (
+                      <CheckIcon className="ml-auto size-4" />
+                    ) : (
+                      <div className="ml-auto size-4" />
+                    )}
+                  </ModelSelectorItem>
+                  {models.map((m) => (
+                    <ModelSelectorItem
+                      key={m.name}
+                      value={m.name}
+                      onSelect={() => handleSubagentModelSelect(m.name)}
+                    >
+                      <ModelSelectorName>{m.display_name}</ModelSelectorName>
+                      {m.name === context.subagent_model ? (
+                        <CheckIcon className="ml-auto size-4" />
+                      ) : (
+                        <div className="ml-auto size-4" />
+                      )}
+                    </ModelSelectorItem>
+                  ))}
+                </ModelSelectorList>
+              </ModelSelectorContent>
+            </ModelSelector>
+          </PromptInputTools>
+        )}
         <PromptInputTools>
           <ModelSelector
             open={modelDialogOpen}

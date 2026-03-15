@@ -149,9 +149,11 @@ class TestResearchRegistry:
         from src.research.registry import get_research_tool
         tool = get_research_tool("gpt-researcher")
         with patch.dict(os.environ, {"GPT_RESEARCHER_URL": "http://localhost:8080"}):
-            result = tool.inject_prompt_hint("base prompt")
-            assert "base prompt" in result
-            assert len(result) > len("base prompt")
+            # Patch reachability — inject_prompt_hint now probes the URL before injecting
+            with patch("src.research.registry._check_reachable", return_value=True):
+                result = tool.inject_prompt_hint("base prompt")
+                assert "base prompt" in result
+                assert len(result) > len("base prompt")
 
 
 # ===========================================================================

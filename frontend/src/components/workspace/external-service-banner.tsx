@@ -78,12 +78,21 @@ export function ExternalServiceBanner() {
     return null;
   }
 
+  const failedNames = warnings.map((s) => s.label).join(", ");
+
   return (
     <Alert className="mx-auto mt-14 mb-2 max-w-(--container-width-md) border-amber-500/30 bg-amber-500/8 text-amber-950 dark:text-amber-100">
       <AlertTriangleIcon className="size-4" />
-      <AlertTitle>Some external services are unavailable</AlertTitle>
+      <AlertTitle>{failedNames} {warnings.length === 1 ? "is" : "are"} unavailable</AlertTitle>
       <AlertDescription>
-        {warnings.map((service) => `${service.label}: ${service.message ?? "Unavailable"}`).join(" ")}
+        <ul className="mt-1 list-disc pl-4 text-sm">
+          {warnings.map((service) => (
+            <li key={service.service}>
+              <span className="font-medium">{service.label}:</span>{" "}
+              {service.message ?? "Unavailable"}
+            </li>
+          ))}
+        </ul>
       </AlertDescription>
     </Alert>
   );

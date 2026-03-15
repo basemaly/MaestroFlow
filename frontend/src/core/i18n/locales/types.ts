@@ -73,6 +73,9 @@ export interface Translations {
     reasoningEffortMediumDescription: string;
     reasoningEffortHigh: string;
     reasoningEffortHighDescription: string;
+    subagentModel: string;
+    subagentModelAuto: string;
+    subagentModelDescription: string;
     searchModels: string;
     surpriseMe: string;
     surpriseMePrompt: string;

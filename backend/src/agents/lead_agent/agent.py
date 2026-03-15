@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from src.agents.lead_agent.prompt import apply_prompt_template
 from src.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from src.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
-from src.agents.middlewares.decomposer_scheduler_middleware import DecomposerSchedulerMiddleware
+from src.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 from src.agents.middlewares.external_service_fallback_middleware import ExternalServiceFallbackMiddleware
 from src.agents.middlewares.memory_middleware import MemoryMiddleware
 from src.agents.middlewares.message_normalization_middleware import MessageNormalizationMiddleware
@@ -265,12 +265,11 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     if model_config is not None and model_config.supports_vision:
         middlewares.append(ViewImageMiddleware())
 
-    # Add DecomposerSchedulerMiddleware: queues excess task() calls across turns
-    # instead of silently truncating them (replaces SubagentLimitMiddleware).
+    # Truncate excess task() calls to the concurrency limit (prevents runaway subagent queues).
     subagent_enabled = config.get("configurable", {}).get("subagent_enabled", False)
     if subagent_enabled:
         max_concurrent_subagents = config.get("configurable", {}).get("max_concurrent_subagents", 3)
-        middlewares.append(DecomposerSchedulerMiddleware(max_concurrent=max_concurrent_subagents))
+        middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
 
     middlewares.append(MessageNormalizationMiddleware())
 

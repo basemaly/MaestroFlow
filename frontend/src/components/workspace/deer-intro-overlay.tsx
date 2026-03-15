@@ -52,10 +52,10 @@ export function DeerIntroOverlay({
     return () => window.clearTimeout(timer);
   }, [active, hasCheckedSession]);
 
-  if ((!active && !visible) || !hasCheckedSession) {
-    return null;
-  }
+  // Intro overlay permanently disabled
+  return null;
 
+  // eslint-disable-next-line no-unreachable
   return (
     <div
       className={cn(
