@@ -1,11 +1,14 @@
 """Unified extensions configuration for MCP servers and skills."""
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
 
 
 class McpOAuthConfig(BaseModel):
@@ -156,8 +159,15 @@ class ExtensionsConfig(BaseModel):
                 if value.startswith("$"):
                     env_value = os.getenv(value[1:])
                     if env_value is None:
-                        raise ValueError(f"Environment variable {value[1:]} not found for config value {value}")
-                    config[key] = env_value
+                        logger.warning(
+                            "Environment variable '%s' is not set; placeholder '%s' kept for extensions config key '%s'. "
+                            "The extension may not function correctly.",
+                            value[1:],
+                            value,
+                            key,
+                        )
+                    else:
+                        config[key] = env_value
                 else:
                     config[key] = value
             elif isinstance(value, dict):

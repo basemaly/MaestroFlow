@@ -114,11 +114,19 @@ def _post_json(path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         return {"raw": raw}
 
 
+def _log_http_future_exception(future: Any, path: str) -> None:
+    """Log any unhandled exception from a background Langfuse HTTP future."""
+    exc = future.exception()
+    if exc is not None:
+        logger.warning("Langfuse background request to %s raised an unhandled exception: %s", path, exc)
+
+
 def _post_json_fire_and_forget(path: str, payload: dict[str, Any]) -> None:
     """Submit a Langfuse REST call to the background executor; never blocks the caller."""
     if not is_langfuse_enabled():
         return
-    _http_executor.submit(_post_json, path, payload)
+    future = _http_executor.submit(_post_json, path, payload)
+    future.add_done_callback(lambda f: _log_http_future_exception(f, path))
 
 
 def _ensure_tracer() -> Any | None:

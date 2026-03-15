@@ -11,7 +11,9 @@ LIGHTWEIGHT_FALLBACK_MODELS = (
     "gpt-5-2-mini",
     "gemini-2-5-flash",
     "gpt-5-2-codex",
+    "qwen-7b-coder-lan",
     "qwen-7b-coder",
+    "qwen-32b-coder-lan",
     "qwen-32b-coder",
 )
 CHEAP_MODEL_KEYWORDS = (
