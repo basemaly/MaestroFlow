@@ -1,8 +1,11 @@
 """Middleware for automatic thread title generation."""
 
+import logging
 from typing import NotRequired, override
 
 from langchain.agents import AgentState
+
+logger = logging.getLogger(__name__)
 from langchain.agents.middleware import AgentMiddleware
 from langgraph.runtime import Runtime
 
@@ -73,7 +76,7 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
             # Limit to max characters
             return title[: config.max_chars] if len(title) > config.max_chars else title
         except Exception as e:
-            print(f"Failed to generate title: {e}")
+            logger.warning("Failed to generate title: %s", e)
             # Fallback: use first part of user message (by character count)
             fallback_chars = min(config.max_chars, 50)  # Use max_chars or 50, whichever is smaller
             if len(user_msg) > fallback_chars:
@@ -90,7 +93,7 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
         """Generate and set thread title after the first agent response."""
         if self._should_generate_title(state):
             title = await self._generate_title(state)
-            print(f"Generated thread title: {title}")
+            logger.info("Generated thread title: %s", title)
 
             # Store title in state (will be persisted by checkpointer if configured)
             return {"title": title}

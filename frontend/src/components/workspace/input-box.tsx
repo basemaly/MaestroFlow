@@ -178,7 +178,7 @@ export function InputBox({
       model_name: nextModelName,
       mode: nextMode,
     });
-  }, [context, models, onContextChange]);
+  }, [context.model_name, context.mode, models, onContextChange]);
 
   const selectedModel = useMemo(() => {
     if (models.length === 0) {

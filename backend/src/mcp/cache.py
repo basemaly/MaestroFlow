@@ -47,7 +47,7 @@ def _is_cache_stale() -> bool:
 
     # If the config file has been modified since we cached, it's stale
     if current_mtime > _config_mtime:
-        logger.info(f"MCP config file has been modified (mtime: {_config_mtime} -> {current_mtime}), cache is stale")
+        logger.debug("MCP config file modified (mtime: %s -> %s), cache is stale", _config_mtime, current_mtime)
         return True
 
     return False
@@ -65,7 +65,7 @@ async def initialize_mcp_tools() -> list[BaseTool]:
 
     async with _initialization_lock:
         if _cache_initialized:
-            logger.info("MCP tools already initialized")
+            logger.debug("MCP tools already initialized")
             return _mcp_tools_cache or []
 
         from src.mcp.tools import get_mcp_tools
@@ -101,7 +101,7 @@ def get_cached_mcp_tools() -> list[BaseTool]:
         reset_mcp_tools_cache()
 
     if not _cache_initialized:
-        logger.info("MCP tools not initialized, performing lazy initialization...")
+        logger.debug("MCP tools not initialized, performing lazy initialization...")
         try:
             # Try to initialize in the current event loop
             loop = asyncio.get_event_loop()
@@ -135,4 +135,4 @@ def reset_mcp_tools_cache() -> None:
     _mcp_tools_cache = None
     _cache_initialized = False
     _config_mtime = None
-    logger.info("MCP tools cache reset")
+    logger.debug("MCP tools cache reset")
