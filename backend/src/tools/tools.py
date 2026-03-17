@@ -11,7 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 def _wrap_tool_with_tracing(t: BaseTool) -> BaseTool:
-    """Monkey-patch invoke/ainvoke to add a Langfuse tool span around each call."""
+    """Monkey-patch invoke/ainvoke to add a Langfuse tool span around each call.
+
+    Pydantic-backed tool instances reject normal attribute assignment for methods
+    like ``invoke`` and ``ainvoke``. Use ``object.__setattr__`` so cached MCP and
+    StructuredTool instances can still be wrapped without tripping model field
+    validation, and mark wrapped tools to avoid stacking nested wrappers.
+    """
+    if getattr(t, "_langfuse_traced", False):
+        return t
+
     original_invoke = t.invoke
     original_ainvoke = t.ainvoke
     tool_name = t.name
@@ -26,8 +35,9 @@ def _wrap_tool_with_tracing(t: BaseTool) -> BaseTool:
         with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
             return await original_ainvoke(input, config, **kwargs)
 
-    t.invoke = traced_invoke  # type: ignore[method-assign]
-    t.ainvoke = traced_ainvoke  # type: ignore[method-assign]
+    object.__setattr__(t, "invoke", traced_invoke)
+    object.__setattr__(t, "ainvoke", traced_ainvoke)
+    object.__setattr__(t, "_langfuse_traced", True)
     return t
 
 BUILTIN_TOOLS = [

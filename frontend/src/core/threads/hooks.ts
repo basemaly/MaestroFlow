@@ -377,6 +377,15 @@ export function useThreadStream({
           }),
         );
 
+        const mergedContext = {
+          ...context,
+          ...extraContext,
+          thinking_enabled: context.mode !== "flash",
+          is_plan_mode: context.mode === "pro" || context.mode === "ultra",
+          subagent_enabled: context.mode === "ultra",
+          thread_id: threadId,
+        };
+
         await thread.submit(
           {
             messages: [
@@ -406,14 +415,7 @@ export function useThreadStream({
                 : context.mode === "thinking" ? 50
                 : 50,
             },
-            context: {
-              ...extraContext,
-              ...context,
-              thinking_enabled: context.mode !== "flash",
-              is_plan_mode: context.mode === "pro" || context.mode === "ultra",
-              subagent_enabled: context.mode === "ultra",
-              thread_id: threadId,
-            },
+            context: mergedContext,
           },
         );
         void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });

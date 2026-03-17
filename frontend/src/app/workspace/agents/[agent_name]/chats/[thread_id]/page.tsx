@@ -1,8 +1,8 @@
 "use client";
 
-import { BotIcon, PlusSquare } from "lucide-react";
+import { BotIcon, ClipboardCheckIcon, PlusSquare } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
@@ -16,6 +16,7 @@ import { ExternalServiceBanner } from "@/components/workspace/external-service-b
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import { PlanReviewCard } from "@/components/workspace/plan-review-card";
 import { SurfSenseActions } from "@/components/workspace/surfsense-actions";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
@@ -23,6 +24,14 @@ import { Tooltip } from "@/components/workspace/tooltip";
 import { useAgent } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
 import { useNotification } from "@/core/notification/hooks";
+import {
+  answerPlanningQuestions,
+  applyExecutiveSuggestions,
+  approvePlanningReview,
+  revisePlan,
+  startFirstTurnReview,
+} from "@/core/planning/api";
+import type { FirstTurnReviewResponse } from "@/core/planning/types";
 import { useLocalSettings } from "@/core/settings";
 import { useThreadStream } from "@/core/threads/hooks";
 import { textOfMessage } from "@/core/threads/utils";
@@ -34,6 +43,10 @@ export default function AgentChatPage() {
   const [settings, setSettings] = useLocalSettings();
   const [isHydrated, setIsHydrated] = useState(false);
   const [submitWarning, setSubmitWarning] = useState<string | null>(null);
+  const [planningReview, setPlanningReview] = useState<FirstTurnReviewResponse | null>(null);
+  const [pendingMessage, setPendingMessage] = useState<PromptInputMessage | null>(null);
+  const [planningBusy, setPlanningBusy] = useState(false);
+  const [manualPlanReview, setManualPlanReview] = useState(false);
   const router = useRouter();
 
   const { agent_name } = useParams<{
@@ -87,9 +100,97 @@ export default function AgentChatPage() {
     },
   });
 
+  const isFirstTurn = useMemo(() => {
+    const visibleMessages = thread.messages.filter(
+      (message) => message.type === "human" || message.type === "ai",
+    );
+    return isNewThread || visibleMessages.length === 0;
+  }, [isNewThread, thread.messages]);
+
+  const mergeContextPatch = useCallback(
+    (patch: Record<string, unknown>) => {
+      if (Object.keys(patch).length === 0) {
+        return;
+      }
+      setSettings("context", patch);
+    },
+    [setSettings],
+  );
+
+  const executeReviewedRun = useCallback(
+    async (decision: "approve" | "proceed_anyway") => {
+      if (!planningReview || !pendingMessage) {
+        return;
+      }
+      setPlanningBusy(true);
+      try {
+        const result = await approvePlanningReview({
+          thread_id: planningReview.thread_id,
+          decision,
+        });
+        mergeContextPatch(result.context_patch);
+        await sendMessage(
+          threadId,
+          {
+            ...pendingMessage,
+            text: result.prompt,
+          },
+          { ...result.context_patch, agent_name },
+        );
+        setPlanningReview(null);
+        setPendingMessage(null);
+        setManualPlanReview(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setSubmitWarning(message);
+        toast.error(message);
+      } finally {
+        setPlanningBusy(false);
+      }
+    },
+    [agent_name, mergeContextPatch, pendingMessage, planningReview, sendMessage, threadId],
+  );
+
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
       setSubmitWarning(null);
+      if (planningReview) {
+        toast.error("Finish the active plan review before sending another prompt.");
+        return;
+      }
+      if (isFirstTurn || manualPlanReview) {
+        setPlanningBusy(true);
+        void startFirstTurnReview({
+          thread_id: threadId,
+          prompt: message.text,
+          context: { ...(settings.context as Record<string, unknown>), agent_name },
+          agent_name,
+          force_review: manualPlanReview,
+        })
+          .then((review) => {
+            if (
+              review.review_required ||
+              manualPlanReview ||
+              review.suggestions.length > 0 ||
+              review.questions.length > 0
+            ) {
+              setPlanningReview(review);
+              setPendingMessage(message);
+              return;
+            }
+            return sendMessage(threadId, message, { agent_name });
+          })
+          .catch((error: unknown) => {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            setSubmitWarning(errorMessage);
+            toast.error(errorMessage);
+          })
+          .finally(() => {
+            setPlanningBusy(false);
+            setManualPlanReview(false);
+          });
+        return;
+      }
       void sendMessage(threadId, message, { agent_name }).catch(
         (error: unknown) => {
           const errorMessage =
@@ -99,7 +200,7 @@ export default function AgentChatPage() {
         },
       );
     },
-    [sendMessage, threadId, agent_name],
+    [agent_name, isFirstTurn, manualPlanReview, planningReview, sendMessage, settings.context, threadId],
   );
 
   const handleStop = useCallback(async () => {
@@ -134,6 +235,21 @@ export default function AgentChatPage() {
               <ThreadTitle threadId={threadId} thread={thread} />
             </div>
             <div className="mr-4 flex items-center gap-2">
+              <Button
+                size="sm"
+                variant={manualPlanReview ? "default" : "outline"}
+                className="rounded-full"
+                onClick={() => {
+                  if (!isFirstTurn) {
+                    toast.error("Plan review can only be started before the first run in a thread.");
+                    return;
+                  }
+                  setManualPlanReview((current) => !current);
+                }}
+              >
+                <ClipboardCheckIcon className="size-4" />
+                {manualPlanReview ? "Plan Review Armed" : "Review Plan"}
+              </Button>
               <SurfSenseActions />
               <DocEditDialog
                 disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
@@ -157,6 +273,51 @@ export default function AgentChatPage() {
           <main className="flex min-h-0 max-w-full grow flex-col">
             <DeerIntroOverlay active={isNewThread} />
             <ExternalServiceBanner />
+            {planningReview && (
+              <PlanReviewCard
+                review={planningReview}
+                busy={planningBusy}
+                onApprove={() => void executeReviewedRun("approve")}
+                onProceedAnyway={() => void executeReviewedRun("proceed_anyway")}
+                onApplySuggestions={(suggestionIds) => {
+                  setPlanningBusy(true);
+                  void applyExecutiveSuggestions({
+                    thread_id: planningReview.thread_id,
+                    suggestion_ids: suggestionIds,
+                  })
+                    .then(setPlanningReview)
+                    .catch((error) => {
+                      toast.error(error instanceof Error ? error.message : String(error));
+                    })
+                    .finally(() => setPlanningBusy(false));
+                }}
+                onRevise={(payload) => {
+                  setPlanningBusy(true);
+                  void revisePlan({
+                    thread_id: planningReview.thread_id,
+                    goal_reframe: payload.goal_reframe,
+                    edited_steps: payload.edited_steps,
+                  })
+                    .then(setPlanningReview)
+                    .catch((error) => {
+                      toast.error(error instanceof Error ? error.message : String(error));
+                    })
+                    .finally(() => setPlanningBusy(false));
+                }}
+                onAnswerQuestions={(answers) => {
+                  setPlanningBusy(true);
+                  void answerPlanningQuestions({
+                    thread_id: planningReview.thread_id,
+                    answers,
+                  })
+                    .then(setPlanningReview)
+                    .catch((error) => {
+                      toast.error(error instanceof Error ? error.message : String(error));
+                    })
+                    .finally(() => setPlanningBusy(false));
+                }}
+              />
+            )}
             {(serviceWarning ?? submitWarning) && (
               <Alert className="mx-auto mt-2 mb-2 max-w-(--container-width-md) border-amber-500/30 bg-amber-500/8 text-amber-950 dark:text-amber-100">
                 <AlertTitle>Chat service warning</AlertTitle>
@@ -216,6 +377,27 @@ export default function AgentChatPage() {
                   status={thread.isLoading ? "streaming" : "ready"}
                   context={settings.context}
                   disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
+                  extraHeader={
+                    isFirstTurn ? (
+                      <div className="translate-y-[-10px] rounded-full border border-sky-500/35 bg-sky-500/10 px-2 py-1 shadow-sm backdrop-blur">
+                        <div className="flex items-center gap-2">
+                          <span className="px-1 text-[11px] font-medium text-sky-800 dark:text-sky-200">
+                            {manualPlanReview
+                              ? "The next submit will open Plan Review before execution."
+                              : "Want to steer the approach first? Start Plan Review."}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant={manualPlanReview ? "default" : "outline"}
+                            className="pointer-events-auto h-6 rounded-full px-2 text-[11px]"
+                            onClick={() => setManualPlanReview((current) => !current)}
+                          >
+                            {manualPlanReview ? "Cancel" : "Start"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : undefined
+                  }
                   onContextChange={(context) => setSettings("context", context)}
                   onSubmit={handleSubmit}
                   onStop={handleStop}

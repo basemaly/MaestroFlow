@@ -16,6 +16,7 @@ from src.gateway.routers import (
     mcp,
     memory,
     models,
+    planning,
     quality,
     skills,
     suggestions,
@@ -145,6 +146,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
                 "description": "Manage IM channel integrations (Feishu, Slack, Telegram)",
             },
             {
+                "name": "planning",
+                "description": "Plan review, Executive first-turn steering, and clarification flows for complex tasks",
+            },
+            {
                 "name": "quality",
                 "description": "Subagent output quality scores per thread",
             },
@@ -208,6 +213,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Executive control plane API is mounted at /api/executive
     app.include_router(executive.router)
+
+    # Planning review API is mounted at /api/planning
+    app.include_router(planning.router)
 
     # External service health API is mounted at /api/health
     app.include_router(health.router)

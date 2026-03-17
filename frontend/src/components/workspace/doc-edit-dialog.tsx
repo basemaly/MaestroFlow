@@ -389,7 +389,7 @@ export function DocEditStudio({
   }
 
   return (
-    <div className="grid h-full grid-cols-1 overflow-hidden lg:grid-cols-[1.05fr_1.25fr]">
+    <div className="grid h-full grid-cols-1 overflow-hidden xl:grid-cols-[0.98fr_1.32fr] 2xl:grid-cols-[1fr_1.3fr]">
       <div className={cn("overflow-y-auto border-border/70 bg-muted/20 p-6", !embedded && "border-r")}>
         <DocEditStudioHeader title={runTitle} />
 
@@ -1023,11 +1023,12 @@ export function DocEditDialog({
       </SheetTrigger>
       <SheetContent
         side="right"
+        showClose={false}
         className={cn(
-          "flex flex-col gap-0 p-0 transition-all duration-200 [&>[data-slot=sheet-close]]:hidden",
+          "flex flex-col gap-0 p-0 transition-all duration-200",
           isFullscreen
             ? "!inset-0 !h-screen !w-screen !max-w-none rounded-none"
-            : "w-[min(92vw,1440px)] max-w-none",
+            : "w-[min(96vw,1680px)] max-w-none",
         )}
       >
         <SheetHeader className="flex shrink-0 flex-row items-center justify-between border-b px-4 py-2">

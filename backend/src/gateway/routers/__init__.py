@@ -1,4 +1,4 @@
-from . import agents, artifacts, channels, doc_editing, executive, health, mcp, memory, models, quality, skills, suggestions, surfsense, uploads
+from . import agents, artifacts, channels, doc_editing, executive, health, mcp, memory, models, planning, quality, skills, suggestions, surfsense, uploads
 
 __all__ = [
     "agents",
@@ -10,6 +10,7 @@ __all__ = [
     "mcp",
     "memory",
     "models",
+    "planning",
     "quality",
     "skills",
     "suggestions",

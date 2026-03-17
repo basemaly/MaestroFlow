@@ -408,6 +408,9 @@ For each sub-chapter, follow the **"Visual Anchor → Data Contrast → Integrat
    > **Source Rule**: Every number in the table must come from the Data Summary. No hallucinations.
 3. **Integrated Narrative Analysis**: Write analytical text following "What → Why → So What"
    > **Narrative Rule**: Narrative must explain the *provided* data. Do not make claims unsupported by the inputs.
+4. **Inline Citation Markers**: Add body-level citations immediately after externally supported claims using `[citation:Source Title](URL)`
+   > **Citation Rule**: If a sentence, benchmark, policy statement, or comparison depends on external research, attach the citation marker directly to that sentence or the paragraph containing it.
+   > **Traceability Rule**: A reader must be able to see where each source is being used in the body, not only in the final References section.
 
 Each sub-chapter must end with a robust analytical paragraph (min. 200 words) that:
 - Synthesizes conflicting or reinforcing data points
@@ -426,6 +429,8 @@ Additionally verify:
 - All charts generated in Step 2.3 are embedded in the correct sub-chapters
 - Chart file paths in `![](path)` references are valid
 - Sub-chapters without charts have comparison tables as visual anchors
+- Externally supported claims include inline body citations
+- The References section contains linked sources that are actually cited in the body
 
 The report **MUST NOT** stop after the Conclusion — it **MUST** include References as the final section.
 
@@ -466,7 +471,9 @@ Every insight must connect **Data → User Psychology → Strategy Implication**
 ```
 
 ### References
-- **Inline**: Use markdown links for sources (e.g. `[Source Title](URL)`) when using External Search Findings
+- **Inline body citations are mandatory** when using External Search Findings
+- **Inline format**: Use `[citation:Source Title](URL)` immediately after the sentence or paragraph the source supports
+- **Coverage rule**: Do not place sources only in the References section without showing where they support the body analysis
 - **References section**: Formatted strictly per **GB/T 7714-2015**
 
 ### Markdown Rules
@@ -492,7 +499,7 @@ Every insight must connect **Data → User Psychology → Strategy Implication**
 |--------|---------|--------|
 | ... | ... | ... |
 
-[Integrated narrative analysis: What → Why → So What, min. 200 words]
+[Integrated narrative analysis: What → Why → So What, min. 200 words, with inline body citations such as `[citation:Source Title](URL)` placed immediately after supported claims]
 
 > [Optional: One-liner strategic truth]
 
@@ -598,7 +605,8 @@ After data collection, user provides: Analysis Framework + Data Summary with bra
 - [ ] All headings use proper numbering (no "Chapter/Part/Section" prefixes)
 - [ ] Charts are embedded with `![Description](path)` syntax
 - [ ] Numbers use English commas for thousands separators
-- [ ] Inline references use markdown links where applicable
+- [ ] Externally supported claims have inline body citations at the point of use
+- [ ] References section sources are linked and traceable back to body citations
 - [ ] References section follows GB/T 7714-2015
 - [ ] No horizontal rules (`---`) in the document
 - [ ] Conclusion uses flowing prose — no bullet points
@@ -608,7 +616,17 @@ After data collection, user provides: Analysis Framework + Data Summary with bra
 ## Output Format
 
 - **Phase 1**: Output the complete Analysis Framework in **Markdown** format
-- **Phase 2**: Output the complete Report in **Markdown** format
+- **Phase 2**: Write the complete Report in **Markdown** format to a file under `/mnt/user-data/outputs`, present that file as the primary deliverable, and keep the visible chat response brief
+
+### Phase 2 Delivery Contract
+
+- The markdown report file is the source-of-truth deliverable
+- After saving and presenting the file, return only a short chat handoff:
+  - confirm the report is ready
+  - mention the output filename or artifact
+  - optionally include a 2-4 sentence executive summary
+- Do **not** paste the full report body into the chat window after presenting the file
+- If the user explicitly asks to also show the full report inline, then and only then include the full markdown in chat
 
 ## Settings
 
