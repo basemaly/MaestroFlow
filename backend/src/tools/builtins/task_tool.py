@@ -20,6 +20,7 @@ from src.observability import get_current_observation_id, make_trace_id, observe
 from src.research.registry import inject_research_hints
 from src.subagents import SubagentExecutor, get_subagent_config
 from src.subagents.executor import SubagentStatus, cleanup_background_task, get_background_task_result
+from src.subagents.llm_judge import judge_async
 from src.subagents.mab import select_subagent
 from src.subagents.quality import score_async, score_result
 
@@ -302,6 +303,12 @@ def task_tool(
                     task_category=task_category,
                     artifact=artifact,
                     precomputed_score=quality,
+                    trace_id=result.trace_id,
+                )
+                judge_async(
+                    result.result,
+                    trace_id=result.trace_id,
+                    subagent_type=subagent_type,
                 )
                 artifact_header = format_artifact_header(artifact)
                 if not artifact.is_valid:

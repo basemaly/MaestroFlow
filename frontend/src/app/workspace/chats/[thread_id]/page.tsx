@@ -54,7 +54,7 @@ export default function ChatPage() {
     router.replace("/workspace/chats/new");
   }, [isInvalidThreadRoute, router]);
 
-  const [thread, sendMessage, serviceWarning] = useThreadStream({
+  const [thread, sendMessage, serviceWarning, isRecursionError, continueResearch] = useThreadStream({
     threadId: isNewThread || isInvalidThreadRoute ? undefined : threadId,
     context: settings.context,
     isMock,
@@ -95,7 +95,7 @@ export default function ChatPage() {
     await thread.stop();
   }, [thread]);
 
-  if (isNewThread && !isHydrated) {
+  if (!isHydrated) {
     return <div className="bg-background size-full" />;
   }
 
@@ -129,7 +129,17 @@ export default function ChatPage() {
             {(serviceWarning ?? submitWarning) && (
               <Alert className="mx-auto mt-2 mb-2 max-w-(--container-width-md) border-amber-500/30 bg-amber-500/8 text-amber-950 dark:text-amber-100">
                 <AlertTitle>Chat service warning</AlertTitle>
-                <AlertDescription>{serviceWarning ?? submitWarning}</AlertDescription>
+                <AlertDescription>
+                  {serviceWarning ?? submitWarning}
+                  {isRecursionError && (
+                    <button
+                      onClick={() => void continueResearch()}
+                      className="ml-3 inline-flex items-center rounded bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-700 focus:outline-none"
+                    >
+                      Continue
+                    </button>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
             <div className="flex size-full justify-center">

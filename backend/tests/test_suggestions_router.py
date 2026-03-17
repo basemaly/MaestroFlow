@@ -66,7 +66,8 @@ def test_generate_suggestions_returns_empty_on_model_error(monkeypatch):
     assert result.suggestions == []
 
 
-def test_generate_suggestions_uses_fallback_for_rate_limited_model(monkeypatch):
+def test_generate_suggestions_uses_claude_directly_when_requested(monkeypatch):
+    # Claude is no longer rate-limited; the requested model is used directly.
     req = suggestions.SuggestionsRequest(
         messages=[suggestions.SuggestionMessage(role="user", content="Hi")],
         n=2,
@@ -75,8 +76,6 @@ def test_generate_suggestions_uses_fallback_for_rate_limited_model(monkeypatch):
     fake_model = MagicMock()
     fake_model.invoke.return_value = MagicMock(content='["Q1", "Q2"]')
     captured: dict[str, object] = {}
-
-    monkeypatch.setattr(suggestions, "resolve_lightweight_fallback_model", lambda: "gpt-4o-mini")
 
     def _fake_create_chat_model(**kwargs):
         captured.update(kwargs)
@@ -87,4 +86,4 @@ def test_generate_suggestions_uses_fallback_for_rate_limited_model(monkeypatch):
     result = asyncio.run(suggestions.generate_suggestions("t1", req))
 
     assert result.suggestions == ["Q1", "Q2"]
-    assert captured["name"] == "gpt-4o-mini"
+    assert captured["name"] == "claude-sonnet-4-6"

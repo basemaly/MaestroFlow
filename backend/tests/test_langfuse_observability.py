@@ -1,29 +1,84 @@
+"""Tests for src/observability/langfuse.py (v4 SDK) and related modules."""
+
 from __future__ import annotations
 
-from langchain.chat_models import BaseChatModel
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.config import langfuse_config as langfuse_config_module
 from src.models import factory as factory_module
 from src.observability import langfuse as langfuse_module
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-class FakeChatModel(BaseChatModel):
-    captured_kwargs: dict = {}
+class FakePromptClient:
+    def __init__(self, text: str) -> None:
+        self.prompt = text
 
-    def __init__(self, **kwargs):
-        FakeChatModel.captured_kwargs = dict(kwargs)
-        super().__init__(**kwargs)
 
-    @property
-    def _llm_type(self) -> str:
-        return "fake"
+class FakeLangfuseClient:
+    """Minimal fake for the v4 Langfuse singleton."""
 
-    def _generate(self, *args, **kwargs):  # type: ignore[override]
-        raise NotImplementedError
+    def __init__(self) -> None:
+        self.scores: list[dict] = []
+        self.prompts_created: list[dict] = []
+        self.prompt_responses: dict[str, str] = {}
+        self.dataset_items: list[dict] = []
+        self.datasets_created: list[str] = []
+        self._cm_span = MagicMock()
+        self._cm_span.update = MagicMock()
+        self._cm_span.set_trace_io = MagicMock()
+        self._cm_span.trace_id = "trace-fake"
+        self._cm_span.id = "span-fake"
 
-    def _stream(self, *args, **kwargs):  # type: ignore[override]
-        raise NotImplementedError
+    def create_score(self, **kwargs):
+        self.scores.append(kwargs)
 
+    def score_current_trace(self, **kwargs):
+        self.scores.append({"current": True, **kwargs})
+
+    def create_prompt(self, **kwargs):
+        self.prompts_created.append(kwargs)
+
+    def get_prompt(self, name, *, fallback=None, **kwargs):
+        text = self.prompt_responses.get(name, fallback)
+        return FakePromptClient(text)
+
+    def get_current_trace_id(self):
+        return "trace-current"
+
+    def get_current_observation_id(self):
+        return "obs-current"
+
+    def flush(self):
+        pass
+
+    def create_dataset(self, **kwargs):
+        self.datasets_created.append(kwargs.get("name", ""))
+
+    def create_dataset_item(self, **kwargs):
+        self.dataset_items.append(kwargs)
+
+    def start_as_current_observation(self, **kwargs):
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=self._cm_span)
+        cm.__exit__ = MagicMock(return_value=False)
+        return cm
+
+
+def _patch_client(monkeypatch, client=None):
+    """Make _get_client() return `client` (or a fresh FakeLangfuseClient if None)."""
+    fake = client or FakeLangfuseClient()
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: fake)
+    return fake
+
+
+# ---------------------------------------------------------------------------
+# Config tests
+# ---------------------------------------------------------------------------
 
 def test_langfuse_config_auto_enables_with_keys(monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
@@ -37,95 +92,226 @@ def test_langfuse_config_auto_enables_with_keys(monkeypatch):
     assert config.is_configured is True
 
 
-def test_get_langfuse_callback_handler_uses_trace_context(monkeypatch):
-    monkeypatch.setattr(langfuse_module, "_ensure_tracer", lambda: object())
+def test_langfuse_config_disabled_without_keys(monkeypatch):
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_TRACING", raising=False)
+    langfuse_config_module._langfuse_config = None
 
-    handler = langfuse_module.get_langfuse_callback_handler(
-        trace_id="trace-123",
-        parent_observation_id="span-456",
+    config = langfuse_config_module.get_langfuse_config()
+
+    assert config.is_configured is False
+
+
+# ---------------------------------------------------------------------------
+# is_langfuse_healthy / reset_client
+# ---------------------------------------------------------------------------
+
+def test_is_langfuse_healthy_false_when_no_client(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    assert langfuse_module.is_langfuse_healthy() is False
+
+
+def test_is_langfuse_healthy_true_when_client_present(monkeypatch):
+    _patch_client(monkeypatch)
+    assert langfuse_module.is_langfuse_healthy() is True
+
+
+def test_reset_client_clears_state(monkeypatch):
+    fake = FakeLangfuseClient()
+    monkeypatch.setattr(langfuse_module, "_client", fake)
+    monkeypatch.setattr(langfuse_module, "_client_init_failed", False)
+
+    langfuse_module.reset_client()
+
+    assert langfuse_module._client is None
+    assert langfuse_module._client_init_failed is False
+
+
+# ---------------------------------------------------------------------------
+# Scoring helpers
+# ---------------------------------------------------------------------------
+
+def test_score_trace_by_id_calls_create_score(monkeypatch):
+    fake = _patch_client(monkeypatch)
+
+    langfuse_module.score_trace_by_id(
+        "trace-abc",
+        name="quality.composite",
+        value=0.75,
+        data_type="NUMERIC",
+        comment="test run",
     )
 
-    assert handler is not None
-    assert handler.trace_id == "trace-123"
-    assert handler.parent_observation_id == "span-456"
+    assert len(fake.scores) == 1
+    s = fake.scores[0]
+    assert s["trace_id"] == "trace-abc"
+    assert s["name"] == "quality.composite"
+    assert s["value"] == 0.75
 
 
-def test_score_current_trace_posts_to_public_api(monkeypatch):
-    posted: dict = {}
+def test_score_trace_by_id_noop_when_no_client(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    langfuse_module.score_trace_by_id("trace-xyz", name="x", value=1.0)
 
-    monkeypatch.setattr(langfuse_module, "_trace_context", type("Ctx", (), {"get": staticmethod(lambda: "trace-abc")})())
 
-    def fake_post_json(path: str, payload: dict):
-        posted["path"] = path
-        posted["payload"] = payload
-        return {"id": "score-1"}
+def test_score_current_trace_noop_when_no_client(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    langfuse_module.score_current_trace(name="test", value=1.0)
 
-    monkeypatch.setattr(langfuse_module, "_post_json", fake_post_json)
 
-    langfuse_module.score_current_trace(
-        name="winner_score",
-        value=0.91,
-        comment="Selected top candidate",
-        metadata={"workflow_mode": "consensus"},
+def test_score_current_trace_posts_score(monkeypatch):
+    fake = _patch_client(monkeypatch)
+    langfuse_module.score_current_trace(name="winner", value=0.9, comment="great")
+
+    assert len(fake.scores) == 1
+    assert fake.scores[0]["name"] == "winner"
+
+
+# ---------------------------------------------------------------------------
+# get_current_trace_id / get_current_observation_id
+# ---------------------------------------------------------------------------
+
+def test_get_current_trace_id_delegates_to_client(monkeypatch):
+    _patch_client(monkeypatch)
+    assert langfuse_module.get_current_trace_id() == "trace-current"
+
+
+def test_get_current_trace_id_returns_none_when_disabled(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    assert langfuse_module.get_current_trace_id() is None
+
+
+def test_get_current_observation_id_returns_none_when_disabled(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    assert langfuse_module.get_current_observation_id() is None
+
+
+# ---------------------------------------------------------------------------
+# observe_span
+# ---------------------------------------------------------------------------
+
+def test_observe_span_yields_noop_when_no_client(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    with langfuse_module.observe_span("test-span") as obs:
+        assert isinstance(obs, langfuse_module._NoOpObservation)
+
+
+def test_observe_span_yields_handle_when_client_present(monkeypatch):
+    _patch_client(monkeypatch)
+
+    with langfuse_module.observe_span("test-span", input={"key": "val"}) as obs:
+        assert isinstance(obs, langfuse_module._ObservationHandle)
+        obs.update(output={"result": "done"})
+
+
+def test_observe_span_noop_handle_is_safe():
+    noop = langfuse_module._NoOpObservation()
+    noop.update(output="x", input="y", metadata={})
+    noop.set_trace_io(input="a", output="b")
+    assert noop.trace_id is None
+    assert noop.observation_id is None
+
+
+def test_observe_span_marks_error_on_exception(monkeypatch):
+    fake = _patch_client(monkeypatch)
+
+    with pytest.raises(ValueError):
+        with langfuse_module.observe_span("failing-span"):
+            raise ValueError("boom")
+
+    fake._cm_span.update.assert_called()
+    call_kwargs = fake._cm_span.update.call_args_list[-1][1]
+    assert call_kwargs.get("level") == "ERROR"
+
+
+# ---------------------------------------------------------------------------
+# get_langfuse_callback_handler
+# ---------------------------------------------------------------------------
+
+def test_get_langfuse_callback_handler_returns_none_when_disabled(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    assert langfuse_module.get_langfuse_callback_handler() is None
+
+
+def test_get_langfuse_callback_handler_returns_handler_when_enabled(monkeypatch):
+    _patch_client(monkeypatch)
+    fake_handler = object()
+
+    with patch("langfuse.langchain.CallbackHandler", return_value=fake_handler):
+        handler = langfuse_module.get_langfuse_callback_handler(trace_id="t1")
+
+    assert handler is fake_handler
+
+
+# ---------------------------------------------------------------------------
+# Prompt Management
+# ---------------------------------------------------------------------------
+
+def test_get_managed_prompt_returns_formatted_fallback_when_no_client(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    result = langfuse_module.get_managed_prompt(
+        "some.prompt",
+        fallback="Hello {greeting}!",
+        greeting="world",
     )
-
-    assert posted["path"] == "/api/public/scores"
-    assert posted["payload"]["traceId"] == "trace-abc"
-    assert posted["payload"]["name"] == "winner_score"
-    assert posted["payload"]["value"] == 0.91
-    assert posted["payload"]["comment"] == "Selected top candidate"
-    assert posted["payload"]["metadata"] == {"workflow_mode": "consensus"}
+    assert result == "Hello world!"
 
 
-def test_observe_span_upserts_trace_and_tracks_context(monkeypatch):
-    posted: list[tuple[str, dict]] = []
+def test_get_managed_prompt_returns_raw_fallback_without_vars(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    result = langfuse_module.get_managed_prompt("some.prompt", fallback="Static text")
+    assert result == "Static text"
 
-    class FakeContextManager:
-        def __init__(self, span):
-            self.span = span
 
-        def __enter__(self):
-            return self.span
+def test_get_managed_prompt_fetches_from_langfuse(monkeypatch):
+    fake = _patch_client(monkeypatch)
+    fake.prompt_responses["maestroflow.test"] = "Custom prompt {x}"
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+    result = langfuse_module.get_managed_prompt(
+        "maestroflow.test",
+        fallback="fallback",
+        x="value",
+    )
+    assert result == "Custom prompt value"
 
-    class FakeSpan:
-        def __init__(self):
-            self.attributes = {}
 
-        def get_span_context(self):
-            return type("Ctx", (), {"span_id": int("1234abcd1234abcd", 16)})()
+def test_get_managed_prompt_seeds_if_langfuse_returns_fallback(monkeypatch):
+    fake = _patch_client(monkeypatch)
+    fake.prompt_responses["new.prompt"] = "seed text"  # same text as fallback
 
-        def set_attribute(self, key, value):
-            self.attributes[key] = value
+    seeded: list[str] = []
+    monkeypatch.setattr(langfuse_module, "_seed_prompt_background", lambda name, text: seeded.append(name))
 
-        def record_exception(self, exc):
-            self.attributes["exception"] = str(exc)
+    langfuse_module.get_managed_prompt("new.prompt", fallback="seed text")
 
-        def set_status(self, status):
-            self.attributes["status"] = status
+    assert "new.prompt" in seeded
 
-    class FakeTracer:
-        def __init__(self):
-            self.span = FakeSpan()
 
-        def start_as_current_span(self, *_args, **_kwargs):
-            return FakeContextManager(self.span)
+def test_upsert_prompt_returns_false_when_no_client(monkeypatch):
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
+    assert langfuse_module.upsert_prompt("some.prompt", "text") is False
 
-    monkeypatch.setattr(langfuse_module, "_ensure_tracer", lambda: FakeTracer())
-    monkeypatch.setattr(langfuse_module, "_build_parent_context", lambda trace_id, parent_id: None)
-    monkeypatch.setattr(langfuse_module, "_upsert_trace", lambda **kwargs: posted.append(("/api/public/traces", kwargs)))
 
-    with langfuse_module.observe_span("demo-span", trace_id="a" * 32, input={"hello": "world"}) as observation:
-        assert langfuse_module.get_current_trace_id() == "a" * 32
-        assert langfuse_module.get_current_observation_id() == "1234abcd1234abcd"
-        observation.update(output={"done": True}, metadata={"stage": 1})
+def test_upsert_prompt_creates_prompt_in_langfuse(monkeypatch):
+    fake = _patch_client(monkeypatch)
+    result = langfuse_module.upsert_prompt("maestroflow.test", "my text", labels=["staging"])
+    assert result is True
+    assert fake.prompts_created[0]["name"] == "maestroflow.test"
+    assert fake.prompts_created[0]["prompt"] == "my text"
 
-    assert posted[0][1]["trace_id"] == "a" * 32
-    assert posted[0][1]["name"] == "demo-span"
-    assert posted[0][1]["input"] == {"hello": "world"}
-    assert posted[1][1]["output"] == {"done": True}
+
+# ---------------------------------------------------------------------------
+# model factory integration
+# ---------------------------------------------------------------------------
+
+class _FakeChatModel:
+    def __init__(self, **kwargs):
+        self.callbacks: list = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake"
 
 
 def test_create_chat_model_attaches_langfuse_callback(monkeypatch):
@@ -150,7 +336,7 @@ def test_create_chat_model_attaches_langfuse_callback(monkeypatch):
     )
 
     monkeypatch.setattr(factory_module, "get_app_config", lambda: config)
-    monkeypatch.setattr(factory_module, "resolve_class", lambda path, base: FakeChatModel)
+    monkeypatch.setattr(factory_module, "resolve_class", lambda path, base: _FakeChatModel)
     monkeypatch.setattr(factory_module, "is_tracing_enabled", lambda: False)
     handler = object()
     monkeypatch.setattr(factory_module, "get_langfuse_callback_handler", lambda **kwargs: handler)

@@ -685,24 +685,18 @@ class TestModelResolution:
 
         return importlib.reload(executor)
 
-    def test_get_model_name_uses_fallback_for_rate_limited_parent(
+    def test_get_model_name_inherit_passes_through_claude_parent(
         self, executor_module, classes
     ):
+        # Claude is no longer rate-limited; "inherit" returns the parent model directly.
         config = classes["SubagentConfig"](
             name="test-agent",
             description="Test agent",
             system_prompt="You are a test agent.",
             model="inherit",
         )
-
-        with patch.object(
-            executor_module,
-            "resolve_lightweight_fallback_model",
-            return_value="gpt-4o-mini",
-        ):
-            resolved = executor_module._get_model_name(config, "claude-sonnet-4-6")
-
-        assert resolved == "gpt-4o-mini"
+        resolved = executor_module._get_model_name(config, "claude-sonnet-4-6")
+        assert resolved == "claude-sonnet-4-6"
 
 
 # -----------------------------------------------------------------------------

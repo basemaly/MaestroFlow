@@ -81,6 +81,7 @@ def _make_result(
         ai_messages=ai_messages or [],
         result=result,
         error=error,
+        trace_id=None,
     )
 
 

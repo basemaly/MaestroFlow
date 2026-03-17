@@ -161,6 +161,7 @@ export const zhCN: Translations = {
     agents: "智能体",
     docEdits: "文档编辑",
     newDocEdit: "新建文档编辑",
+    executive: "执行控制台",
   },
 
   // Agents

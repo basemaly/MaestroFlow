@@ -20,4 +20,6 @@ export interface AgentThreadContext extends Record<string, unknown> {
   reasoning_effort?: "minimal" | "low" | "medium" | "high";
   subagent_model?: string;
   agent_name?: string;
+  /** Opt-in research tool group names to enable, e.g. ["opt:exa", "opt:serper"] */
+  research_tools?: string[];
 }

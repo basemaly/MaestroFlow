@@ -32,6 +32,7 @@ import { humanMessagePlugins } from "@/core/streamdown";
 import { cn } from "@/lib/utils";
 
 import { CopyButton } from "../copy-button";
+import { SaveSnippetButton } from "../save-snippet-button";
 
 import { MarkdownContent } from "./markdown-content";
 
@@ -45,6 +46,11 @@ export function MessageListItem({
   isLoading?: boolean;
 }) {
   const isHuman = message.type === "human";
+  const { thread_id } = useParams<{ thread_id: string }>();
+  const messageText =
+    extractContentFromMessage(message) ??
+    extractReasoningContentFromMessage(message) ??
+    "";
   return (
     <AIElementMessage
       className={cn("group/conversation-message relative w-full", className)}
@@ -63,13 +69,10 @@ export function MessageListItem({
           )}
         >
           <div className="flex gap-1">
-            <CopyButton
-              clipboardData={
-                extractContentFromMessage(message) ??
-                extractReasoningContentFromMessage(message) ??
-                ""
-              }
-            />
+            <CopyButton clipboardData={messageText} />
+            {!isHuman && messageText && (
+              <SaveSnippetButton text={messageText} sourceThreadId={thread_id} />
+            )}
           </div>
         </MessageToolbar>
       )}

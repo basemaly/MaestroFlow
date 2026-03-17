@@ -15,6 +15,7 @@ from src.agents.memory.prompt import (
 from src.config.memory_config import get_memory_config
 from src.config.paths import get_paths
 from src.models import create_chat_model
+from src.observability import get_managed_prompt, observe_span
 
 logger = logging.getLogger(__name__)
 
@@ -263,16 +264,28 @@ class MemoryUpdater:
             if not conversation_text.strip():
                 return False
 
-            # Build prompt
-            prompt = MEMORY_UPDATE_PROMPT.format(
+            # Build prompt (fetches from Langfuse Prompt Management if available)
+            prompt_template = get_managed_prompt(
+                "maestroflow.memory.update",
+                fallback=MEMORY_UPDATE_PROMPT,
+                cache_ttl_seconds=300,
+            )
+            prompt = prompt_template.format(
                 current_memory=json.dumps(current_memory, indent=2),
                 conversation=conversation_text,
             )
 
-            # Call LLM
+            # Call LLM inside a traced span
             model = self._get_model()
-            response = model.invoke(prompt)
-            response_text = str(response.content).strip()
+            with observe_span(
+                "memory.extract",
+                as_type="span",
+                input={"thread_id": thread_id, "message_count": len(messages)},
+                metadata={"agent_name": agent_name},
+            ) as span:
+                response = model.invoke(prompt)
+                response_text = str(response.content).strip()
+                span.update(output={"response_chars": len(response_text)})
 
             # Parse response
             # Remove markdown code blocks if present

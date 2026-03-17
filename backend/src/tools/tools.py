@@ -1,12 +1,34 @@
 import logging
+from typing import Any
 
 from langchain.tools import BaseTool
 
-from src.config import get_app_config
+from src.config import get_app_config, is_langfuse_enabled
 from src.reflection import resolve_variable
 from src.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
 
 logger = logging.getLogger(__name__)
+
+
+def _wrap_tool_with_tracing(t: BaseTool) -> BaseTool:
+    """Monkey-patch invoke/ainvoke to add a Langfuse tool span around each call."""
+    original_invoke = t.invoke
+    original_ainvoke = t.ainvoke
+    tool_name = t.name
+
+    def traced_invoke(input: Any, config: Any = None, **kwargs: Any) -> Any:
+        from src.observability import observe_span
+        with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
+            return original_invoke(input, config, **kwargs)
+
+    async def traced_ainvoke(input: Any, config: Any = None, **kwargs: Any) -> Any:
+        from src.observability import observe_span
+        with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
+            return await original_ainvoke(input, config, **kwargs)
+
+    t.invoke = traced_invoke  # type: ignore[method-assign]
+    t.ainvoke = traced_ainvoke  # type: ignore[method-assign]
+    return t
 
 BUILTIN_TOOLS = [
     present_file_tool,
@@ -19,11 +41,26 @@ SUBAGENT_TOOLS = [
 ]
 
 
+def _include_tool_group(tool_group: str, groups: list[str] | None, allowed_extra: set[str]) -> bool:
+    """Determine whether a tool group should be loaded.
+
+    Tools in groups starting with "opt:" are excluded by default and must be
+    explicitly requested via allowed_extra. Standard groups are included unless
+    a groups allowlist is provided.
+    """
+    if tool_group.startswith("opt:"):
+        return tool_group in allowed_extra
+    if groups is None:
+        return True
+    return tool_group in groups
+
+
 def get_available_tools(
     groups: list[str] | None = None,
     include_mcp: bool = True,
     model_name: str | None = None,
     subagent_enabled: bool = False,
+    extra_groups: list[str] | None = None,
 ) -> list[BaseTool]:
     """Get all available tools from config.
 
@@ -31,16 +68,41 @@ def get_available_tools(
     `initialize_mcp_tools()` from src.mcp module.
 
     Args:
-        groups: Optional list of tool groups to filter by.
+        groups: Optional list of tool groups to filter by. None means all non-optional groups.
         include_mcp: Whether to include tools from MCP servers (default: True).
         model_name: Optional model name to determine if vision tools should be included.
         subagent_enabled: Whether to include subagent tools (task, task_status).
+        extra_groups: Optional list of opt-in group names (prefixed "opt:") to include.
+            Tools in groups starting with "opt:" are excluded by default and must be
+            explicitly requested via this parameter.
 
     Returns:
         List of available tools.
     """
     config = get_app_config()
-    loaded_tools = [resolve_variable(tool.use, BaseTool) for tool in config.tools if groups is None or tool.group in groups]
+    allowed_extra: set[str] = set(extra_groups or [])
+
+    # Load from config.tools (ToolConfig list)
+    loaded_tools: list[BaseTool] = []
+    for tool in config.tools:
+        if _include_tool_group(tool.group, groups, allowed_extra):
+            try:
+                loaded_tools.append(resolve_variable(tool.use, BaseTool))
+            except Exception as e:
+                logger.warning("Failed to load tool '%s' from config.tools: %s", tool.name, e)
+
+    # Also load from config.tool_groups entries that have a 'use' field (backward compat)
+    for tg in config.tool_groups:
+        use_path: str | None = getattr(tg, "use", None)
+        tg_group: str = getattr(tg, "group", tg.name)
+        if not use_path:
+            continue
+        if not _include_tool_group(tg_group, groups, allowed_extra):
+            continue
+        try:
+            loaded_tools.append(resolve_variable(use_path, BaseTool))
+        except Exception as e:
+            logger.warning("Failed to load tool '%s' from tool_groups: %s", tg.name, e)
 
     # Get cached MCP tools if enabled
     # NOTE: We use ExtensionsConfig.from_file() instead of config.extensions
@@ -81,4 +143,9 @@ def get_available_tools(
         builtin_tools.append(view_image_tool)
         logger.info(f"Including view_image_tool for model '{model_name}' (supports_vision=True)")
 
-    return loaded_tools + builtin_tools + mcp_tools
+    all_tools = loaded_tools + builtin_tools + mcp_tools
+
+    if is_langfuse_enabled():
+        all_tools = [_wrap_tool_with_tracing(t) for t in all_tools]
+
+    return all_tools

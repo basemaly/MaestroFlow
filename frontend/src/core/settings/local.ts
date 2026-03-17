@@ -8,6 +8,7 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
     model_name: undefined,
     mode: undefined,
     reasoning_effort: undefined,
+    research_tools: [],
   },
   layout: {
     sidebar_collapsed: false,

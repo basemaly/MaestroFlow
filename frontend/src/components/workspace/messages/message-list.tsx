@@ -1,5 +1,5 @@
 import type { BaseStream } from "@langchain/langgraph-sdk/react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import {
   Conversation,
@@ -63,8 +63,14 @@ export function MessageList({
   const rehypePlugins = useRehypeSplitWordsIntoSpans(thread.isLoading);
   const updateSubtask = useUpdateSubtask();
   const messages = thread.messages;
+  // Track which threads we've already fetched quality scores for to avoid redundant requests.
+  const fetchedThreadsRef = useRef(new Set<string>());
 
   useEffect(() => {
+    if (fetchedThreadsRef.current.has(threadId)) {
+      return;
+    }
+
     const taskIds = new Set<string>();
     for (const message of messages) {
       if (message.type !== "ai") {
@@ -80,6 +86,7 @@ export function MessageList({
       return;
     }
 
+    fetchedThreadsRef.current.add(threadId);
     const controller = new AbortController();
     fetch(`${getBackendBaseURL()}/api/threads/${threadId}/quality/`, {
       signal: controller.signal,

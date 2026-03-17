@@ -21,7 +21,7 @@ def test_surfsense_config_resolves_project_mapping(monkeypatch):
 
     config = get_surfsense_config()
 
-    assert config.api_base_url == "http://localhost:3004/api/v1"
+    assert config.api_base_url == "http://127.0.0.1:3004/api/v1"
     assert config.bearer_token == "service-token"
     assert config.resolve_search_space_id(project_key="maestro") == 99
     assert config.resolve_search_space_id() == 12

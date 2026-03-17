@@ -1,5 +1,6 @@
 """Upload router for handling file uploads."""
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -50,6 +51,9 @@ def get_uploads_dir(thread_id: str) -> Path:
 async def convert_file_to_markdown(file_path: Path) -> Path | None:
     """Convert a file to markdown using markitdown.
 
+    Runs the CPU-bound conversion in a thread pool so it doesn't block
+    the FastAPI event loop during PDF/Word/Excel processing.
+
     Args:
         file_path: Path to the file to convert.
 
@@ -59,12 +63,14 @@ async def convert_file_to_markdown(file_path: Path) -> Path | None:
     try:
         from markitdown import MarkItDown
 
-        md = MarkItDown()
-        result = md.convert(str(file_path))
+        def _run_conversion() -> str:
+            return MarkItDown().convert(str(file_path)).text_content
 
-        # Save as .md file with same name
+        loop = asyncio.get_running_loop()
+        text_content = await loop.run_in_executor(None, _run_conversion)
+
         md_path = file_path.with_suffix(".md")
-        md_path.write_text(result.text_content, encoding="utf-8")
+        md_path.write_text(text_content, encoding="utf-8")
 
         logger.info(f"Converted {file_path.name} to markdown: {md_path.name}")
         return md_path

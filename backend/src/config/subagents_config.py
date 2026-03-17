@@ -29,6 +29,12 @@ class SubagentsAppConfig(BaseModel):
         ge=1,
         description="Default timeout in seconds for all subagents (default: 900 = 15 minutes)",
     )
+    max_concurrent: int = Field(
+        default=3,
+        ge=1,
+        le=4,
+        description="Default max number of concurrent subagents the lead agent may fan out to.",
+    )
     agents: dict[str, SubagentOverrideConfig] = Field(
         default_factory=dict,
         description="Per-agent configuration overrides keyed by agent name",

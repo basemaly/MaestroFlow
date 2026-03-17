@@ -1,3 +1,18 @@
-from . import artifacts, doc_editing, mcp, models, skills, suggestions, surfsense, uploads
+from . import agents, artifacts, channels, doc_editing, executive, health, mcp, memory, models, quality, skills, suggestions, surfsense, uploads
 
-__all__ = ["artifacts", "doc_editing", "mcp", "models", "skills", "suggestions", "surfsense", "uploads"]
+__all__ = [
+    "agents",
+    "artifacts",
+    "channels",
+    "doc_editing",
+    "executive",
+    "health",
+    "mcp",
+    "memory",
+    "models",
+    "quality",
+    "skills",
+    "suggestions",
+    "surfsense",
+    "uploads",
+]

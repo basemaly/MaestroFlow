@@ -2,15 +2,25 @@
 
 import {
   CheckCircle2Icon,
+  DiffIcon,
   FilePenLineIcon,
   Loader2Icon,
+  Maximize2Icon,
   MedalIcon,
+  Minimize2Icon,
   PaperclipIcon,
   Settings2Icon,
   SparklesIcon,
+  XIcon,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
+const DiffViewer = dynamic(
+  () => import("./diff-viewer").then((m) => ({ default: m.DiffViewer })),
+  { ssr: false, loading: () => <div className="flex h-40 items-center justify-center text-muted-foreground text-sm">Loading diff view...</div> },
+);
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,14 +32,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -39,6 +41,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -164,13 +174,15 @@ export function DocEditStudio({
   mode,
   initialRun,
   embedded = false,
+  initialDocument = "",
 }: {
   disabled?: boolean;
   mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
   initialRun?: DocEditRun | null;
   embedded?: boolean;
+  initialDocument?: string;
 }) {
-  const [document, setDocument] = useState(initialRun?.document ?? "");
+  const [document, setDocument] = useState(initialRun?.document ?? initialDocument);
   const [skills, setSkills] = useState<string[]>(
     getSelectableSkills(initialRun?.versions?.map((version) => version.skill_name)),
   );
@@ -196,6 +208,7 @@ export function DocEditStudio({
       initialRun?.versions?.[0]?.version_id ??
       null,
   );
+  const [viewMode, setViewMode] = useState<"side-by-side" | "diff">("side-by-side");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { models } = useModels();
 
@@ -376,8 +389,8 @@ export function DocEditStudio({
   }
 
   return (
-    <div className={cn("grid h-full min-h-[70vh] grid-cols-1 lg:grid-cols-[1.05fr_1.25fr]", embedded && "min-h-0")}>
-      <div className={cn("border-border/70 bg-muted/20 p-6", !embedded && "border-r")}>
+    <div className="grid h-full grid-cols-1 overflow-hidden lg:grid-cols-[1.05fr_1.25fr]">
+      <div className={cn("overflow-y-auto border-border/70 bg-muted/20 p-6", !embedded && "border-r")}>
         <DocEditStudioHeader title={runTitle} />
 
         <div className="space-y-5">
@@ -697,7 +710,7 @@ export function DocEditStudio({
         </div>
       </div>
 
-      <div className="bg-background p-6">
+      <div className="flex flex-col overflow-hidden bg-background p-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="text-sm font-medium">Review & Compare</div>
@@ -761,40 +774,73 @@ export function DocEditStudio({
         )}
 
         {(document || comparedVersion) && (
-          <div className="mb-6 grid gap-4 lg:grid-cols-2">
-            <Card className="gap-3 py-4">
-              <CardHeader className="px-4">
-                <CardTitle className="text-base">Original</CardTitle>
-              </CardHeader>
-              <CardContent className="px-4">
-                <div className="bg-muted/30 max-h-80 overflow-auto rounded-lg border p-4 text-sm leading-6 whitespace-pre-wrap">
-                  {document.length > 0
-                    ? document
-                    : (run?.document ?? "No original document available.")}
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="gap-3 py-4">
-              <CardHeader className="px-4">
-                <CardTitle className="text-base">
-                  {comparedVersion ? formatSkillLabel(comparedVersion.skill_name) : "Compared Version"}
-                  {comparedVersion?.model_name ? ` · ${comparedVersion.model_name}` : ""}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-4">
-                <div className="bg-muted/30 max-h-80 overflow-auto rounded-lg border p-4 text-sm leading-6 whitespace-pre-wrap">
-                  {comparedVersion?.output ??
-                    (comparedVersion?.version_id
-                      ? versionsSummaryBySkill.get(comparedVersion.version_id)?.preview
-                      : null) ??
-                    "No compared version available."}
-                </div>
-              </CardContent>
-            </Card>
+          <div className="mb-6">
+            <div className="mb-3 flex items-center gap-2">
+              <Button
+                variant={viewMode === "side-by-side" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("side-by-side")}
+              >
+                Side by Side
+              </Button>
+              <Button
+                variant={viewMode === "diff" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("diff")}
+              >
+                <DiffIcon className="mr-1.5 size-4" />
+                Diff
+              </Button>
+            </div>
+
+            {viewMode === "diff" ? (
+              <DiffViewer
+                original={document.length > 0 ? document : (run?.document ?? "")}
+                modified={
+                  comparedVersion?.output ??
+                  (comparedVersion?.version_id
+                    ? versionsSummaryBySkill.get(comparedVersion.version_id)?.preview ?? ""
+                    : "")
+                }
+                className="max-h-96"
+              />
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="gap-3 py-4">
+                  <CardHeader className="px-4">
+                    <CardTitle className="text-base">Original</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4">
+                    <div className="bg-muted/30 max-h-80 overflow-auto rounded-lg border p-4 text-sm leading-6 whitespace-pre-wrap">
+                      {document.length > 0
+                        ? document
+                        : (run?.document ?? "No original document available.")}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="gap-3 py-4">
+                  <CardHeader className="px-4">
+                    <CardTitle className="text-base">
+                      {comparedVersion ? formatSkillLabel(comparedVersion.skill_name) : "Compared Version"}
+                      {comparedVersion?.model_name ? ` · ${comparedVersion.model_name}` : ""}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4">
+                    <div className="bg-muted/30 max-h-80 overflow-auto rounded-lg border p-4 text-sm leading-6 whitespace-pre-wrap">
+                      {comparedVersion?.output ??
+                        (comparedVersion?.version_id
+                          ? versionsSummaryBySkill.get(comparedVersion.version_id)?.preview
+                          : null) ??
+                        "No compared version available."}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
         )}
 
-        <ScrollArea className={cn("pr-3", embedded ? "h-[32rem]" : "h-[calc(70vh-24rem)]")}>
+        <ScrollArea className="min-h-0 flex-1 pr-3">
           <div className="space-y-4">
             {sortedVersions.length === 0 && (
               <Card className="py-4">
@@ -923,9 +969,48 @@ export function DocEditDialog({
   disabled?: boolean;
   mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
 }) {
+  const [mounted, setMounted] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [studioKey, setStudioKey] = useState(0);
+  const [prefillDoc, setPrefillDoc] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Listen for cross-component "open with content" events (e.g. from artifact panel)
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ content: string }>).detail;
+      setPrefillDoc(detail.content ?? "");
+      setStudioKey((k) => k + 1);
+      setOpen(true);
+    };
+    window.addEventListener("maestroflow:doc-edit-open", handler);
+    return () => window.removeEventListener("maestroflow:doc-edit-open", handler);
+  }, [mounted]);
+
+  if (!mounted) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="rounded-full border-2 px-4"
+        disabled
+      >
+        <FilePenLineIcon className="size-4" />
+        Doc Edit
+      </Button>
+    );
+  }
+
   return (
-    <Dialog>
-      <DialogTrigger asChild>
+    <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (!v) setIsFullscreen(false); }}>
+      <SheetTrigger asChild>
         <Button
           size="sm"
           variant="outline"
@@ -935,16 +1020,59 @@ export function DocEditDialog({
           <FilePenLineIcon className="size-4" />
           Doc Edit
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden p-0">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Parallel Document Editing</DialogTitle>
-          <DialogDescription>
-            Paste or upload a document, run multiple editorial passes, then compare and select the final version.
-          </DialogDescription>
-        </DialogHeader>
-        <DocEditStudio disabled={disabled} mode={mode} />
-      </DialogContent>
-    </Dialog>
+      </SheetTrigger>
+      <SheetContent
+        side="right"
+        className={cn(
+          "flex flex-col gap-0 p-0 transition-all duration-200 [&>[data-slot=sheet-close]]:hidden",
+          isFullscreen
+            ? "!inset-0 !h-screen !w-screen !max-w-none rounded-none"
+            : "w-[min(92vw,1440px)] max-w-none",
+        )}
+      >
+        <SheetHeader className="flex shrink-0 flex-row items-center justify-between border-b px-4 py-2">
+          <SheetTitle className="flex items-center gap-2 text-base font-semibold">
+            <FilePenLineIcon className="size-4" />
+            Doc Edit
+          </SheetTitle>
+          <SheetDescription className="sr-only">
+            Parallel document editing studio
+          </SheetDescription>
+          <div className="flex items-center gap-1">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => setIsFullscreen((v) => !v)}
+              title={isFullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
+            >
+              {isFullscreen ? (
+                <Minimize2Icon className="size-4" />
+              ) : (
+                <Maximize2Icon className="size-4" />
+              )}
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => setOpen(false)}
+              title="Close"
+            >
+              <XIcon className="size-4" />
+            </Button>
+          </div>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <DocEditStudio
+            key={studioKey}
+            disabled={disabled}
+            mode={mode}
+            initialDocument={prefillDoc}
+          />
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
+
+// Alias kept for backwards compatibility
+export { DocEditDialog as DocEditSheet };

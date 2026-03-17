@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import difflib
 import re
+import threading
 from collections.abc import Iterable
 
 from src.config.app_config import get_app_config
 
-RATE_LIMITED_MODEL_PREFIXES = ("claude-",)
+# No models are considered rate-limited for concurrency purposes.
+# Claude's API handles 3 concurrent requests without issue; LiteLLM manages retries.
+RATE_LIMITED_MODEL_PREFIXES: tuple[()] = ()
+
 LIGHTWEIGHT_FALLBACK_MODELS = (
     "gpt-5-2-mini",
     "gemini-2-5-flash",
@@ -80,6 +84,89 @@ def first_configured_model(candidates: Iterable[str]) -> str | None:
 
 def resolve_lightweight_fallback_model() -> str | None:
     return first_configured_model(LIGHTWEIGHT_FALLBACK_MODELS)
+
+
+# ---------------------------------------------------------------------------
+# Diverse subagent model selection
+# ---------------------------------------------------------------------------
+
+# Maps a parent model's family to an ordered list of candidate subagent models.
+# Ordered fast-first but includes strong options so that when 3 subagents run in
+# parallel they naturally spread across a fast + fast + strong spread.
+# Each list is from a *different* family than the parent key.
+_DIVERSE_CANDIDATES: dict[str, tuple[str, ...]] = {
+    "claude": (
+        "gemini-2-5-flash",       # fast, different provider
+        "gpt-4-1-mini",           # fast, different provider
+        "gemini-2-5-pro",         # strong, different provider
+        "gpt-4-1",                # strong, different provider
+        "mirothinker-30b",        # local research specialist
+        "qwen-32b-coder-lan",     # local strong fallback
+        "qwen-7b-coder-lan",      # local fast fallback
+    ),
+    "gemini": (
+        "claude-haiku-4-5",       # fast, different provider
+        "gpt-4-1-mini",           # fast, different provider
+        "claude-sonnet-4-6",      # strong, different provider
+        "gpt-4-1",                # strong, different provider
+        "mirothinker-30b",        # local research specialist
+        "qwen-32b-coder-lan",     # local strong fallback
+        "qwen-7b-coder-lan",      # local fast fallback
+    ),
+    "gpt": (
+        "gemini-2-5-flash",       # fast, different provider
+        "claude-haiku-4-5",       # fast, different provider
+        "gemini-2-5-pro",         # strong, different provider
+        "claude-sonnet-4-6",      # strong, different provider
+        "mirothinker-30b",        # local research specialist
+        "qwen-32b-coder-lan",     # local strong fallback
+    ),
+    "local": (
+        "gemini-2-5-flash",       # fast cloud
+        "gpt-4-1-mini",           # fast cloud
+        "claude-haiku-4-5",       # fast cloud
+        "gemini-2-5-pro",         # strong cloud
+        "mirothinker-30b",        # peer local research specialist
+    ),
+}
+_FAMILY_PREFIXES: dict[str, tuple[str, ...]] = {
+    "claude": ("claude-",),
+    "gemini": ("gemini-",),
+    "gpt": ("gpt-", "o1-", "o3-", "o4-"),
+    "local": ("qwen-", "llama-", "mistral-", "deepseek-", "gemma-", "phi-", "hermes-"),
+}
+
+_diverse_lock = threading.Lock()
+_diverse_index: int = 0
+
+
+def _detect_model_family(model_name: str | None) -> str:
+    """Return the provider family of a model name, or 'unknown'."""
+    if not model_name:
+        return "unknown"
+    for family, prefixes in _FAMILY_PREFIXES.items():
+        if any(model_name.startswith(p) for p in prefixes):
+            return family
+    return "unknown"
+
+
+def resolve_diverse_subagent_model(parent_model: str | None) -> str | None:
+    """Pick a subagent model from a *different* family than the parent.
+
+    Rotates through the candidate list so that when N subagents fire in parallel
+    they each get a different model — e.g. claude-parent → [flash, gpt-mini, pro].
+    Falls back to LIGHTWEIGHT_FALLBACK_MODELS if no candidate is configured.
+    """
+    global _diverse_index
+    family = _detect_model_family(parent_model)
+    candidates = _DIVERSE_CANDIDATES.get(family, ())
+    configured = [m for m in candidates if first_configured_model([m]) is not None]
+    if not configured:
+        return resolve_lightweight_fallback_model()
+    with _diverse_lock:
+        idx = _diverse_index % len(configured)
+        _diverse_index += 1
+    return configured[idx]
 
 
 def _iter_model_records() -> list[tuple[str, str]]:

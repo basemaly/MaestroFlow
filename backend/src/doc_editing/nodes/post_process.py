@@ -72,6 +72,7 @@ async def _generate_mode_version(
         thread_id=state["run_id"],
         task_category="doc-edit",
         precomputed_score=quality,
+        trace_id=state.get("trace_id"),
     )
 
     run_dir = Path(state["run_dir"])

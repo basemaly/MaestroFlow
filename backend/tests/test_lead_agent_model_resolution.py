@@ -84,7 +84,7 @@ def test_make_lead_agent_disables_thinking_when_model_does_not_support_it(monkey
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, **kwargs):
         captured["name"] = name
         captured["thinking_enabled"] = thinking_enabled
         captured["reasoning_effort"] = reasoning_effort
@@ -109,7 +109,7 @@ def test_make_lead_agent_disables_thinking_when_model_does_not_support_it(monkey
     assert result["model"] is not None
 
 
-def test_make_lead_agent_caps_claude_subagent_concurrency(monkeypatch):
+def test_make_lead_agent_respects_requested_concurrency_for_claude(monkeypatch):
     app_config = _make_app_config([_make_model("claude-sonnet-4-6", supports_thinking=True)])
 
     import src.tools as tools_module
@@ -127,7 +127,7 @@ def test_make_lead_agent_caps_claude_subagent_concurrency(monkeypatch):
     monkeypatch.setattr(
         lead_agent_module,
         "create_chat_model",
-        lambda *, name, thinking_enabled, reasoning_effort=None: object(),
+        lambda *, name, thinking_enabled, reasoning_effort=None, **kwargs: object(),
     )
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
 
@@ -143,7 +143,8 @@ def test_make_lead_agent_caps_claude_subagent_concurrency(monkeypatch):
         }
     )
 
-    assert captured["max_concurrent_subagents"] == 1
+    # Claude is no longer rate-limited — full requested concurrency is honoured.
+    assert captured["max_concurrent_subagents"] == 3
 
 
 def test_build_middlewares_uses_resolved_model_name_for_vision(monkeypatch):

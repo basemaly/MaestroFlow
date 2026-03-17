@@ -5,24 +5,13 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response  # PlainTextResponse/Response used for skill archives
 
 from src.gateway.path_utils import resolve_thread_virtual_path
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["artifacts"])
-
-
-def is_text_file_by_content(path: Path, sample_size: int = 8192) -> bool:
-    """Check if file is text by examining content for null bytes."""
-    try:
-        with open(path, "rb") as f:
-            chunk = f.read(sample_size)
-            # Text files shouldn't contain null bytes
-            return b"\x00" not in chunk
-    except Exception:
-        return False
 
 
 def _extract_file_from_skill_archive(zip_path: Path, internal_path: str) -> bytes | None:
@@ -146,13 +135,11 @@ async def get_artifact(thread_id: str, path: str, request: Request) -> FileRespo
     if request.query_params.get("download"):
         return FileResponse(path=actual_path, filename=actual_path.name, media_type=mime_type, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"})
 
-    if mime_type and mime_type == "text/html":
+    if mime_type == "text/html":
         return HTMLResponse(content=actual_path.read_text())
 
-    if mime_type and mime_type.startswith("text/"):
-        return PlainTextResponse(content=actual_path.read_text(), media_type=mime_type)
-
-    if is_text_file_by_content(actual_path):
-        return PlainTextResponse(content=actual_path.read_text(), media_type=mime_type)
-
-    return Response(content=actual_path.read_bytes(), media_type=mime_type, headers={"Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}"})
+    return FileResponse(
+        path=actual_path,
+        media_type=mime_type,
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}"},
+    )

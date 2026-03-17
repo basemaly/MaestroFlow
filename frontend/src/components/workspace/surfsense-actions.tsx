@@ -147,6 +147,7 @@ function describeSearchSpace(
 }
 
 export function SurfSenseActions() {
+  const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [projectKey, setProjectKey] = useState("");
@@ -172,6 +173,10 @@ export function SurfSenseActions() {
     const parsed = Number.parseInt(searchSpaceId, 10);
     return Number.isNaN(parsed) ? undefined : parsed;
   }, [searchSpaceId]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   async function handleSearch() {
     if (!query.trim()) {
@@ -305,6 +310,17 @@ export function SurfSenseActions() {
           Open SurfSense
         </a>
       </Button>
+      {!mounted ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-full border-2 px-4 shadow-none"
+          disabled
+        >
+          <SearchIcon className="size-4" />
+          Search SurfSense Documents
+        </Button>
+      ) : (
       <Dialog
         open={open}
         onOpenChange={(nextOpen) => {
@@ -518,6 +534,7 @@ export function SurfSenseActions() {
           </form>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }

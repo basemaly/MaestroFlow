@@ -1,10 +1,12 @@
 import {
+  BookmarkIcon,
   Code2Icon,
   CopyIcon,
   DownloadIcon,
   EyeIcon,
   LoaderIcon,
   PackageIcon,
+  PenLineIcon,
   SquareArrowOutUpRightIcon,
   XIcon,
 } from "lucide-react";
@@ -33,6 +35,7 @@ import { useArtifactContent } from "@/core/artifacts/hooks";
 import { urlOfArtifact } from "@/core/artifacts/utils";
 import { useI18n } from "@/core/i18n/hooks";
 import { installSkill } from "@/core/skills/api";
+import { useSnippets } from "@/core/snippets";
 import { streamdownPlugins } from "@/core/streamdown";
 import { checkCodeFile, getFileName } from "@/core/utils/files";
 import { env } from "@/env";
@@ -94,6 +97,7 @@ export function ArtifactFileDetail({
   const [viewMode, setViewMode] = useState<"code" | "preview">("code");
   const [isInstalling, setIsInstalling] = useState(false);
   const { isMock } = useThread();
+  const { addSnippet } = useSnippets();
   useEffect(() => {
     if (isSupportPreview) {
       setViewMode("preview");
@@ -211,6 +215,33 @@ export function ArtifactFileDetail({
                   }
                 }}
                 tooltip={t.clipboard.copyToClipboard}
+              />
+            )}
+            {language === "markdown" && isCodeFile && (
+              <ArtifactAction
+                icon={BookmarkIcon}
+                label="Save to Snippets"
+                tooltip="Save to Snippets"
+                disabled={!content}
+                onClick={() => {
+                  addSnippet(displayContent, getFileName(filepath), [], threadId);
+                  toast.success("Saved to Snippet Shelf");
+                }}
+              />
+            )}
+            {language === "markdown" && isCodeFile && (
+              <ArtifactAction
+                icon={PenLineIcon}
+                label="Edit in Doc Edit"
+                tooltip="Edit in Doc Edit"
+                disabled={!content}
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("maestroflow:doc-edit-open", {
+                      detail: { content: displayContent },
+                    }),
+                  );
+                }}
               />
             )}
             {!isWriteFile && (

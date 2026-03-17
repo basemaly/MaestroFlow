@@ -2,13 +2,19 @@
 
 import type { ChatStatus } from "ai";
 import {
+  BookOpenIcon,
   CheckIcon,
+  FlaskConicalIcon,
+  GlobeIcon,
   GraduationCapIcon,
+  LayersIcon,
   LightbulbIcon,
   PaperclipIcon,
   PlusIcon,
+  ShieldCheckIcon,
   SparklesIcon,
   RocketIcon,
+  SearchIcon,
   XIcon,
   ZapIcon,
 } from "lucide-react";
@@ -84,6 +90,129 @@ import { ModeHoverGuide } from "./mode-hover-guide";
 import { Tooltip } from "./tooltip";
 
 type InputMode = "flash" | "thinking" | "pro" | "ultra";
+
+// ---------------------------------------------------------------------------
+// Research Tools definitions
+// ---------------------------------------------------------------------------
+const RESEARCH_TOOLS = [
+  {
+    group: "opt:exa",
+    label: "Exa Neural Search",
+    icon: SearchIcon,
+    tooltip:
+      "Exa finds highly relevant results using AI semantic understanding — great for technical topics, academic papers, and GitHub repositories. More precise than standard web search.",
+  },
+  {
+    group: "opt:serper",
+    label: "Google Search",
+    icon: GlobeIcon,
+    tooltip:
+      "Google Search via Serper gives you real-time web results, current news, and Google's answer boxes. Best for recent events or broad coverage.",
+  },
+  {
+    group: "opt:jina-deepresearch",
+    label: "Jina DeepResearch",
+    icon: LayersIcon,
+    tooltip:
+      "Jina DeepResearch runs multiple rounds of searching and reasoning to build a thorough, cited answer. Slower but much more comprehensive than a single web search.",
+  },
+  {
+    group: "opt:factcheck",
+    label: "Fact Check",
+    icon: ShieldCheckIcon,
+    tooltip:
+      "Automatically verifies key claims in the research against web evidence, marking each as Supported, Refuted, or Uncertain. Adds a reliability layer to AI-generated research.",
+  },
+  {
+    group: "opt:knowledge-universe",
+    label: "Knowledge Universe",
+    icon: BookOpenIcon,
+    tooltip:
+      "Searches 15+ curated sources (arXiv, GitHub, Wikipedia, HuggingFace, StackOverflow, MIT OCW) and scores each result for freshness. Best for finding authoritative academic and technical references.",
+  },
+  {
+    group: "opt:mirothinker",
+    label: "MiroThinker",
+    icon: LightbulbIcon,
+    tooltip:
+      "Runs your query through MiroThinker — a local Qwen3-30B reasoning specialist fine-tuned for deep analytical research. Slower than web search (30-120s) but provides structured, multi-step analysis from a different model family. Great for complex questions that need careful reasoning.",
+  },
+  {
+    group: "opt:miroflow",
+    label: "MiroFlow Pipeline",
+    icon: FlaskConicalIcon,
+    tooltip:
+      "Full MiroFlow autonomous research agent — up to 300 tool calls, E2B code sandbox, web search, and synthesis. Much more powerful than single-model queries but can take 5-30 minutes. Requires the MiroFlow wrapper server to be running on the local LAN.",
+  },
+] as const;
+
+function ResearchToolsMenu({
+  activeGroups,
+  onToggle,
+}: {
+  activeGroups: string[];
+  onToggle: (group: string) => void;
+}) {
+  const activeCount = RESEARCH_TOOLS.filter((t) => activeGroups.includes(t.group)).length;
+
+  return (
+    <PromptInputActionMenu>
+      <Tooltip
+        content={
+          activeCount > 0
+            ? `${activeCount} research tool${activeCount > 1 ? "s" : ""} active`
+            : "Add research tools to boost search quality"
+        }
+      >
+        <PromptInputActionMenuTrigger className="gap-1! px-2!">
+          <FlaskConicalIcon
+            className={cn(
+              "size-3",
+              activeCount > 0 ? "text-accent-foreground" : "text-muted-foreground/50",
+            )}
+          />
+          {activeCount > 0 && (
+            <span className="text-accent-foreground text-xs font-medium">{activeCount}</span>
+          )}
+        </PromptInputActionMenuTrigger>
+      </Tooltip>
+      <PromptInputActionMenuContent className="w-72">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-muted-foreground text-xs">
+            Research Tools
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {RESEARCH_TOOLS.map(({ group, label, icon: Icon, tooltip }) => {
+            const isActive = activeGroups.includes(group);
+            return (
+              <PromptInputActionMenuItem
+                key={group}
+                className={cn(
+                  "cursor-pointer",
+                  isActive ? "text-accent-foreground" : "text-muted-foreground/65",
+                )}
+                onSelect={() => onToggle(group)}
+              >
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-1 font-bold">
+                    <Icon className={cn("mr-2 size-4", isActive && "text-accent-foreground")} />
+                    {label}
+                  </div>
+                  <div className="text-muted-foreground pl-7 text-xs leading-snug">{tooltip}</div>
+                </div>
+                {isActive ? (
+                  <CheckIcon className="ml-auto size-4 shrink-0" />
+                ) : (
+                  <div className="ml-auto size-4 shrink-0" />
+                )}
+              </PromptInputActionMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
+      </PromptInputActionMenuContent>
+    </PromptInputActionMenu>
+  );
+}
 
 function getResolvedMode(
   mode: InputMode | undefined,
@@ -178,6 +307,7 @@ export function InputBox({
       model_name: nextModelName,
       mode: nextMode,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- context spread used for payload only; adding context would cause infinite loop
   }, [context.model_name, context.mode, models, onContextChange]);
 
   const selectedModel = useMemo(() => {
@@ -235,6 +365,17 @@ export function InputBox({
     [onContextChange, context],
   );
 
+  const handleResearchToolToggle = useCallback(
+    (toolGroup: string) => {
+      const current = (context.research_tools as string[] | undefined) ?? [];
+      const next = current.includes(toolGroup)
+        ? current.filter((g) => g !== toolGroup)
+        : [...current, toolGroup];
+      onContextChange?.({ ...context, research_tools: next });
+    },
+    [context, onContextChange],
+  );
+
   const handleSubagentModelSelect = useCallback(
     (model_name: string | undefined) => {
       onContextChange?.({
@@ -246,9 +387,14 @@ export function InputBox({
     [onContextChange, context],
   );
 
-  const subagentDisplayName = useMemo(() => {
-    if (!context.subagent_model) return t.inputBox.subagentModelAuto;
-    return models.find((m) => m.name === context.subagent_model)?.display_name ?? context.subagent_model;
+  const subagentDisplayName = useMemo((): string => {
+    const model =
+      typeof context.subagent_model === "string"
+        ? context.subagent_model
+        : undefined;
+    if (!model) return t.inputBox.subagentModelAuto;
+    const displayName = models.find((m) => m.name === model)?.display_name;
+    return typeof displayName === "string" && displayName.trim() ? displayName : model;
   }, [context.subagent_model, models, t.inputBox.subagentModelAuto]);
 
   const handleSubmit = useCallback(
@@ -273,6 +419,11 @@ export function InputBox({
     form?.requestSubmit();
   }, []);
 
+  // Defer submit by one tick so React can flush the input state update first.
+  const deferredSubmit = useCallback(() => {
+    setTimeout(requestFormSubmit, 0);
+  }, [requestFormSubmit]);
+
   const handleFollowupClick = useCallback(
     (suggestion: string) => {
       if (status === "streaming") {
@@ -286,9 +437,9 @@ export function InputBox({
       }
       textInput.setInput(suggestion);
       setFollowupsHidden(true);
-      setTimeout(() => requestFormSubmit(), 0);
+      deferredSubmit();
     },
-    [requestFormSubmit, status, textInput],
+    [deferredSubmit, status, textInput],
   );
 
   const confirmReplaceAndSend = useCallback(() => {
@@ -300,8 +451,8 @@ export function InputBox({
     setFollowupsHidden(true);
     setConfirmOpen(false);
     setPendingSuggestion(null);
-    setTimeout(() => requestFormSubmit(), 0);
-  }, [pendingSuggestion, requestFormSubmit, textInput]);
+    deferredSubmit();
+  }, [pendingSuggestion, deferredSubmit, textInput]);
 
   const confirmAppendAndSend = useCallback(() => {
     if (!pendingSuggestion) {
@@ -314,8 +465,8 @@ export function InputBox({
     setFollowupsHidden(true);
     setConfirmOpen(false);
     setPendingSuggestion(null);
-    setTimeout(() => requestFormSubmit(), 0);
-  }, [pendingSuggestion, requestFormSubmit, textInput]);
+    deferredSubmit();
+  }, [pendingSuggestion, deferredSubmit, textInput]);
 
   useEffect(() => {
     const streaming = status === "streaming";
@@ -379,7 +530,7 @@ export function InputBox({
         setFollowups(suggestions);
       })
       .catch(() => {
-        setFollowups([]);
+        // On network error, keep previous suggestions rather than clearing them.
       })
       .finally(() => {
         setFollowupsLoading(false);
@@ -711,6 +862,10 @@ export function InputBox({
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
           )}
+          <ResearchToolsMenu
+            activeGroups={(context.research_tools as string[] | undefined) ?? []}
+            onToggle={handleResearchToolToggle}
+          />
         </PromptInputTools>
         <PromptInputTools className={context.mode === "ultra" ? undefined : "hidden"}>
             <ModelSelector

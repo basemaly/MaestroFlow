@@ -3,6 +3,7 @@ import logging
 from langchain.chat_models import BaseChatModel
 
 from src.config import get_app_config, get_tracing_config, is_tracing_enabled
+from src.executive.runtime_overrides import get_default_model_override
 from src.models.routing import is_rate_limited_model, resolve_lightweight_fallback_model
 from src.observability import get_langfuse_callback_handler
 from src.reflection import resolve_class
@@ -110,7 +111,7 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     parent_observation_id = kwargs.pop("parent_observation_id", None)
     config = get_app_config()
     if name is None:
-        name = config.models[0].name
+        name = get_default_model_override() or config.models[0].name
     model_config = config.get_model_config(name)
     if model_config is None:
         raise ValueError(f"Model {name} not found in config") from None

@@ -16,7 +16,7 @@ import type { TaskArtifact, TaskQuality } from "../tasks/types";
 import type { UploadedFileInfo } from "../uploads";
 import { uploadFiles } from "../uploads";
 
-import { normalizeThreadError } from "./errors";
+import { isRecursionLimitError, normalizeThreadError } from "./errors";
 import type { AgentThread, AgentThreadState } from "./types";
 
 export type ToolEndEvent = {
@@ -88,6 +88,7 @@ export function useThreadStream({
   const queryClient = useQueryClient();
   const updateSubtask = useUpdateSubtask();
   const [serviceWarning, setServiceWarning] = useState<string | null>(null);
+  const [isRecursionError, setIsRecursionError] = useState(false);
 
   const thread = useStream<AgentThreadState>({
     client: getAPIClient(isMock),
@@ -211,13 +212,18 @@ export function useThreadStream({
     },
     onFinish(state) {
       setServiceWarning(null);
+      setIsRecursionError(false);
       listeners.current.onFinish?.(state.values);
       void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });
     },
     onError(error) {
+      const recursion = isRecursionLimitError(error);
+      setIsRecursionError(recursion);
       const message = normalizeThreadError(error);
       setServiceWarning(message);
-      toast.error(message);
+      if (!recursion) {
+        toast.error(message);
+      }
     },
   });
 
@@ -392,7 +398,13 @@ export function useThreadStream({
             streamSubgraphs: true,
             streamResumable: true,
             config: {
-              recursion_limit: 50,
+              // Mode-dependent limits: keep low to prevent runaway subagent/plan loops.
+              // Ultra runs up to 3 concurrent subagents; 100 iterations is generous but bounded.
+              recursion_limit:
+                context.mode === "ultra" ? 100
+                : context.mode === "pro" ? 75
+                : context.mode === "thinking" ? 50
+                : 50,
             },
             context: {
               ...extraContext,
@@ -423,7 +435,37 @@ export function useThreadStream({
         } as typeof thread)
       : thread;
 
-  return [mergedThread, sendMessage, serviceWarning] as const;
+  // Re-submit on the same thread to resume from LangGraph checkpoint after recursion error.
+  // LangGraph persists state per thread — re-invoking continues from the last saved step.
+  const continueResearch = useCallback(async () => {
+    const currentThreadId = threadIdRef.current;
+    if (!currentThreadId) return;
+    setIsRecursionError(false);
+    setServiceWarning(null);
+    await thread.submit(
+      { messages: [{ type: "human", content: "__continue__" }] },
+      {
+        threadId: currentThreadId,
+        streamSubgraphs: true,
+        streamResumable: true,
+        config: {
+          recursion_limit:
+            context.mode === "ultra" ? 500
+            : context.mode === "pro" ? 300
+            : 150,
+        },
+        context: {
+          ...context,
+          thinking_enabled: context.mode !== "flash",
+          is_plan_mode: context.mode === "pro" || context.mode === "ultra",
+          subagent_enabled: context.mode === "ultra",
+          thread_id: currentThreadId,
+        },
+      },
+    );
+  }, [thread, context]);
+
+  return [mergedThread, sendMessage, serviceWarning, isRecursionError, continueResearch] as const;
 }
 
 export function useThreads(

@@ -8,18 +8,21 @@ from langchain_core.runnables import RunnableConfig
 from src.agents.lead_agent.prompt import apply_prompt_template
 from src.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from src.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
-from src.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 from src.agents.middlewares.external_service_fallback_middleware import ExternalServiceFallbackMiddleware
 from src.agents.middlewares.memory_middleware import MemoryMiddleware
 from src.agents.middlewares.message_normalization_middleware import MessageNormalizationMiddleware
+from src.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 from src.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
 from src.agents.middlewares.title_middleware import TitleMiddleware
 from src.agents.middlewares.todo_middleware import TodoMiddleware
+from src.agents.middlewares.turn_tracing_middleware import TurnTracingMiddleware
 from src.agents.middlewares.uploads_middleware import UploadsMiddleware
 from src.agents.middlewares.view_image_middleware import ViewImageMiddleware
 from src.agents.thread_state import ThreadState
 from src.config.agents_config import load_agent_config
 from src.config.app_config import get_app_config
+from src.config.subagents_config import get_subagents_app_config
+from src.executive.runtime_overrides import get_default_model_override, get_subagent_concurrency_override
 from src.config.summarization_config import get_summarization_config
 from src.models import create_chat_model
 from src.models.routing import is_rate_limited_model
@@ -44,7 +47,7 @@ def _resolve_max_concurrent_subagents(model_name: str | None, requested_limit: i
 def _resolve_model_name(requested_model_name: str | None = None) -> str:
     """Resolve a runtime model name safely, falling back to default if invalid. Returns None if no models are configured."""
     app_config = get_app_config()
-    default_model_name = app_config.models[0].name if app_config.models else None
+    default_model_name = get_default_model_override() or (app_config.models[0].name if app_config.models else None)
     if default_model_name is None:
         raise ValueError("No chat models are configured. Please configure at least one model in config.yaml.")
 
@@ -234,6 +237,7 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
         List of middleware instances.
     """
     middlewares = [
+        TurnTracingMiddleware(),
         ThreadDataMiddleware(),
         UploadsMiddleware(),
         SandboxMiddleware(),
@@ -268,7 +272,10 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     # Truncate excess task() calls to the concurrency limit (prevents runaway subagent queues).
     subagent_enabled = config.get("configurable", {}).get("subagent_enabled", False)
     if subagent_enabled:
-        max_concurrent_subagents = config.get("configurable", {}).get("max_concurrent_subagents", 3)
+        max_concurrent_subagents = config.get("configurable", {}).get(
+            "max_concurrent_subagents",
+            get_subagent_concurrency_override() or get_subagents_app_config().max_concurrent,
+        )
         middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
 
     middlewares.append(MessageNormalizationMiddleware())
@@ -290,9 +297,15 @@ def make_lead_agent(config: RunnableConfig):
     requested_model_name: str | None = cfg.get("model_name") or cfg.get("model")
     is_plan_mode = cfg.get("is_plan_mode", False)
     subagent_enabled = cfg.get("subagent_enabled", False)
-    max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
+    max_concurrent_subagents = cfg.get(
+        "max_concurrent_subagents",
+        get_subagent_concurrency_override() or get_subagents_app_config().max_concurrent,
+    )
     is_bootstrap = cfg.get("is_bootstrap", False)
     agent_name = cfg.get("agent_name")
+    # research_tools: opt-in group names the user enabled in the UI
+    # e.g. ["opt:exa", "opt:serper", "opt:jina-deepresearch", "opt:factcheck"]
+    research_tools: list[str] = cfg.get("research_tools") or []
 
     agent_config = load_agent_config(agent_name) if not is_bootstrap else None
     # Custom agent model or fallback to global/default model resolution
@@ -350,7 +363,7 @@ def make_lead_agent(config: RunnableConfig):
                 thinking_enabled=thinking_enabled,
                 trace_id=config["metadata"].get("trace_id"),
             ),
-            tools=get_available_tools(model_name=model_name, subagent_enabled=subagent_enabled) + [setup_agent],
+            tools=get_available_tools(model_name=model_name, subagent_enabled=subagent_enabled, extra_groups=research_tools) + [setup_agent],
             middleware=_build_middlewares(config, model_name=model_name),
             system_prompt=system_prompt,
             state_schema=ThreadState,
@@ -364,7 +377,7 @@ def make_lead_agent(config: RunnableConfig):
             reasoning_effort=reasoning_effort,
             trace_id=config["metadata"].get("trace_id"),
         ),
-        tools=get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled),
+        tools=get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled, extra_groups=research_tools),
         middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name),
         system_prompt=apply_prompt_template(subagent_enabled=subagent_enabled, max_concurrent_subagents=max_concurrent_subagents, agent_name=agent_name),
         state_schema=ThreadState,

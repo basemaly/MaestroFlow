@@ -18,7 +18,7 @@ from langchain_core.runnables import RunnableConfig
 
 from src.agents.thread_state import SandboxState, ThreadDataState, ThreadState
 from src.models import create_chat_model
-from src.models.routing import is_rate_limited_model, resolve_lightweight_fallback_model
+from src.models.routing import is_rate_limited_model, resolve_diverse_subagent_model, resolve_lightweight_fallback_model
 from src.observability import get_current_observation_id, make_trace_id, observe_span
 from src.subagents.config import SubagentConfig
 
@@ -117,6 +117,8 @@ def _get_model_name(config: SubagentConfig, parent_model: str | None) -> str | N
     Returns:
         Model name to use, or None to use default.
     """
+    if config.model == "diverse":
+        return resolve_diverse_subagent_model(parent_model)
     if config.model == "inherit":
         if is_rate_limited_model(parent_model):
             fallback_model = resolve_lightweight_fallback_model()

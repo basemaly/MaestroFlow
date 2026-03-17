@@ -11,6 +11,7 @@ from src.gateway.routers import (
     artifacts,
     channels,
     doc_editing,
+    executive,
     health,
     mcp,
     memory,
@@ -156,6 +157,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
                 "description": "SurfSense retrieval, export, and escalation integration",
             },
             {
+                "name": "executive",
+                "description": "Executive control plane for system status, approvals, actions, and advisory",
+            },
+            {
                 "name": "health",
                 "description": "Health check and system status endpoints",
             },
@@ -200,6 +205,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # SurfSense integration API is mounted at /api/surfsense
     app.include_router(surfsense.router)
+
+    # Executive control plane API is mounted at /api/executive
+    app.include_router(executive.router)
 
     # External service health API is mounted at /api/health
     app.include_router(health.router)

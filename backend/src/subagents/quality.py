@@ -336,10 +336,13 @@ def score_async(
     task_category: str = "default",
     artifact: ValidatedArtifact | None = None,
     precomputed_score: QualityScore | None = None,
+    trace_id: str | None = None,
 ) -> None:
     """Fire-and-forget: score a completed subagent result in a background thread.
 
     Also feeds the composite score back to the MAB for adaptive routing.
+    When ``trace_id`` is provided, pushes notable results to Langfuse datasets
+    (failures ≤ 0.40 and successes ≥ 0.85).
     Never raises; errors are logged at WARNING level only.
     """
     def _run():
@@ -351,6 +354,22 @@ def score_async(
             # Feed composite score back to MAB
             from src.subagents.mab import record_outcome
             record_outcome(subagent_type, q.composite, task_category=task_category)
+
+            # Post composite quality score to the Langfuse trace
+            if trace_id:
+                from src.observability.langfuse import score_trace_by_id
+                score_trace_by_id(
+                    trace_id,
+                    name="quality.composite",
+                    value=round(q.composite, 3),
+                    data_type="NUMERIC",
+                    comment=f"subagent_type={subagent_type} profile={q.profile}",
+                )
+
+            # Push notable results to Langfuse datasets for offline evals
+            if trace_id:
+                from src.observability.datasets import push_to_quality_dataset
+                push_to_quality_dataset(trace_id, q.composite, subagent_type, raw_result)
         except Exception as exc:
             logger.error("Quality scorer failed for task %s: %s", task_id, exc, exc_info=True)
 

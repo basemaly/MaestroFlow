@@ -110,6 +110,7 @@ export interface Translations {
     agents: string;
     docEdits: string;
     newDocEdit: string;
+    executive: string;
   };
 
   // Agents

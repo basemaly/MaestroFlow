@@ -97,12 +97,14 @@ async def start_doc_edit(req: DocEditRequest) -> DocEditStartResponse:
     config = {"configurable": {"thread_id": run_id}}
     graph = await get_doc_edit_graph()
 
+    trace_id = make_trace_id(seed=run_id)
     with observe_span(
         "doc_edit.start",
-        trace_id=make_trace_id(seed=run_id),
+        trace_id=trace_id,
         input=req.model_dump(),
         metadata={"run_id": run_id, "workflow_mode": req.workflow_mode},
     ) as observation:
+        initial_state["trace_id"] = observation.trace_id or trace_id
         try:
             result = await graph.ainvoke(initial_state, config=config)
         except ValueError as exc:

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 export default function AgentChatPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
+  const [isHydrated, setIsHydrated] = useState(false);
   const [submitWarning, setSubmitWarning] = useState<string | null>(null);
   const router = useRouter();
 
@@ -45,6 +46,10 @@ export default function AgentChatPage() {
     useThreadChat();
 
   useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
     if (!isInvalidThreadRoute) {
       return;
     }
@@ -53,7 +58,7 @@ export default function AgentChatPage() {
   }, [agent_name, isInvalidThreadRoute, router]);
 
   const { showNotification } = useNotification();
-  const [thread, sendMessage, serviceWarning] = useThreadStream({
+  const [thread, sendMessage, serviceWarning, isRecursionError, continueResearch] = useThreadStream({
     threadId: isNewThread || isInvalidThreadRoute ? undefined : threadId,
     context: { ...settings.context, agent_name: agent_name },
     onStart: () => {
@@ -100,6 +105,10 @@ export default function AgentChatPage() {
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
+
+  if (!isHydrated) {
+    return <div className="bg-background size-full" />;
+  }
 
   return (
     <ThreadContext.Provider value={{ thread }}>
@@ -151,7 +160,17 @@ export default function AgentChatPage() {
             {(serviceWarning ?? submitWarning) && (
               <Alert className="mx-auto mt-2 mb-2 max-w-(--container-width-md) border-amber-500/30 bg-amber-500/8 text-amber-950 dark:text-amber-100">
                 <AlertTitle>Chat service warning</AlertTitle>
-                <AlertDescription>{serviceWarning ?? submitWarning}</AlertDescription>
+                <AlertDescription>
+                  {serviceWarning ?? submitWarning}
+                  {isRecursionError && (
+                    <button
+                      onClick={() => void continueResearch()}
+                      className="ml-3 inline-flex items-center rounded bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-700 focus:outline-none"
+                    >
+                      Continue
+                    </button>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
             <div className="flex size-full justify-center">

@@ -42,8 +42,8 @@ def _reset_langfuse_state():
         from src.observability import langfuse as langfuse_module
 
         langfuse_config_module._langfuse_config = None
-        langfuse_module._provider = None
-        langfuse_module._tracer = None
+        langfuse_module._client = None
+        langfuse_module._client_init_failed = False
     except Exception:
         pass
     yield
@@ -52,7 +52,7 @@ def _reset_langfuse_state():
         from src.observability import langfuse as langfuse_module
 
         langfuse_config_module._langfuse_config = None
-        langfuse_module._provider = None
-        langfuse_module._tracer = None
+        langfuse_module._client = None
+        langfuse_module._client_init_failed = False
     except Exception:
         pass

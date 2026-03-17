@@ -183,3 +183,155 @@ def test_resolve_doc_edit_candidate_models_remote_strong_prefers_remote_pro():
         assert candidates[0] == "gemini-2-5-pro"
     finally:
         reset_app_config()
+
+
+# ---------------------------------------------------------------------------
+# Tests for diverse subagent model selection and removed Claude cap
+# ---------------------------------------------------------------------------
+
+from src.models.routing import (
+    _detect_model_family,
+    resolve_diverse_subagent_model,
+    is_rate_limited_model,
+    _diverse_index,
+)
+import src.models.routing as routing_module
+
+
+def _reset_diverse_index():
+    routing_module._diverse_index = 0
+
+
+def test_claude_no_longer_rate_limited():
+    """RATE_LIMITED_MODEL_PREFIXES is empty — Claude is not capped to 1 subagent."""
+    assert not is_rate_limited_model("claude-sonnet-4-6")
+    assert not is_rate_limited_model("claude-haiku-4-5")
+    assert not is_rate_limited_model("claude-opus-4-6")
+
+
+def test_detect_model_family_claude():
+    assert _detect_model_family("claude-sonnet-4-6") == "claude"
+    assert _detect_model_family("claude-haiku-4-5") == "claude"
+
+
+def test_detect_model_family_gemini():
+    assert _detect_model_family("gemini-2-5-pro") == "gemini"
+    assert _detect_model_family("gemini-2-5-flash") == "gemini"
+
+
+def test_detect_model_family_gpt():
+    assert _detect_model_family("gpt-4-1-mini") == "gpt"
+    assert _detect_model_family("gpt-4o") == "gpt"
+    assert _detect_model_family("o3-mini") == "gpt"
+
+
+def test_detect_model_family_local():
+    assert _detect_model_family("qwen-32b-coder-lan") == "local"
+    assert _detect_model_family("llama-70b-instruct") == "local"
+    assert _detect_model_family("mistral-7b-lan") == "local"
+
+
+def test_detect_model_family_unknown():
+    assert _detect_model_family(None) == "unknown"
+    assert _detect_model_family("") == "unknown"
+    assert _detect_model_family("some-obscure-model") == "unknown"
+
+
+def test_diverse_picks_different_family_from_claude_parent():
+    """When parent is Claude, diverse model should come from gemini/gpt/local family."""
+    set_app_config(
+        AppConfig(
+            models=[
+                _make_model("gemini-2-5-flash"),
+                _make_model("gemini-2-5-pro"),
+                _make_model("gpt-4-1-mini"),
+                _make_model("claude-sonnet-4-6"),
+            ],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+    _reset_diverse_index()
+    try:
+        result = resolve_diverse_subagent_model("claude-sonnet-4-6")
+        assert result is not None
+        assert not result.startswith("claude-"), f"Expected non-Claude, got {result!r}"
+    finally:
+        reset_app_config()
+
+
+def test_diverse_picks_different_family_from_gemini_parent():
+    """When parent is Gemini, diverse model should come from claude/gpt/local family."""
+    set_app_config(
+        AppConfig(
+            models=[
+                _make_model("claude-haiku-4-5"),
+                _make_model("claude-sonnet-4-6"),
+                _make_model("gpt-4-1-mini"),
+                _make_model("gemini-2-5-pro"),
+            ],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+    _reset_diverse_index()
+    try:
+        result = resolve_diverse_subagent_model("gemini-2-5-pro")
+        assert result is not None
+        assert not result.startswith("gemini-"), f"Expected non-Gemini, got {result!r}"
+    finally:
+        reset_app_config()
+
+
+def test_diverse_rotates_across_three_parallel_slots():
+    """Three consecutive calls should return three different models from the candidate list."""
+    set_app_config(
+        AppConfig(
+            models=[
+                _make_model("gemini-2-5-flash"),
+                _make_model("gpt-4-1-mini"),
+                _make_model("gemini-2-5-pro"),
+            ],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+    _reset_diverse_index()
+    try:
+        results = [resolve_diverse_subagent_model("claude-sonnet-4-6") for _ in range(3)]
+        assert len(set(results)) == 3, f"Expected 3 unique models, got {results}"
+    finally:
+        reset_app_config()
+
+
+def test_diverse_falls_back_when_no_candidates_configured():
+    """If no diverse candidates are configured, falls back to LIGHTWEIGHT_FALLBACK_MODELS."""
+    set_app_config(
+        AppConfig(
+            models=[
+                _make_model("qwen-7b-coder-lan"),  # only local model available
+            ],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+    _reset_diverse_index()
+    try:
+        # Claude parent, only local model configured → should fall back gracefully
+        result = resolve_diverse_subagent_model("claude-sonnet-4-6")
+        # Either None (nothing configured at all) or the local fallback
+        assert result is None or "qwen" in result
+    finally:
+        reset_app_config()
+
+
+def test_diverse_returns_none_when_nothing_configured():
+    """Returns None gracefully when no fallback models are configured either."""
+    set_app_config(
+        AppConfig(
+            models=[_make_model("my-custom-model")],
+            sandbox=SandboxConfig(use="src.sandbox.local:LocalSandboxProvider"),
+        )
+    )
+    _reset_diverse_index()
+    try:
+        result = resolve_diverse_subagent_model("claude-sonnet-4-6")
+        assert result is None
+    finally:
+        reset_app_config()

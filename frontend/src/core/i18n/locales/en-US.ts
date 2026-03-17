@@ -167,6 +167,7 @@ export const enUS: Translations = {
     agents: "Agents",
     docEdits: "Doc edits",
     newDocEdit: "New doc edit",
+    executive: "Executive",
   },
 
   // Agents

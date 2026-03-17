@@ -183,6 +183,91 @@ _REGISTRY: dict[str, ResearchTool] = {
         prompt_hint="",  # Already in the agent's built-in toolset; no extra hint needed
         priority=40,
     ),
+    "exa": ResearchTool(
+        name="exa",
+        description="Exa Neural Search — semantic web search for precise technical results.",
+        capabilities=frozenset({
+            ResearchCapability.WEB_SEARCH,
+            ResearchCapability.ACADEMIC,
+        }),
+        env_var="EXA_API_KEY",
+        prompt_hint=(
+            "Exa neural search is available via the `exa_search` tool. "
+            "Use it for precise technical queries, GitHub repos, academic papers, "
+            "or when keyword search returns too-broad results."
+        ),
+        priority=75,
+    ),
+    "serper": ResearchTool(
+        name="serper",
+        description="Serper Google Search — real-time Google results with answer boxes.",
+        capabilities=frozenset({
+            ResearchCapability.WEB_SEARCH,
+        }),
+        env_var="SERPER_API_KEY",
+        prompt_hint=(
+            "Google Search is available via the `serper_search` tool. "
+            "Use it for current events, news, or when broad web coverage is needed."
+        ),
+        priority=65,
+    ),
+    "factcheck": ResearchTool(
+        name="factcheck",
+        description="Loki OpenFactVerification — claim-level fact verification with web evidence.",
+        capabilities=frozenset({
+            ResearchCapability.SYNTHESIS,
+        }),
+        env_var="FACTCHECK_URL",
+        prompt_hint=(
+            "A fact-verification tool is available via `fact_check`. "
+            "After gathering research, use it to verify key claims before presenting results."
+        ),
+        priority=30,
+    ),
+    "zep": ResearchTool(
+        name="zep",
+        description="Zep Memory — structured knowledge graph for long-term memory retrieval.",
+        capabilities=frozenset({
+            ResearchCapability.SYNTHESIS,
+            ResearchCapability.LOCAL_LLM,
+        }),
+        env_var="ZEP_URL",
+        prompt_hint="",  # Transparent backend enhancement — no prompt hint needed
+        priority=20,
+    ),
+    "knowledge-universe": ResearchTool(
+        name="knowledge-universe",
+        description="Knowledge Universe — multi-source academic knowledge discovery with freshness scoring.",
+        capabilities=frozenset({
+            ResearchCapability.WEB_SEARCH,
+            ResearchCapability.ACADEMIC,
+            ResearchCapability.SYNTHESIS,
+        }),
+        env_var="KU_API_KEY",
+        prompt_hint=(
+            "Knowledge Universe is available via the `knowledge_universe_search` tool. "
+            "Use it to find authoritative papers, courses, GitHub repos, and references across arXiv, "
+            "Wikipedia, HuggingFace, StackOverflow, and MIT OCW — each result includes a freshness score."
+        ),
+        priority=72,
+    ),
+    "mirothinker": ResearchTool(
+        name="mirothinker",
+        description="MiroThinker — local Qwen3-30B-MoE fine-tuned for deep analytical reasoning.",
+        capabilities=frozenset({
+            ResearchCapability.DEEP_RESEARCH,
+            ResearchCapability.SYNTHESIS,
+            ResearchCapability.ACADEMIC,
+            ResearchCapability.LOCAL_LLM,
+        }),
+        env_var="MIROTHINKER_API_BASE",
+        prompt_hint=(
+            "MiroThinker (local Qwen3-30B reasoning specialist) is available via the `mirothinker_research` tool. "
+            "Use it for complex analytical questions that benefit from multi-step reasoning, structured analysis, "
+            "or a second opinion from a different model family. Slower than web search (~30-120s)."
+        ),
+        priority=68,
+    ),
 }
 
 

@@ -24,10 +24,11 @@ def get_subagent_config(name: str) -> SubagentConfig | None:
 
     # Apply overrides from config.yaml (lazy import to avoid circular deps)
     from src.config.subagents_config import get_subagents_app_config
+    from src.executive.runtime_overrides import get_subagent_timeout_override
 
     app_config = get_subagents_app_config()
 
-    effective_timeout = app_config.get_timeout_for(name)
+    effective_timeout = get_subagent_timeout_override(name) or app_config.get_timeout_for(name)
     if effective_timeout != config.timeout_seconds:
         logger.debug(f"Subagent '{name}': timeout overridden by config.yaml ({config.timeout_seconds}s -> {effective_timeout}s)")
         config = replace(config, timeout_seconds=effective_timeout)

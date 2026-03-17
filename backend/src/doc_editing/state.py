@@ -39,6 +39,7 @@ class DocEditState(TypedDict):
     selected_version: NotRequired[VersionRecord | None]
     final_path: NotRequired[str | None]
     review_payload: NotRequired[dict]
+    trace_id: NotRequired[str | None]
     current_skill: NotRequired[str]
     current_skill_index: NotRequired[int]
     current_model_name: NotRequired[str]
