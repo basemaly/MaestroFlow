@@ -29,6 +29,7 @@ from src.agents.checkpointer.provider import (
     SQLITE_INSTALL,
     _resolve_sqlite_conn_str,
 )
+from src.agents.checkpointer.compat import CompatibleAsyncCheckpointer
 from src.config.app_config import get_app_config
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ async def _async_checkpointer(config) -> AsyncIterator[Checkpointer]:
     if config.type == "memory":
         from langgraph.checkpoint.memory import InMemorySaver
 
-        yield InMemorySaver()
+        yield CompatibleAsyncCheckpointer(InMemorySaver())
         return
 
     if config.type == "sqlite":
@@ -61,7 +62,7 @@ async def _async_checkpointer(config) -> AsyncIterator[Checkpointer]:
             pathlib.Path(conn_str).parent.mkdir(parents=True, exist_ok=True)
         async with AsyncSqliteSaver.from_conn_string(conn_str) as saver:
             await saver.setup()
-            yield saver
+            yield CompatibleAsyncCheckpointer(saver)
         return
 
     if config.type == "postgres":
@@ -75,7 +76,7 @@ async def _async_checkpointer(config) -> AsyncIterator[Checkpointer]:
 
         async with AsyncPostgresSaver.from_conn_string(config.connection_string) as saver:
             await saver.setup()
-            yield saver
+            yield CompatibleAsyncCheckpointer(saver)
         return
 
     raise ValueError(f"Unknown checkpointer type: {config.type!r}")

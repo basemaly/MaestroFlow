@@ -4,6 +4,7 @@ Sets up sys.path and pre-mocks modules that would cause circular import
 issues when unit-testing lightweight config/registry code in isolation.
 """
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -33,6 +34,18 @@ _executor_mock.MAX_CONCURRENT_SUBAGENTS = 3
 _executor_mock.get_background_task_result = MagicMock()
 
 sys.modules["src.subagents.executor"] = _executor_mock
+
+
+@pytest.fixture(autouse=True)
+def _default_langgraph_checkpointer_url(monkeypatch):
+    monkeypatch.setenv(
+        "LANGGRAPH_CHECKPOINTER_URL",
+        os.getenv(
+            "LANGGRAPH_CHECKPOINTER_URL",
+            "postgresql://postgres:postgres@127.0.0.1:55434/maestroflow_langgraph_v2",
+        ),
+    )
+    yield
 
 
 @pytest.fixture(autouse=True)

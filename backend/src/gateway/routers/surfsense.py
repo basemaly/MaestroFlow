@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 
 import httpx
@@ -16,7 +17,7 @@ from src.observability import make_trace_id, observe_span, summarize_for_trace
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/surfsense", tags=["surfsense"])
-DEFAULT_LANGGRAPH_URL = "http://127.0.0.1:2024"
+DEFAULT_LANGGRAPH_URL = os.getenv("LANGGRAPH_BASE_URL", "http://127.0.0.1:2024")
 
 
 class SurfSenseSearchRequest(BaseModel):

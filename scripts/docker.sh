@@ -11,9 +11,11 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DOCKER_DIR="$PROJECT_ROOT/docker"
+export DEER_FLOW_ROOT="${DEER_FLOW_ROOT:-$PROJECT_ROOT}"
 
 # Docker Compose command with project name
 COMPOSE_CMD="docker compose -p deer-flow-dev -f docker-compose-dev.yaml"
+LANGGRAPH_DB_NAME="${LANGGRAPH_DB_NAME:-maestroflow_langgraph_v2}"
 
 detect_sandbox_mode() {
     local config_file="$PROJECT_ROOT/config.yaml"
@@ -105,9 +107,9 @@ start() {
     sandbox_mode="$(detect_sandbox_mode)"
 
     if [ "$sandbox_mode" = "provisioner" ]; then
-        services="frontend gateway langgraph provisioner nginx"
+        services="frontend gateway langgraph-postgres langgraph provisioner nginx"
     else
-        services="frontend gateway langgraph nginx"
+        services="frontend gateway langgraph-postgres langgraph nginx"
     fi
 
     echo -e "${BLUE}Detected sandbox mode: $sandbox_mode${NC}"
@@ -124,6 +126,17 @@ start() {
         echo -e "${BLUE}Setting DEER_FLOW_ROOT=$DEER_FLOW_ROOT${NC}"
         echo ""
     fi
+
+    echo -e "${BLUE}Starting LangGraph datastore services...${NC}"
+    cd "$DOCKER_DIR" && $COMPOSE_CMD up -d langgraph-postgres langgraph-redis
+    until docker exec deer-flow-langgraph-postgres pg_isready -U postgres >/dev/null 2>&1; do
+        sleep 1
+    done
+    if ! docker exec deer-flow-langgraph-postgres psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$LANGGRAPH_DB_NAME'" | grep -q 1; then
+        echo -e "${BLUE}Creating LangGraph database $LANGGRAPH_DB_NAME...${NC}"
+        docker exec deer-flow-langgraph-postgres createdb -U postgres "$LANGGRAPH_DB_NAME"
+    fi
+    echo ""
     
     echo "Building and starting containers..."
     cd "$DOCKER_DIR" && $COMPOSE_CMD up --build -d --remove-orphans $services

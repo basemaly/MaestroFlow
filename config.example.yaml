@@ -352,12 +352,11 @@ memory:
 # ============================================================================
 # Checkpointer Configuration
 # ============================================================================
-# Configure state persistence for the embedded DeerFlowClient.
-# The LangGraph Server manages its own state persistence separately
-# via the server infrastructure (this setting does not affect it).
+# Configure state persistence for the embedded DeerFlowClient and the local
+# LangGraph dev server when it loads the custom checkpointer from this repo.
 #
-# When configured, DeerFlowClient will automatically use this checkpointer,
-# enabling multi-turn conversations to persist across process restarts.
+# When configured, multi-turn conversations can persist across process restarts
+# instead of falling back to in-memory state only.
 #
 # Supported types:
 #   memory   - In-process only. State is lost when the process exits. (default)
@@ -373,9 +372,9 @@ memory:
 #   type: memory
 #
 # SQLite (file-based, single-process):
-# checkpointer:
-#   type: sqlite
-#   connection_string: checkpoints.db
+checkpointer:
+  type: postgres
+  connection_string: $LANGGRAPH_CHECKPOINTER_URL
 #
 # PostgreSQL (multi-process, production):
 # checkpointer:

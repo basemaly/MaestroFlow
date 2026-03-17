@@ -1,6 +1,6 @@
 # DeerFlow - Unified Development Environment
 
-.PHONY: help config check install dev stop clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config check install dev dev-daemon daemon-start daemon-stop daemon-status stop clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
 
 help:
 	@echo "DeerFlow Development Commands:"
@@ -9,6 +9,10 @@ help:
 	@echo "  make install         - Install all dependencies (frontend + backend)"
 	@echo "  make setup-sandbox   - Pre-pull sandbox container image (recommended)"
 	@echo "  make dev             - Start all services (frontend + backend + nginx on localhost:2027)"
+	@echo "                       - Uses Docker for LangGraph + LangGraph Postgres"
+	@echo "  make dev-daemon      - Start all services detached from the current shell"
+	@echo "  make daemon-stop     - Stop detached MaestroFlow services"
+	@echo "  make daemon-status   - Show detached MaestroFlow supervisor status"
 	@echo "  make stop            - Stop all running services"
 	@echo "  make clean           - Clean up processes and temporary files"
 	@echo ""
@@ -153,6 +157,15 @@ setup-sandbox:
 dev:
 	@./scripts/start.sh
 
+dev-daemon daemon-start:
+	@./scripts/daemon.sh start
+
+daemon-stop:
+	@./scripts/daemon.sh stop
+
+daemon-status:
+	@./scripts/daemon.sh status
+
 # Stop all services
 stop:
 	@echo "Stopping all services..."
@@ -162,6 +175,7 @@ stop:
 	@-nginx -c $(PWD)/docker/nginx/nginx.local.conf -p $(PWD) -s quit 2>/dev/null || true
 	@sleep 1
 	@-pkill -9 nginx 2>/dev/null || true
+	@-docker compose -p deer-flow-dev -f $(PWD)/docker/docker-compose-dev.yaml stop langgraph langgraph-postgres >/dev/null 2>&1 || true
 	@echo "Cleaning up sandbox containers..."
 	@-./scripts/cleanup-containers.sh deer-flow-sandbox 2>/dev/null || true
 	@echo "✓ All services stopped"

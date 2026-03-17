@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from collections.abc import Iterator
+from pathlib import Path
 
 from langgraph.types import Checkpointer
 
@@ -79,6 +80,8 @@ def _sync_checkpointer_cm(config: CheckpointerConfig) -> Iterator[Checkpointer]:
             raise ImportError(SQLITE_INSTALL) from exc
 
         conn_str = _resolve_sqlite_conn_str(config.connection_string or "store.db")
+        if conn_str != ":memory:" and not conn_str.startswith("file:"):
+            Path(conn_str).parent.mkdir(parents=True, exist_ok=True)
         with SqliteSaver.from_conn_string(conn_str) as saver:
             saver.setup()
             logger.info("Checkpointer: using SqliteSaver (%s)", conn_str)
@@ -125,24 +128,28 @@ def get_checkpointer() -> Checkpointer:
     if _checkpointer is not None:
         return _checkpointer
 
-    # Ensure app config is loaded before checking checkpointer config
-    # This prevents returning InMemorySaver when config.yaml actually has a checkpointer section
-    # but hasn't been loaded yet
-    from src.config.app_config import _app_config
     from src.config.checkpointer_config import get_checkpointer_config
-
-    if _app_config is None:
-        # Only load config if it hasn't been initialized yet
-        # In tests, config may be set directly via set_checkpointer_config()
-        try:
-            get_app_config()
-        except FileNotFoundError:
-            # In test environments without config.yaml, this is expected
-            # Tests will set config directly via set_checkpointer_config()
-            pass
 
     config = get_checkpointer_config()
     if config is None:
+        # Ensure app config is loaded before checking checkpointer config from file.
+        # This prevents returning InMemorySaver when config.yaml actually has a
+        # checkpointer section but hasn't been loaded yet.
+        from src.config.app_config import _app_config
+
+        if _app_config is None:
+            # Only load config if it hasn't been initialized yet.
+            # In tests, config may be set directly via set_checkpointer_config().
+            try:
+                get_app_config()
+            except FileNotFoundError:
+                # In test environments without config.yaml, this is expected.
+                # Tests may set config directly via set_checkpointer_config().
+                pass
+        config = get_checkpointer_config()
+
+    if config is None:
+        # Only load config if it hasn't been initialized yet
         from langgraph.checkpoint.memory import InMemorySaver
 
         logger.info("Checkpointer: using InMemorySaver (in-process, not persistent)")

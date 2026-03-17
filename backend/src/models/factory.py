@@ -34,6 +34,11 @@ def _requires_temperature_one_with_thinking(provider_use: str, model_name: str) 
     return _is_openai_compatible_model(provider_use) and model_name.startswith("claude")
 
 
+def _uses_reasoning_effort_for_thinking(provider_use: str, model_name: str) -> bool:
+    """Gemini 3 LiteLLM routes use reasoning/thinking-level semantics, not legacy thinking payloads."""
+    return _is_openai_compatible_model(provider_use) and model_name.startswith("gemini-3")
+
+
 def _normalize_thinking_settings(
     settings: dict,
     *,
@@ -145,7 +150,7 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     if thinking_enabled and has_thinking_settings:
         if not model_config.supports_thinking:
             raise ValueError(f"Model {name} does not support thinking. Set `supports_thinking` to true in the `config.yaml` to enable thinking.") from None
-        if effective_wte:
+        if effective_wte and not _uses_reasoning_effort_for_thinking(model_config.use, model_config.model):
             model_settings_from_config = _deep_merge_dicts(model_settings_from_config, effective_wte)
         if _requires_temperature_one_with_thinking(model_config.use, model_config.model):
             config_temperature = model_settings_from_config.get("temperature")
@@ -165,7 +170,9 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
                 kwargs["temperature"] = 1
     if not thinking_enabled and has_thinking_settings:
         disabled_settings: dict = {}
-        if effective_wte.get("extra_body", {}).get("thinking", {}).get("type"):
+        if _uses_reasoning_effort_for_thinking(model_config.use, model_config.model):
+            disabled_settings = {}
+        elif effective_wte.get("extra_body", {}).get("thinking", {}).get("type"):
             disabled_settings["extra_body"] = {"thinking": {"type": "disabled"}}
             kwargs.update({"reasoning_effort": "minimal"})
         elif effective_wte.get("thinking", {}).get("type"):

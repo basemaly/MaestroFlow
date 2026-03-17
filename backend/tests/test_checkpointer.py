@@ -75,9 +75,10 @@ class TestGetCheckpointer:
         """get_checkpointer should return InMemorySaver when not configured."""
         from langgraph.checkpoint.memory import InMemorySaver
 
-        cp = get_checkpointer()
-        assert cp is not None
-        assert isinstance(cp, InMemorySaver)
+        with patch("src.agents.checkpointer.provider.get_app_config", side_effect=FileNotFoundError):
+            cp = get_checkpointer()
+            assert cp is not None
+            assert isinstance(cp, InMemorySaver)
 
     def test_memory_returns_in_memory_saver(self):
         load_checkpointer_config_from_dict({"type": "memory"})

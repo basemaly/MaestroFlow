@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import mimetypes
+import os
 from collections.abc import Mapping
 from typing import Any
 
@@ -13,8 +14,8 @@ from src.channels.store import ChannelStore
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LANGGRAPH_URL = "http://localhost:2024"
-DEFAULT_GATEWAY_URL = "http://localhost:8001"
+DEFAULT_LANGGRAPH_URL = os.getenv("LANGGRAPH_BASE_URL", "http://localhost:2024")
+DEFAULT_GATEWAY_URL = os.getenv("GATEWAY_BASE_URL", "http://localhost:8001")
 DEFAULT_ASSISTANT_ID = "lead_agent"
 
 DEFAULT_RUN_CONFIG: dict[str, Any] = {"recursion_limit": 100}

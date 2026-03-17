@@ -14,6 +14,35 @@
 # Access: http://localhost:2027
 
 services:
+  langgraph-postgres:
+    image: postgres:17
+    container_name: deer-flow-langgraph-postgres
+    environment:
+      POSTGRES_DB: maestroflow_langgraph_v2
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:55434:5432"
+    volumes:
+      - langgraph-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d maestroflow_langgraph_v2"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+
+  langgraph-redis:
+    image: redis:7-alpine
+    container_name: deer-flow-langgraph-redis
+    command: redis-server --save "" --appendonly no
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+
   # ── Sandbox Provisioner ────────────────────────────────────────────────
   # Manages per-sandbox Pod + Service lifecycle in the host Kubernetes
   # cluster via the K8s API.
@@ -71,6 +100,8 @@ services:
       - frontend
       - gateway
       - langgraph
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - deer-flow-dev
     restart: unless-stopped
@@ -79,19 +110,18 @@ services:
   frontend:
     build:
       context: ../
-      dockerfile: frontend/Dockerfile
+      dockerfile: frontend/Dockerfile.dev
       args:
         PNPM_STORE_PATH: ${PNPM_STORE_PATH:-/root/.local/share/pnpm/store}
     container_name: deer-flow-frontend
-    command: sh -c "cd frontend && pnpm run dev > /app/logs/frontend.log 2>&1"
+    command: sh -c "pnpm run dev --hostname 0.0.0.0 --port 3000 > /app/logs/frontend.log 2>&1"
     volumes:
-      - ../frontend/src:/app/frontend/src
-      - ../frontend/public:/app/frontend/public
-      - ../frontend/next.config.js:/app/frontend/next.config.js:ro
+      - ../frontend:/app/frontend
       - ../logs:/app/logs
       # Mount pnpm store for caching
       - ${PNPM_STORE_PATH:-~/.local/share/pnpm/store}:/root/.local/share/pnpm/store
-    working_dir: /app
+      - frontend-node-modules:/app/frontend/node_modules
+    working_dir: /app/frontend
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
@@ -123,6 +153,11 @@ services:
     environment:
       - CI=true
       - LITELLM_PROXY_BASE_URL=http://host.docker.internal:4000/v1
+      - LANGGRAPH_BASE_URL=http://langgraph:8000
+      - GATEWAY_BASE_URL=http://gateway:8001
+      - SURFSENSE_BASE_URL=http://host.docker.internal:8002
+      - LANGFUSE_HOST=http://host.docker.internal:3000
+      - LANGGRAPH_CHECKPOINTER_URL=postgresql://postgres:postgres@langgraph-postgres:5432/maestroflow_langgraph_v2
     env_file:
       - ../.env
     extra_hosts:
@@ -137,33 +172,45 @@ services:
     build:
       context: ../
       dockerfile: backend/Dockerfile
-      # cache_from disabled - requires manual setup: mkdir -p /tmp/docker-cache-langgraph
     container_name: deer-flow-langgraph
-    command: sh -c "cd backend && uv run langgraph dev --no-browser --allow-blocking --host 0.0.0.0 --port 2024 > /app/logs/langgraph.log 2>&1"
-    volumes:
-      - ../backend/src:/app/backend/src
-      - ../backend/.env:/app/backend/.env
-      - ../config.yaml:/app/config.yaml
-      - ../skills:/app/skills
-      - ../logs:/app/logs
-      - ../backend/.deer-flow:/app/backend/.deer-flow
-      # Mount uv cache for faster dependency installation
-      - ~/.cache/uv:/root/.cache/uv
-    working_dir: /app
+    command: sh -c "cd backend && BG_JOB_ISOLATED_LOOPS=true uv run langgraph dev --host 0.0.0.0 --port 8000 --no-browser --allow-blocking --no-reload --n-jobs-per-worker 20 > /app/logs/langgraph.log 2>&1"
+    ports:
+      - "127.0.0.1:2024:8000"
+    depends_on:
+      langgraph-postgres:
+        condition: service_healthy
     environment:
       - CI=true
       - LITELLM_PROXY_BASE_URL=http://host.docker.internal:4000/v1
+      - SURFSENSE_BASE_URL=http://host.docker.internal:8002
+      - LANGFUSE_HOST=http://host.docker.internal:3000
+      - LANGGRAPH_CHECKPOINTER_URL=postgresql://postgres:postgres@langgraph-postgres:5432/maestroflow_langgraph_v2
+      - DEER_FLOW_CONFIG_PATH=/app/config.yaml
+      - DEER_FLOW_EXTENSIONS_CONFIG_PATH=/app/extensions_config.json
     env_file:
       - ../.env
+    volumes:
+      - ../backend/src:/app/backend/src
+      - ../backend/.env:/app/backend/.env
+      - ../config.yaml:/app/config.yaml:ro
+      - ../extensions_config.json:/app/extensions_config.json:ro
+      - ../skills:/app/skills:ro
+      - ../logs:/app/logs
+      - ../backend/.deer-flow:/app/backend/.deer-flow
+      - ~/.cache/uv:/root/.cache/uv
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - deer-flow-dev
     restart: unless-stopped
 
-volumes: {}
+volumes:
+  langgraph-postgres-data: {}
+  frontend-node-modules: {}
 
 networks:
   deer-flow-dev:
     driver: bridge
     ipam:
       config:
-        - subnet: 192.168.200.0/24
+        - subnet: 192.168.208.0/24

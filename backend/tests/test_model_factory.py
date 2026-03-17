@@ -304,6 +304,39 @@ def test_reasoning_effort_preserved_when_supported(monkeypatch):
     assert captured.get("reasoning_effort") == "minimal"
 
 
+def test_gemini_three_skips_legacy_thinking_payload_when_reasoning_effort_is_used(monkeypatch):
+    cfg = _make_app_config(
+        [
+            _make_model(
+                "gemini-3-pro-preview",
+                supports_thinking=True,
+                supports_reasoning_effort=True,
+                thinking={"type": "enabled"},
+            )
+        ]
+    )
+    _patch_factory(monkeypatch, cfg)
+
+    captured: dict = {}
+
+    class CapturingModel(FakeChatModel):
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            BaseChatModel.__init__(self, **kwargs)
+
+    monkeypatch.setattr(factory_module, "resolve_class", lambda path, base: CapturingModel)
+
+    factory_module.create_chat_model(
+        name="gemini-3-pro-preview",
+        thinking_enabled=True,
+        reasoning_effort="medium",
+    )
+
+    assert captured.get("reasoning_effort") == "medium"
+    assert "thinking" not in captured
+    assert "extra_body" not in captured or "thinking" not in (captured.get("extra_body") or {})
+
+
 # ---------------------------------------------------------------------------
 # thinking shortcut field
 # ---------------------------------------------------------------------------

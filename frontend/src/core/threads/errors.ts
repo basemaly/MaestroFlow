@@ -33,6 +33,9 @@ export function normalizeThreadError(error: unknown): string {
     if (/invalid thread id/i.test(raw)) {
       return "That chat thread is no longer valid. Start a new thread and try again.";
     }
+    if (/Unable to connect to LangGraph server/i.test(raw)) {
+      return "LangGraph is offline. Restart MaestroFlow with `make dev-daemon` or `make dev`, then refresh the page.";
+    }
     if (/Failed to fetch/i.test(raw) || /fetch failed/i.test(raw)) {
       return "MaestroFlow could not reach its backend services. Check that the app stack is running and try again.";
     }

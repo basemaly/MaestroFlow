@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from src.channels.manager import ChannelManager
@@ -30,8 +31,8 @@ class ChannelService:
         self.bus = MessageBus()
         self.store = ChannelStore()
         config = dict(channels_config or {})
-        langgraph_url = config.pop("langgraph_url", None) or "http://localhost:2024"
-        gateway_url = config.pop("gateway_url", None) or "http://localhost:8001"
+        langgraph_url = config.pop("langgraph_url", None) or os.getenv("LANGGRAPH_BASE_URL") or "http://localhost:2024"
+        gateway_url = config.pop("gateway_url", None) or os.getenv("GATEWAY_BASE_URL") or "http://localhost:8001"
         default_session = config.pop("session", None)
         channel_sessions = {
             name: channel_config.get("session")
