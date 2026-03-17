@@ -51,3 +51,15 @@ web/
 
 # Generated doc-edit run artifacts (keep tracked top-level docs/*.md files)
 docs/*/
+
+# Agent/IDE tooling dirs
+.agent/
+.agents/
+.roo/
+.windsurf/
+
+# Redis dump
+dump.rdb
+
+# Claude Code skills lock
+skills-lock.json
