@@ -31,15 +31,29 @@ Edit the `config.yaml` file to configure your preferred models (e.g., OpenAI, An
 - **Sub-Agents:** MaestroFlow decomposes complex tasks by spawning specialized sub-agents. These sub-agents run in parallel where possible and return structured results that are synthesized by the lead agent.
 - **Skills:** MaestroFlow's capabilities are defined using Markdown-based skills. These skills outline workflows, best practices, and references for specific tasks.
 - **Sandbox:** A secure execution environment for your agents. Tasks run in isolated Docker containers with a full filesystem, ensuring zero contamination between sessions.
-- **Executive System:** A runtime profile and workflow steering system that manages how tasks are executed and reviewed.
+- **Executive System:** The control plane for runtime profile management, workflow steering, approvals, and operational actions.
+- **Autoresearcher:** A separate optimization lab for running bounded experiments on prompts and workflows. It is manual-start only and uses Executive for approval and rollback.
 - **Memory:** Across sessions, MaestroFlow builds a persistent memory of your profile, preferences, and accumulated knowledge.
 
 ## Workflows & Features
-- **Document Editing Suite:** Multi-model document edit comparisons, version control workflows, and specific doc-edit modes.
+- **Chats:** The default general-purpose workspace for asking, planning, researching, and executing tasks.
+- **Documents:** The primary writing surface for persistent drafts, working notes, and iterative refinement.
+- **Revision Lab:** The compare-and-choose writing workspace for heavier multi-version editing sessions.
+- **Context Dock:** A shared source/context surface for snippets, scoped knowledge, and active retrieval sources.
+- **Activity Feed:** A unified recent-activity surface that replaces scattered recents across chats and editing tools.
 - **Editorial Subagents:** Specialized agents including an argument critic and a writing refiner.
 - **Calibre Integration:** Seamless knowledge management and retrieval via Calibre backend improvements (HTTP pooling, request caching).
 - **SurfSense:** Advanced web search and deep research capabilities. Handoff workflows easily handle deep research queries.
-- **Project Management:** Executive project management features and an All-in-One (AIO) sandbox.
+- **Executive:** Service health, approvals, routing overrides, project management, and operational workflows.
+- **Autoresearcher:** Prompt experiments with benchmark metadata, candidate tracking, and Executive-gated promotion into the live prompt registry.
+- **UI Design Optimization:** A manual Autoresearcher workflow that renders a component, critiques it against a visual rubric, mutates it, and stores the best candidate with screenshots.
+
+### How Executive and Autoresearcher differ
+
+- **Executive** is for control-plane work: approvals, runtime steering, status, and rollback.
+- **Autoresearcher** is for lab work: creating and inspecting experiments, candidates, and benchmarks.
+- Autoresearcher does **not** start automatically on page load or in the background by default.
+- A winning experiment still requires explicit approval before it changes live defaults.
 
 ## Advanced Usage
 ### MCP Server Integration
@@ -47,6 +61,17 @@ MaestroFlow supports configurable MCP servers and skills to extend its capabilit
 
 ### Plan Mode
 For complex, multi-step tasks, you can use the built-in planning and steering systems to generate a plan and get a sophisticated planning review before executing.
+
+### Autoresearcher experiments
+
+Autoresearcher is intentionally conservative:
+
+1. Open the **Autoresearcher** workspace.
+2. Start an experiment explicitly for a supported role or launch a `ui_design` experiment with a component snippet.
+3. Review candidate scores, screenshots, and benchmark coverage in the lab.
+4. Use **Executive** to approve, reject, stop, or roll back prompt changes when the experiment affects live defaults.
+
+This keeps optimization work separate from normal chats, documents, and runtime operations.
 
 ### Sandbox Execution Modes
 MaestroFlow supports multiple execution modes for sandboxing your tasks:

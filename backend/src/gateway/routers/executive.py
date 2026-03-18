@@ -19,6 +19,13 @@ from src.executive.project_service import (
     get_project_or_raise,
 )
 from src.executive.service import (
+    get_autoresearch_experiment_payload,
+    get_autoresearch_registry_payload,
+    list_autoresearch_experiments_payload,
+    approve_autoresearch_experiment_payload,
+    reject_autoresearch_experiment_payload,
+    rollback_autoresearch_prompt_payload,
+    stop_autoresearch_experiment_payload,
     confirm_approval_payload,
     execute_action_payload,
     get_advisory_payload,
@@ -56,6 +63,20 @@ class ExecutiveAgentRunRequest(BaseModel):
     mode: str = "standard"
     thinking_enabled: bool = False
     subagent_enabled: bool = False
+
+
+class ExecutiveRejectExperimentRequest(BaseModel):
+    reason: str | None = None
+
+
+class ExecutiveRollbackPromptRequest(BaseModel):
+    role: str = Field(min_length=1)
+    prompt_text: str = Field(min_length=1)
+    actor_id: str = "executive"
+
+
+class ExecutiveStopExperimentRequest(BaseModel):
+    reason: str | None = None
 
 
 @router.get("/registry")
@@ -161,6 +182,56 @@ async def executive_agent_run(request: ExecutiveAgentRunRequest) -> dict:
             subagent_enabled=request.subagent_enabled,
             agent_name=request.agent_name,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/autoresearch/registry")
+async def executive_autoresearch_registry() -> dict:
+    return get_autoresearch_registry_payload()
+
+
+@router.get("/autoresearch/experiments")
+async def executive_autoresearch_experiments(limit: int = 50) -> dict:
+    return {"experiments": list_autoresearch_experiments_payload(limit=limit)}
+
+
+@router.get("/autoresearch/experiments/{experiment_id}")
+async def executive_autoresearch_experiment(experiment_id: str) -> dict:
+    try:
+        return get_autoresearch_experiment_payload(experiment_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/autoresearch/experiments/{experiment_id}/approve")
+async def executive_approve_autoresearch_experiment(experiment_id: str, actor_id: str = "executive") -> dict:
+    try:
+        return approve_autoresearch_experiment_payload(experiment_id, actor_id=actor_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/autoresearch/experiments/{experiment_id}/reject")
+async def executive_reject_autoresearch_experiment(experiment_id: str, request: ExecutiveRejectExperimentRequest) -> dict:
+    try:
+        return reject_autoresearch_experiment_payload(experiment_id, reason=request.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/autoresearch/prompts/rollback")
+async def executive_rollback_autoresearch_prompt(request: ExecutiveRollbackPromptRequest) -> dict:
+    try:
+        return rollback_autoresearch_prompt_payload(request.role, request.prompt_text, actor_id=request.actor_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/autoresearch/experiments/{experiment_id}/stop")
+async def executive_stop_autoresearch_experiment(experiment_id: str, request: ExecutiveStopExperimentRequest) -> dict:
+    try:
+        return stop_autoresearch_experiment_payload(experiment_id, reason=request.reason)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

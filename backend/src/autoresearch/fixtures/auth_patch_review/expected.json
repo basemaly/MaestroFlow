@@ -1,0 +1,16 @@
+{
+  "required_findings": [
+    {
+      "severity": "high",
+      "line": 11,
+      "keywords": ["auth", "unauth", "export", "route"],
+      "min_keyword_hits": 2
+    },
+    {
+      "severity": "medium",
+      "line": 30,
+      "keywords": ["exception", "logger", "error", "swallow"],
+      "min_keyword_hits": 2
+    }
+  ]
+}

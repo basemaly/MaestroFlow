@@ -1,0 +1,17 @@
+[
+  {
+    "title": "Clean Code",
+    "author": "Robert C. Martin",
+    "tag": "Software"
+  },
+  {
+    "title": "The Design of Everyday Things",
+    "author": "Don Norman",
+    "tag": "Design"
+  },
+  {
+    "title": "Thinking in Systems",
+    "author": "Donella Meadows",
+    "tag": "Systems"
+  }
+]

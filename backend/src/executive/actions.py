@@ -12,6 +12,7 @@ import yaml
 from langgraph.types import Command
 
 from src.channels.service import get_channel_service
+from src.autoresearch.service import approve_experiment, reject_experiment, rollback_role_prompt, stop_experiment
 from src.config import get_app_config
 from src.config.extensions_config import ExtensionsConfig, reload_extensions_config
 from src.doc_editing.run_tracker import ensure_run_dir, get_run
@@ -221,6 +222,31 @@ async def _execute_now(preview: ExecutiveActionPreview, input_payload: dict[str,
             "new_run_id": new_run_id,
             "status": "completed" if result.get("final_path") else "awaiting_selection",
         }
+
+    if action_id == "approve_autoresearch_experiment":
+        experiment_id = str(input_payload.get("experiment_id") or "").strip()
+        if not experiment_id:
+            raise ValueError("experiment_id is required.")
+        return approve_experiment(experiment_id, approved_by="executive")
+
+    if action_id == "reject_autoresearch_experiment":
+        experiment_id = str(input_payload.get("experiment_id") or "").strip()
+        if not experiment_id:
+            raise ValueError("experiment_id is required.")
+        return reject_experiment(experiment_id, reason=str(input_payload.get("reason") or "").strip() or None)
+
+    if action_id == "rollback_autoresearch_prompt":
+        role = str(input_payload.get("role") or "").strip()
+        prompt_text = str(input_payload.get("prompt_text") or "")
+        if not role or not prompt_text.strip():
+            raise ValueError("role and prompt_text are required.")
+        return {"champion": rollback_role_prompt(role, prompt_text, actor_id="executive").model_dump(mode="json")}
+
+    if action_id == "stop_autoresearch_experiment":
+        experiment_id = str(input_payload.get("experiment_id") or "").strip()
+        if not experiment_id:
+            raise ValueError("experiment_id is required.")
+        return stop_experiment(experiment_id, reason=str(input_payload.get("reason") or "").strip() or None)
 
     if action_id in {"start_component", "stop_component", "restart_component"}:
         command = HOST_ACTIONS.get(component_id, {}).get(action_id)

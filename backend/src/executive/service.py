@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+from src.autoresearch.service import (
+    approve_experiment,
+    get_experiment_detail,
+    get_registry_payload as get_autoresearch_registry,
+    list_experiment_summaries,
+    reject_experiment,
+    rollback_role_prompt,
+    stop_experiment,
+)
 from src.executive.actions import confirm_approval, execute_action, preview_action, reject_approval
 from src.executive.advisory import build_advisory
 from src.executive.models import ExecutiveActionDefinition
@@ -14,6 +23,34 @@ def get_registry_payload() -> dict:
         "components": [component.model_dump(mode="json") for component in registry.values()],
         "actions": [action.model_dump(mode="json") for action in list_action_definitions()],
     }
+
+
+def get_autoresearch_registry_payload() -> dict:
+    return get_autoresearch_registry()
+
+
+def list_autoresearch_experiments_payload(limit: int = 50) -> list[dict]:
+    return [item.model_dump(mode="json") for item in list_experiment_summaries(limit=limit)]
+
+
+def get_autoresearch_experiment_payload(experiment_id: str) -> dict:
+    return get_experiment_detail(experiment_id)
+
+
+def approve_autoresearch_experiment_payload(experiment_id: str, actor_id: str = "executive") -> dict:
+    return approve_experiment(experiment_id, approved_by=actor_id)
+
+
+def reject_autoresearch_experiment_payload(experiment_id: str, reason: str | None = None) -> dict:
+    return reject_experiment(experiment_id, reason=reason)
+
+
+def rollback_autoresearch_prompt_payload(role: str, prompt_text: str, actor_id: str = "executive") -> dict:
+    return {"champion": rollback_role_prompt(role, prompt_text, actor_id=actor_id).model_dump(mode="json")}
+
+
+def stop_autoresearch_experiment_payload(experiment_id: str, reason: str | None = None) -> dict:
+    return stop_experiment(experiment_id, reason=reason)
 
 
 async def get_status_payload() -> dict:
