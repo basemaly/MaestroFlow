@@ -4,6 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+import aiofiles
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
@@ -118,9 +119,12 @@ async def upload_files(
                 logger.warning(f"Skipping file with unsafe filename: {file.filename!r}")
                 continue
 
-            content = await file.read()
             file_path = uploads_dir / safe_filename
-            file_path.write_bytes(content)
+            file_size = 0
+            async with aiofiles.open(file_path, "wb") as f:
+                while chunk := await file.read(65536):
+                    await f.write(chunk)
+                    file_size += len(chunk)
 
             # Build relative path from backend root
             relative_path = str(paths.sandbox_uploads_dir(thread_id) / safe_filename)
@@ -129,17 +133,17 @@ async def upload_files(
             # Keep local sandbox source of truth in thread-scoped host storage.
             # For non-local sandboxes, also sync to virtual path for runtime visibility.
             if sandbox_id != "local":
-                sandbox.update_file(virtual_path, content)
+                sandbox.update_file(virtual_path, file_path.read_bytes())
 
             file_info = {
                 "filename": safe_filename,
-                "size": str(len(content)),
+                "size": str(file_size),
                 "path": relative_path,  # Actual filesystem path (relative to backend/)
                 "virtual_path": virtual_path,  # Path for Agent in sandbox
                 "artifact_url": f"/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/{safe_filename}",  # HTTP URL
             }
 
-            logger.info(f"Saved file: {safe_filename} ({len(content)} bytes) to {relative_path}")
+            logger.info(f"Saved file: {safe_filename} ({file_size} bytes) to {relative_path}")
 
             # Check if file should be converted to markdown
             file_ext = file_path.suffix.lower()

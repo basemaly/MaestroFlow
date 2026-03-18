@@ -7,10 +7,9 @@ from fastapi import FastAPI
 from src.config.app_config import get_app_config
 from src.gateway.application import configure_gateway_app
 from src.gateway.config import get_gateway_config
-from src.gateway.lifecycle import (
-    start_gateway_runtime_services,
-    stop_gateway_runtime_services,
-)
+from src.gateway.startup.channels import start_channels, stop_channels
+from src.gateway.startup.proxies import start_proxies, stop_proxies
+from src.gateway.startup.scheduler import start_scheduler, stop_scheduler
 
 # Configure logging
 logging.basicConfig(
@@ -42,11 +41,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 2. Gateway and LangGraph Server are separate processes with independent caches
     # MCP tools are lazily initialized in LangGraph Server when first needed
 
-    await start_gateway_runtime_services()
+    await start_channels()
+    await start_scheduler()
+    await start_proxies()
 
     yield
 
-    await stop_gateway_runtime_services()
+    await stop_proxies()
+    await stop_scheduler()
+    await stop_channels()
     logger.info("Shutting down API Gateway")
 
 

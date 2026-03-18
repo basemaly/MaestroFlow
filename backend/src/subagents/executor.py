@@ -70,14 +70,18 @@ class SubagentResult:
 _background_tasks: dict[str, SubagentResult] = {}
 _background_tasks_lock = threading.Lock()
 
-# Thread pool for background task scheduling and orchestration.
-# Increased from 3 to 6 workers to support more concurrent task dispatch without blocking.
-_scheduler_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="subagent-scheduler-")
+# Dynamic async queue and semaphore for graceful backpressure
+MAX_CONCURRENT_SUBAGENTS = 8
+_bg_loop = asyncio.new_event_loop()
+_execution_semaphore: asyncio.Semaphore | None = None
 
-# Thread pool for actual subagent execution (with timeout support).
-# Increased from 3 to 8 workers to reduce queueing and support more concurrent executions.
-# Each worker has its own event loop (asyncio.run), allowing true parallelism for I/O-bound subagent tasks.
-_execution_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="subagent-exec-")
+def _start_bg_loop():
+    global _execution_semaphore
+    asyncio.set_event_loop(_bg_loop)
+    _execution_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SUBAGENTS)
+    _bg_loop.run_forever()
+
+threading.Thread(target=_start_bg_loop, daemon=True, name="subagent-bg-loop").start()
 
 
 def _filter_tools(
@@ -385,7 +389,7 @@ class SubagentExecutor:
             queue_wait_seconds=0.0,
         )
 
-        # Run the async execution in a new event loop
+        # Run the async execution in the background event loop using the global semaphore
         # This is necessary because:
         # 1. We may have async-only tools (like MCP tools)
         # 2. We're running inside a ThreadPoolExecutor which doesn't have an event loop
@@ -395,7 +399,14 @@ class SubagentExecutor:
         # an async context where an event loop already exists). Subagent execution
         # errors are handled within _aexecute() and returned as FAILED status.
         try:
-            result = asyncio.run(self._aexecute(task, result_holder))
+            async def _run_sync():
+                if _execution_semaphore is not None:
+                    async with _execution_semaphore:
+                        return await self._aexecute(task, result_holder)
+                return await self._aexecute(task, result_holder)
+
+            future = asyncio.run_coroutine_threadsafe(_run_sync(), _bg_loop)
+            result = future.result()
             record_subagent_completion(metric, status=result.status.value)
             return result
         except Exception as e:
@@ -441,46 +452,41 @@ class SubagentExecutor:
         with _background_tasks_lock:
             _background_tasks[task_id] = result
 
-        # Submit to scheduler pool
-        def run_task():
+        async def run_task():
             with _background_tasks_lock:
                 _background_tasks[task_id].status = SubagentStatus.RUNNING
                 _background_tasks[task_id].started_at = datetime.now()
                 result_holder = _background_tasks[task_id]
 
+            if _execution_semaphore is not None:
+                await _execution_semaphore.acquire()
+
             try:
-                # Submit execution to execution pool with timeout
-                # Pass result_holder so execute() can update it in real-time
-                execution_future: Future = _execution_pool.submit(self.execute, task, result_holder)
-                try:
-                    # Wait for execution with timeout
-                    exec_result = execution_future.result(timeout=self.config.timeout_seconds)
-                    with _background_tasks_lock:
-                        _background_tasks[task_id].status = exec_result.status
-                        _background_tasks[task_id].result = exec_result.result
-                        _background_tasks[task_id].error = exec_result.error
-                        _background_tasks[task_id].completed_at = datetime.now()
-                        _background_tasks[task_id].ai_messages = exec_result.ai_messages
-                except FuturesTimeoutError:
-                    logger.error(f"[trace={self.trace_id}] Subagent {self.config.name} execution timed out after {self.config.timeout_seconds}s")
-                    with _background_tasks_lock:
-                        _background_tasks[task_id].status = SubagentStatus.TIMED_OUT
-                        _background_tasks[task_id].error = f"Execution timed out after {self.config.timeout_seconds} seconds"
-                        _background_tasks[task_id].completed_at = datetime.now()
-                    # Cancel the future (best effort - may not stop the actual execution)
-                    execution_future.cancel()
+                # Execute with timeout
+                await asyncio.wait_for(
+                    self._aexecute(task, result_holder),
+                    timeout=self.config.timeout_seconds
+                )
+                with _background_tasks_lock:
+                    _background_tasks[task_id].completed_at = datetime.now()
+            except asyncio.TimeoutError:
+                logger.error(f"[trace={self.trace_id}] Subagent {self.config.name} execution timed out after {self.config.timeout_seconds}s")
+                with _background_tasks_lock:
+                    _background_tasks[task_id].status = SubagentStatus.TIMED_OUT
+                    _background_tasks[task_id].error = f"Execution timed out after {self.config.timeout_seconds} seconds"
+                    _background_tasks[task_id].completed_at = datetime.now()
             except Exception as e:
                 logger.exception(f"[trace={self.trace_id}] Subagent {self.config.name} async execution failed")
                 with _background_tasks_lock:
                     _background_tasks[task_id].status = SubagentStatus.FAILED
                     _background_tasks[task_id].error = str(e)
                     _background_tasks[task_id].completed_at = datetime.now()
+            finally:
+                if _execution_semaphore is not None:
+                    _execution_semaphore.release()
 
-        _scheduler_pool.submit(run_task)
+        asyncio.run_coroutine_threadsafe(run_task(), _bg_loop)
         return task_id
-
-
-MAX_CONCURRENT_SUBAGENTS = 6
 
 
 def get_background_task_result(task_id: str) -> SubagentResult | None:

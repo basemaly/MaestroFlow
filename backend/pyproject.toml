@@ -46,6 +46,7 @@ dependencies = [
     "opentelemetry-sdk>=1.40.0",
     "langfuse>=4.0.0",
     "croniter>=2.0.0",
+    "aiofiles>=24.1.0",
 ]
 
 [dependency-groups]

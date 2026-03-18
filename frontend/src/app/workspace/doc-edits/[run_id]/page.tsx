@@ -30,7 +30,7 @@ export default function DocEditRunPage() {
         <div className="size-full min-h-0 p-6">
           {isLoading && !data ? (
             <div className="text-muted-foreground rounded-lg border border-dashed p-6 text-sm">
-              Loading doc edit run...
+              Loading revision session...
             </div>
           ) : (
             <DocEditStudio

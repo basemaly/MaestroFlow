@@ -1,0 +1,258 @@
+[
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/README.md",
+    "category": "product-overview",
+    "priority": "critical",
+    "why_it_matters": "Best public-facing overview of what MaestroFlow is.",
+    "closest_to_manual": true
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/README.md",
+    "category": "backend-overview",
+    "priority": "critical",
+    "why_it_matters": "Closest thing to a backend/operator manual.",
+    "closest_to_manual": true
+  },
+  {
+    "path": "/Volumes/BA/DEV/Shared-Context/WORKSPACES/MaestroFlow/ARCHITECTURE.md",
+    "category": "architecture",
+    "priority": "critical",
+    "why_it_matters": "Highest-signal description of the intended system architecture.",
+    "closest_to_manual": true
+  },
+  {
+    "path": "/Volumes/BA/DEV/Shared-Context/WORKSPACES/MaestroFlow/DECISIONS.md",
+    "category": "decision-log",
+    "priority": "critical",
+    "why_it_matters": "Running record of major product, infrastructure, UI, and workflow decisions.",
+    "closest_to_manual": true
+  },
+  {
+    "path": "/Volumes/BA/DEV/Shared-Context/WORKSPACES/MaestroFlow/WORKSPACE.md",
+    "category": "workspace-summary",
+    "priority": "high",
+    "why_it_matters": "Human-oriented project summary and orientation document."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/ARCHITECTURE.md",
+    "category": "backend-architecture",
+    "priority": "high",
+    "why_it_matters": "Backend-specific architecture, components, and integration details."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/API.md",
+    "category": "api-reference",
+    "priority": "high",
+    "why_it_matters": "Main backend API reference for gateway and app integrations."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/CONFIGURATION.md",
+    "category": "configuration",
+    "priority": "high",
+    "why_it_matters": "Best reference for environment variables and runtime config behavior."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/SETUP.md",
+    "category": "setup",
+    "priority": "high",
+    "why_it_matters": "Primary backend setup and local development guide."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/LANGGRAPH_STORAGE_MIGRATION.md",
+    "category": "persistence",
+    "priority": "high",
+    "why_it_matters": "Explains the LangGraph storage split, migration logic, and compatibility layer."
+  },
+  {
+    "path": "/Volumes/BA/DEV/Shared-Context/WORKSPACES/MaestroFlow/PLANNING-STEERING-SPEC.md",
+    "category": "planning-control-plane",
+    "priority": "high",
+    "why_it_matters": "Defines planning and steering behavior that affects Executive and workflow orchestration."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/CALIBRE_INTEGRATION_REVIEW.md",
+    "category": "knowledge-integration",
+    "priority": "high",
+    "why_it_matters": "Tracks Calibre integration tradeoffs and architecture decisions."
+  },
+  {
+    "path": "/Volumes/BA/DEV/Shared-Context/WORKSPACES/MaestroFlow/CALIBRE-SERVER-INGEST-PLAN.md",
+    "category": "knowledge-integration",
+    "priority": "high",
+    "why_it_matters": "Companion planning doc for the Calibre ingest and retrieval direction."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/docs/notion-block-editor-implementation-plan.md",
+    "category": "writing-surface",
+    "priority": "high",
+    "why_it_matters": "Best design/implementation plan for the document editor and Revision Lab evolution."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/frontend/src/components/workspace/settings/about.md",
+    "category": "product-about",
+    "priority": "medium",
+    "why_it_matters": "In-app product/about copy that reflects current product framing."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/LITELLM_BOTTLENECK_FIXES.md",
+    "category": "model-routing",
+    "priority": "medium",
+    "why_it_matters": "Useful background for LiteLLM, model path cleanup, and performance tuning."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/docs/CODE_CHANGE_SUMMARY_BY_FILE.md",
+    "category": "change-log",
+    "priority": "medium",
+    "why_it_matters": "Helpful file-by-file summary of a major implementation slice."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/docs/MAESTROFLOW_AIO_SANDBOX.md",
+    "category": "runtime",
+    "priority": "medium",
+    "why_it_matters": "Documents sandbox/runtime behavior and Apple container support direction."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/MCP_SERVER.md",
+    "category": "tooling-integration",
+    "priority": "medium",
+    "why_it_matters": "Describes MCP server integration and related operational behavior."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/FILE_UPLOAD.md",
+    "category": "document-pipeline",
+    "priority": "medium",
+    "why_it_matters": "Explains file upload and conversion behavior, relevant to documents and workflows."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/MEMORY_IMPROVEMENTS.md",
+    "category": "memory",
+    "priority": "medium",
+    "why_it_matters": "Longer-form design notes on memory behavior and planned improvements."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/MEMORY_IMPROVEMENTS_SUMMARY.md",
+    "category": "memory",
+    "priority": "medium",
+    "why_it_matters": "Shorter summary of the memory-improvement direction."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/plan_mode_usage.md",
+    "category": "workflow-behavior",
+    "priority": "medium",
+    "why_it_matters": "Documents plan mode behavior, which matters for planning and Executive flows."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/task_tool_improvements.md",
+    "category": "workflow-behavior",
+    "priority": "medium",
+    "why_it_matters": "Important history for task tool and subagent orchestration evolution."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/summarization.md",
+    "category": "workflow-behavior",
+    "priority": "medium",
+    "why_it_matters": "Covers summarization behavior that affects chat and memory quality."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/AUTO_TITLE_GENERATION.md",
+    "category": "chat-ux",
+    "priority": "medium",
+    "why_it_matters": "Explains automatic thread-title generation behavior."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/backend/docs/TITLE_GENERATION_IMPLEMENTATION.md",
+    "category": "chat-ux",
+    "priority": "medium",
+    "why_it_matters": "Implementation detail for title generation logic."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/CONTRIBUTING.md",
+    "category": "dev-workflow",
+    "priority": "medium",
+    "why_it_matters": "Contribution and development workflow reference."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/SECURITY.md",
+    "category": "security",
+    "priority": "medium",
+    "why_it_matters": "Security posture and reporting reference."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/AGENTS.md",
+    "category": "repo-instructions",
+    "priority": "medium",
+    "why_it_matters": "Local repo-specific operating instructions for agents."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/CLAUDE.md",
+    "category": "repo-instructions",
+    "priority": "medium",
+    "why_it_matters": "Additional repo guidance and conventions."
+  },
+  {
+    "path": "/Volumes/BA/DEV/Shared-Context/WORKSPACES/_SYSTEM/AGENT-GUIDE.md",
+    "category": "shared-context-system",
+    "priority": "medium",
+    "why_it_matters": "System guide for shared context, memory, and cross-project operating rules."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/tasks/todo.md",
+    "category": "backlog",
+    "priority": "low",
+    "why_it_matters": "Residual task list that may still contain relevant unfinished work."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/docs/052d5390/run-report.md",
+    "category": "writing-experiments",
+    "priority": "low",
+    "why_it_matters": "Representative run report for the editorial/revision workflow."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/docs/5f9614aa/run-report.md",
+    "category": "writing-experiments",
+    "priority": "low",
+    "why_it_matters": "Representative run report including humanizer and critic-loop passes."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/docs/ae7b6e00/run-report.md",
+    "category": "writing-experiments",
+    "priority": "low",
+    "why_it_matters": "Representative run report including writing-refiner, argument-critic, and humanizer outputs."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/skills/public/humanizer/SKILL.md",
+    "category": "feature-surface",
+    "priority": "low",
+    "why_it_matters": "Documents one public writing skill now exposed as part of MaestroFlow's feature surface."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/skills/public/humanize-writing/SKILL.md",
+    "category": "feature-surface",
+    "priority": "low",
+    "why_it_matters": "Documents a deeper writing-humanization skill."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/skills/public/rhetoric-annotation/SKILL.md",
+    "category": "feature-surface",
+    "priority": "low",
+    "why_it_matters": "Documents a rhetoric/argument critique skill."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/skills/public/persuade-critique/SKILL.md",
+    "category": "feature-surface",
+    "priority": "low",
+    "why_it_matters": "Documents a persuasion critique workflow."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/skills/public/self-critique-refinement/SKILL.md",
+    "category": "feature-surface",
+    "priority": "low",
+    "why_it_matters": "Documents iterative self-critique/refinement behavior."
+  },
+  {
+    "path": "/Volumes/BA/DEV/MaestroFlow/skills/public/prompt-engineering-playbook/SKILL.md",
+    "category": "feature-surface",
+    "priority": "low",
+    "why_it_matters": "Documents reusable editing and prompt-engineering patterns."
+  }
+]

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from functools import lru_cache
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from src.gateway.contracts import build_error_envelope, build_health_envelope
@@ -18,13 +19,30 @@ router = APIRouter(prefix="/api/calibre", tags=["calibre"])
 _status_cache: dict[str | None, tuple[dict, float]] = {}
 _health_cache: dict[str | None, tuple[dict, float]] = {}
 _CACHE_TTL_SECONDS = 60
+_active_connections: list[tuple[WebSocket, str | None]] = []
 
+async def _broadcast_status(collection: str | None = None) -> None:
+    if not _active_connections:
+        return
+    status = await get_calibre_status(collection)
+    disconnected = []
+    for ws, col in _active_connections:
+        if col == collection or col is None:
+            try:
+                await ws.send_json(status)
+            except Exception:
+                disconnected.append((ws, col))
+    for entry in disconnected:
+        if entry in _active_connections:
+            _active_connections.remove(entry)
 
 def _invalidate_calibre_cache(collection: str | None = None) -> None:
     """Invalidate status and health cache entries affected by a sync or reindex."""
     for key in {collection, None}:
         _status_cache.pop(key, None)
         _health_cache.pop(key, None)
+    if _active_connections:
+        asyncio.create_task(_broadcast_status(collection))
 
 
 def _http_error_message(exc: httpx.HTTPError) -> str:

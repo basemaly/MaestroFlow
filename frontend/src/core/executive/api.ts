@@ -4,6 +4,7 @@ import type {
   ExecutiveActionPreview,
   ExecutiveActionDefinition,
   ExecutiveAdvisoryRule,
+  ExecutiveAgentRunResult,
   ExecutiveApprovalRequest,
   ExecutiveAuditEntry,
   ExecutiveComponent,
@@ -106,6 +107,20 @@ export function executiveChat(
     method: "POST",
     signal,
     body: JSON.stringify({ messages }),
+  });
+}
+
+export function launchExecutiveAgentRun(body: {
+  prompt: string;
+  agent_name?: string;
+  model_name?: string;
+  mode?: "standard" | "pro" | "ultra";
+  thinking_enabled?: boolean;
+  subagent_enabled?: boolean;
+}): Promise<ExecutiveAgentRunResult> {
+  return api("/api/executive/agent-runs", {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

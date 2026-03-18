@@ -12,7 +12,10 @@ export function useDocEditRuns() {
   return useQuery({
     queryKey: ["doc-edit-runs"],
     queryFn: listDocEditRuns,
-    staleTime: 15_000,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -21,7 +24,10 @@ export function useDocEditRun(runId?: string) {
     queryKey: ["doc-edit-run", runId],
     queryFn: () => getDocEditRun(runId!),
     enabled: !!runId,
-    staleTime: 15_000,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 

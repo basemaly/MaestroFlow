@@ -1,12 +1,18 @@
 "use client";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLinkIcon, Loader2Icon, PlayIcon, SquareIcon } from "lucide-react";
 import { XIcon } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -15,8 +21,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AgentPresetMenu } from "@/components/workspace/context-controls";
 import { ExecutiveIcon } from "@/components/workspace/executive-icon";
 import { ExecutiveProjects } from "@/components/workspace/executive-projects";
+import { cancelProject, launchExecutiveAgentRun, listProjects } from "@/core/executive/api";
 
 export function ExecutiveDrawerTrigger({
   isSidebarOpen,
@@ -83,10 +91,15 @@ export function ExecutiveDrawerTrigger({
           className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
         >
           <SheetHeader className="flex flex-row items-center justify-between border-b px-4 py-3">
-            <SheetTitle className="flex items-center gap-2 text-base">
-              <ExecutiveIcon className="size-4" />
-              Executive Agent
-            </SheetTitle>
+            <div className="space-y-1">
+              <SheetTitle className="flex items-center gap-2 text-base">
+                <ExecutiveIcon className="size-4" />
+                Executive Agent
+              </SheetTitle>
+              <SheetDescription>
+                Monitor system health, launch specialist runs, and stop active workflows from one control surface.
+              </SheetDescription>
+            </div>
             <button
               onClick={() => setOpen(false)}
               className="rounded-sm text-muted-foreground opacity-70 transition-opacity hover:opacity-100"
@@ -95,12 +108,211 @@ export function ExecutiveDrawerTrigger({
             </button>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
+            <ExecutiveAgentLifecycle />
             <ExecutiveProjects />
             <ExecutiveQuickChat />
           </div>
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+function ExecutiveAgentLifecycle() {
+  const queryClient = useQueryClient();
+  const [prompt, setPrompt] = useState("");
+  const [agentName, setAgentName] = useState<string | undefined>(undefined);
+  const [mode, setMode] = useState<"standard" | "pro" | "ultra">("pro");
+  const [lastThreadId, setLastThreadId] = useState<string | null>(null);
+  const [stoppingProjectId, setStoppingProjectId] = useState<string | null>(null);
+
+  const quickPrompts = [
+    "Audit the current document workflow and recommend one simplification.",
+    "Review active warnings and tell me what actually needs attention.",
+    "Summarize where the current thread is stuck and propose the next move.",
+  ];
+
+  const projectsQuery = useQuery({
+    queryKey: ["executive", "projects", "drawer"],
+    queryFn: () => listProjects(),
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+  });
+
+  const launchMutation = useMutation({
+    mutationFn: () =>
+      launchExecutiveAgentRun({
+        prompt: prompt.trim(),
+        agent_name: agentName,
+        mode,
+        thinking_enabled: mode !== "standard",
+        subagent_enabled: mode === "ultra",
+      }),
+    onSuccess: (result) => {
+      if (result.thread_id) {
+        setLastThreadId(result.thread_id);
+        toast.success("Agent thread launched");
+      } else {
+        toast.error(result.error ?? "Agent run failed");
+      }
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: (projectId: string) => cancelProject(projectId),
+    onSuccess: () => {
+      setStoppingProjectId(null);
+      toast.success("Workflow stopped");
+      void queryClient.invalidateQueries({ queryKey: ["executive", "projects"] });
+    },
+    onError: (error) => {
+      setStoppingProjectId(null);
+      toast.error(error instanceof Error ? error.message : String(error));
+    },
+  });
+
+  const activeProjects =
+    projectsQuery.data?.projects.filter((project) =>
+      ["running", "waiting_approval", "paused"].includes(project.status),
+    ) ?? [];
+
+  return (
+    <Card className="border-amber-500/20 bg-amber-500/5">
+      <CardHeader className="space-y-1 pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ExecutiveIcon className="size-4" />
+          Agent Lifecycle
+        </CardTitle>
+        <CardDescription>
+          Launch specialist runs from Executive, then stop active workflows when they are no longer worth the spend.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <AgentPresetMenu
+            value={agentName}
+            onChange={setAgentName}
+            compact
+          />
+          <Button
+            size="sm"
+            variant={mode === "standard" ? "secondary" : "outline"}
+            onClick={() => setMode("standard")}
+          >
+            Standard
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "pro" ? "secondary" : "outline"}
+            onClick={() => setMode("pro")}
+          >
+            Pro
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "ultra" ? "secondary" : "outline"}
+            onClick={() => setMode("ultra")}
+          >
+            Ultra
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {quickPrompts.map((template) => (
+            <Button
+              key={template}
+              size="sm"
+              type="button"
+              variant="ghost"
+              className="h-auto whitespace-normal rounded-full border border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground"
+              onClick={() => setPrompt(template)}
+            >
+              {template}
+            </Button>
+          ))}
+        </div>
+        <textarea
+          className="min-h-[92px] w-full resize-none rounded-lg border border-border/50 bg-background/80 px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-amber-500/40"
+          placeholder="Spawn a specialist run. Example: Audit the current Drafting workflow and recommend one simplification."
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+        />
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <span>{mode === "standard" ? "Fastest, lowest overhead." : mode === "pro" ? "Balanced planning and execution." : "Deepest run with subagents enabled."}</span>
+          {agentName ? <span>Preset: {agentName}</span> : <span>Using default MaestroFlow lead agent.</span>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            className="bg-amber-500 text-black hover:bg-amber-400"
+            disabled={launchMutation.isPending || !prompt.trim()}
+            onClick={() => launchMutation.mutate()}
+          >
+            {launchMutation.isPending ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <PlayIcon className="size-4" />
+            )}
+            Launch Agent
+          </Button>
+          {lastThreadId ? (
+            <Button size="sm" variant="outline" asChild>
+              <Link href={agentName ? `/workspace/agents/${agentName}/chats/${lastThreadId}` : `/workspace/chats/${lastThreadId}`}>
+                <ExternalLinkIcon className="size-4" />
+                Open Thread
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">Active workflows</div>
+            <div className="text-muted-foreground text-xs">
+              {activeProjects.length} live
+            </div>
+          </div>
+          {activeProjects.length === 0 ? (
+            <div className="text-muted-foreground rounded-lg border border-dashed px-3 py-2 text-xs">
+              No active Executive workflows right now.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {activeProjects.map((project) => (
+                <div
+                  key={project.project_id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-background/70 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{project.title}</div>
+                    <div className="text-muted-foreground text-xs">
+                      {project.status} · stage {project.current_stage_index + 1} of {project.total_stages}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    disabled={stopMutation.isPending}
+                    onClick={() => {
+                      setStoppingProjectId(project.project_id);
+                      stopMutation.mutate(project.project_id);
+                    }}
+                  >
+                    {stopMutation.isPending && stoppingProjectId === project.project_id ? (
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                    ) : (
+                      <SquareIcon className="size-3.5" />
+                    )}
+                    Stop
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

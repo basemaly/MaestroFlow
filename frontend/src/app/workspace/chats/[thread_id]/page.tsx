@@ -8,23 +8,19 @@ import { toast } from "sonner";
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ArtifactTrigger } from "@/components/workspace/artifacts";
-import { CalibreStatus } from "@/components/workspace/calibre-status";
 import {
   ChatBox,
   useSpecificChatMode,
   useThreadChat,
 } from "@/components/workspace/chats";
+import { ContextDock } from "@/components/workspace/context-dock";
 import { DeerIntroOverlay } from "@/components/workspace/deer-intro-overlay";
-import { DocEditDialog } from "@/components/workspace/doc-edit-dialog";
 import { ExecutiveDrawerTrigger } from "@/components/workspace/executive-drawer";
 import { ExternalServiceBanner } from "@/components/workspace/external-service-banner";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
 import { PlanReviewCard } from "@/components/workspace/plan-review-card";
-import { SnippetShelf } from "@/components/workspace/snippet-shelf";
-import { SurfSenseActions } from "@/components/workspace/surfsense-actions";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { useI18n } from "@/core/i18n/hooks";
@@ -236,20 +232,35 @@ export default function ChatPage() {
                 <ClipboardCheckIcon className="size-4" />
                 {manualPlanReview ? "Armed" : "Review Plan"}
               </Button>
-              <SurfSenseActions />
-              <CalibreStatus />
-              <DocEditDialog
-                disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
-                mode={settings.context.mode}
-              />
-              <ArtifactTrigger />
-              <SnippetShelf />
               <ExecutiveDrawerTrigger isSidebarOpen={false} variant="header" />
             </div>
           </header>
           <main className="relative isolate flex min-h-0 max-w-full grow flex-col">
             <DeerIntroOverlay active={isNewThread} />
             <ExternalServiceBanner />
+            <div className="px-4 pt-14 pb-2">
+              <ContextDock
+                knowledgeSource={
+                  (settings.context.knowledge_source as "auto" | "calibre-library" | undefined) ??
+                  "auto"
+                }
+                onKnowledgeSourceChange={(knowledge_source) =>
+                  setSettings("context", { knowledge_source })
+                }
+                agentPreset={
+                  typeof settings.context.agent_name === "string"
+                    ? settings.context.agent_name
+                    : undefined
+                }
+                onAgentPresetChange={(agent_name) =>
+                  setSettings("context", { agent_name })
+                }
+                mode={settings.context.mode}
+                disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
+                includeArtifacts
+                includeRevisionLab
+              />
+            </div>
             {planningReview && (
               <PlanReviewCard
                 review={planningReview}

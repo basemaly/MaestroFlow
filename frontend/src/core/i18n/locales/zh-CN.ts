@@ -154,13 +154,16 @@ export const zhCN: Translations = {
 
   // Sidebar
   sidebar: {
+    activity: "活动",
+    writing: "写作",
     newChat: "新对话",
     chats: "对话",
     recentChats: "最近的对话",
     demoChats: "演示对话",
     agents: "智能体",
-    docEdits: "文档编辑",
-    newDocEdit: "新建文档编辑",
+    agentPresets: "预设智能体",
+    docEdits: "修订实验室",
+    newDocEdit: "新建修订会话",
     documents: "文档",
     executive: "执行控制台",
   },
@@ -198,6 +201,10 @@ export const zhCN: Translations = {
   breadcrumb: {
     workspace: "工作区",
     chats: "对话",
+    agents: "智能体",
+    documents: "文档",
+    docEdits: "修订实验室",
+    executive: "执行控制台",
   },
 
   // Workspace
