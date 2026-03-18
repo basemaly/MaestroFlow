@@ -16,7 +16,7 @@ class SandboxConfig(BaseModel):
         use: Class path of the sandbox provider (required)
 
     AioSandboxProvider specific options:
-        image: Docker image to use (default: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest)
+        image: Docker image to use (default: ghcr.io/agent-infra/sandbox:latest)
         port: Base port for sandbox containers (default: 8080)
         base_url: If set, uses existing sandbox instead of starting new container
         auto_start: Whether to automatically start Docker container (default: true)

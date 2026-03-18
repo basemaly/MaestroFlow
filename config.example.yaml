@@ -205,9 +205,9 @@ sandbox:
 #   # base_url: http://localhost:8080
 #
 #   # Optional: Container image to use (works with both Docker and Apple Container)
-#   # Default: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
-#   # Recommended: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest (works on both x86_64 and arm64)
-#   # image: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
+#   # Default: ghcr.io/agent-infra/sandbox:latest
+#   # Recommended: ghcr.io/agent-infra/sandbox:latest (works on both x86_64 and arm64)
+#   # image: ghcr.io/agent-infra/sandbox:latest
 #
 #   # Optional: Base port for sandbox containers (default: 8080)
 #   # port: 8080

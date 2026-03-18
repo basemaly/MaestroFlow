@@ -137,23 +137,44 @@ setup-sandbox:
 	@echo "  Pre-pulling Sandbox Container Image"
 	@echo "=========================================="
 	@echo ""
-	@IMAGE=$$(grep -A 20 "# sandbox:" config.yaml 2>/dev/null | grep "image:" | awk '{print $$2}' | head -1); \
+	@IMAGE=$$(awk '\
+		/^[[:space:]]*sandbox:[[:space:]]*$$/ { in_sandbox=1; next } \
+		in_sandbox && /^[^[:space:]#]/ { in_sandbox=0 } \
+		in_sandbox && /^[[:space:]]*image:[[:space:]]*/ { \
+			line=$$0; \
+			sub(/^[[:space:]]*image:[[:space:]]*/, "", line); \
+			print line; \
+			exit \
+		} \
+	' config.yaml 2>/dev/null); \
 	if [ -z "$$IMAGE" ]; then \
-		IMAGE="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"; \
+		IMAGE="ghcr.io/agent-infra/sandbox:latest"; \
 		echo "Using default image: $$IMAGE"; \
 	else \
 		echo "Using configured image: $$IMAGE"; \
 	fi; \
 	echo ""; \
+	PULL_OK=0; \
 	if command -v container >/dev/null 2>&1 && [ "$$(uname)" = "Darwin" ]; then \
 		echo "Detected Apple Container on macOS, pulling image..."; \
-		container pull "$$IMAGE" || echo "⚠ Apple Container pull failed, will try Docker"; \
+		if container pull "$$IMAGE"; then \
+			PULL_OK=1; \
+		else \
+			echo "⚠ Apple Container pull failed, will try Docker"; \
+		fi; \
 	fi; \
 	if command -v docker >/dev/null 2>&1; then \
 		echo "Pulling image using Docker..."; \
-		docker pull "$$IMAGE"; \
+		if docker pull "$$IMAGE"; then \
+			PULL_OK=1; \
+		fi; \
 		echo ""; \
-		echo "✓ Sandbox image pulled successfully"; \
+		if [ "$$PULL_OK" -eq 1 ]; then \
+			echo "✓ Sandbox image pulled successfully"; \
+		else \
+			echo "✗ Sandbox image pull failed"; \
+			exit 1; \
+		fi; \
 	else \
 		echo "✗ Neither Docker nor Apple Container is available"; \
 		echo "  Please install Docker: https://docs.docker.com/get-docker/"; \

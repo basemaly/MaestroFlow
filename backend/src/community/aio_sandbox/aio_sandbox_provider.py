@@ -37,7 +37,7 @@ from .state_store import SandboxStateStore
 logger = logging.getLogger(__name__)
 
 # Default configuration
-DEFAULT_IMAGE = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
+DEFAULT_IMAGE = "ghcr.io/agent-infra/sandbox:latest"
 DEFAULT_PORT = 8080
 DEFAULT_CONTAINER_PREFIX = "deer-flow-sandbox"
 DEFAULT_IDLE_TIMEOUT = 600  # 10 minutes in seconds
