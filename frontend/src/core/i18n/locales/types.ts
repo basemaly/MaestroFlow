@@ -103,11 +103,14 @@ export interface Translations {
 
   // Sidebar
   sidebar: {
+    activity: string;
+    writing: string;
     recentChats: string;
     newChat: string;
     chats: string;
     demoChats: string;
     agents: string;
+    agentPresets: string;
     docEdits: string;
     newDocEdit: string;
     documents: string;
@@ -145,6 +148,10 @@ export interface Translations {
   breadcrumb: {
     workspace: string;
     chats: string;
+    agents: string;
+    documents: string;
+    docEdits: string;
+    executive: string;
   };
 
   // Workspace

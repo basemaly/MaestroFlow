@@ -5,6 +5,7 @@ import {
   BookOpenTextIcon,
   CopyIcon,
   DownloadIcon,
+  FilePenLineIcon,
   FileClockIcon,
   Loader2Icon,
   SaveIcon,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { openDocEditStudio } from "@/core/doc-editing/events";
 import { useTransformDocument, useUpdateDocument } from "@/core/documents/hooks";
 import type { DocumentRecord, DocumentTransformOperation } from "@/core/documents/types";
 import { formatTimeAgo } from "@/core/utils/datetime";
@@ -174,6 +176,17 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
     URL.revokeObjectURL(url);
   }
 
+  function handleOpenRevisionLab(scope: "selection" | "document") {
+    const selectedMarkdown = editorRef.current?.getSelectionMarkdown().trim() ?? "";
+    if (scope === "selection" && selectedMarkdown.length === 0) {
+      toast.error("Select a block or paragraph first");
+      return;
+    }
+    openDocEditStudio({
+      content: scope === "selection" ? selectedMarkdown : markdown,
+    });
+  }
+
   return (
     <div className="grid size-full min-h-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="min-h-0 space-y-4">
@@ -203,6 +216,10 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
                 <Button size="sm" variant="outline" onClick={() => handleDownloadMarkdown()}>
                   <DownloadIcon className="size-4" />
                   Download
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleOpenRevisionLab("document")}>
+                  <FilePenLineIcon className="size-4" />
+                  Compare Draft
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => void handleManualSave()} disabled={updateDocument.isPending}>
                   {updateDocument.isPending ? <Loader2Icon className="size-4 animate-spin" /> : <SaveIcon className="size-4" />}
@@ -241,10 +258,10 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
           <CardHeader className="px-4">
             <CardTitle className="flex items-center gap-2 text-base">
               <Wand2Icon className="size-4" />
-              AI Refinement
+              Refine & Compare
             </CardTitle>
             <CardDescription>
-              Apply an AI transform to the current selection when possible, or to the whole draft when nothing is selected.
+              Apply a quick transform in place, or open Revision Lab to compare competing rewrites before you commit.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 px-4">
@@ -300,6 +317,27 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
             </Button>
             <div className="text-muted-foreground text-xs">
               Tip: select a paragraph or block first to target only that section.
+            </div>
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleOpenRevisionLab("selection")}
+              >
+                <FilePenLineIcon className="size-4" />
+                Compare selection in Revision Lab
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleOpenRevisionLab("document")}
+              >
+                <FilePenLineIcon className="size-4" />
+                Compare full draft in Revision Lab
+              </Button>
+            </div>
+            <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Quick transforms are best for surgical edits. Revision Lab is better when tone, argument quality, or strategy needs side-by-side comparison.
             </div>
           </CardContent>
         </Card>

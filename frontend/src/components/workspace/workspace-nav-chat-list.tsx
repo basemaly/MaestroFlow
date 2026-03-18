@@ -16,6 +16,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExecutiveIcon } from "@/components/workspace/executive-icon";
 import { listAgents } from "@/core/agents";
+import { listDocEditRuns } from "@/core/doc-editing/api";
 import { listDocuments } from "@/core/documents/api";
 import { useI18n } from "@/core/i18n/hooks";
 
@@ -70,6 +71,11 @@ export function WorkspaceNavChatList() {
       queryFn: listDocuments,
       staleTime: 60_000,
     });
+    void queryClient.prefetchQuery({
+      queryKey: ["doc-edit-runs"],
+      queryFn: listDocEditRuns,
+      staleTime: 60_000,
+    });
   }, [queryClient]);
 
   return (
@@ -91,10 +97,10 @@ export function WorkspaceNavChatList() {
           isSidebarOpen={isSidebarOpen}
         />
         <NavItem
-          href="/workspace/agents"
-          icon={BotIcon}
-          label={t.sidebar.agents}
-          isActive={pathname.startsWith("/workspace/agents")}
+          href="/workspace/docs"
+          icon={BookOpenTextIcon}
+          label={t.sidebar.documents}
+          isActive={pathname.startsWith("/workspace/docs")}
           isSidebarOpen={isSidebarOpen}
         />
         <NavItem
@@ -105,10 +111,10 @@ export function WorkspaceNavChatList() {
           isSidebarOpen={isSidebarOpen}
         />
         <NavItem
-          href="/workspace/docs"
-          icon={BookOpenTextIcon}
-          label={t.sidebar.documents}
-          isActive={pathname.startsWith("/workspace/docs")}
+          href="/workspace/agents"
+          icon={BotIcon}
+          label={t.sidebar.agentPresets}
+          isActive={pathname.startsWith("/workspace/agents")}
           isSidebarOpen={isSidebarOpen}
         />
       </SidebarMenu>

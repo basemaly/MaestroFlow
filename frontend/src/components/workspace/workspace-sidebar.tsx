@@ -8,9 +8,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-import { RecentChatList } from "./recent-chat-list";
-import { RecentDocEditList } from "./recent-doc-edit-list";
-import { RecentDocumentList } from "./recent-document-list";
+import { RecentActivityList } from "./recent-activity-list";
 import { WorkspaceHeader } from "./workspace-header";
 import { WorkspaceNavChatList } from "./workspace-nav-chat-list";
 import { WorkspaceNavMenu } from "./workspace-nav-menu";
@@ -26,9 +24,7 @@ export function WorkspaceSidebar({
         </SidebarHeader>
         <SidebarContent>
           <WorkspaceNavChatList />
-          <RecentChatList />
-          <RecentDocEditList />
-          <RecentDocumentList />
+          <RecentActivityList />
         </SidebarContent>
         <SidebarFooter>
           <WorkspaceNavMenu />

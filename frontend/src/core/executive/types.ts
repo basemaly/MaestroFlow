@@ -230,3 +230,11 @@ export type AdvanceProjectResponse = {
   checkpoint_id?: string | null;
   message: string;
 };
+
+export type ExecutiveAgentRunResult = {
+  thread_id: string | null;
+  status: "completed" | "failed";
+  response: string | null;
+  title?: string | null;
+  error?: string | null;
+};

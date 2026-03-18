@@ -54,6 +54,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  DOC_EDIT_OPEN_EVENT,
+} from "@/core/doc-editing/events";
+import {
   useSelectDocEditVersion,
   useStartDocEditRun,
   useUploadDocEditFile,
@@ -166,7 +169,7 @@ function DocEditStudioHeader({ title }: { title: string }) {
         {title}
       </div>
       <div className="text-muted-foreground text-sm">
-        Paste markdown or upload a supported file, run multiple editorial skills in parallel, then choose the winner.
+        Compare editorial strategies side by side, then keep only the strongest rewrite. Use it for a whole draft or a selected section.
       </div>
     </div>
   );
@@ -252,7 +255,7 @@ export function DocEditStudio({
     () => deferredDocument.trim().split(/\s+/).filter(Boolean).length,
     [deferredDocument],
   );
-  const runTitle = run?.title ?? "Parallel Document Editing";
+  const runTitle = run?.title ?? "Revision Lab";
   const invalidBudget =
     tokenBudget.trim().length > 0 &&
     Number.parseInt(tokenBudget, 10) < 250;
@@ -710,7 +713,7 @@ export function DocEditStudio({
               ) : (
                 <SparklesIcon className="size-4" />
               )}
-              Run Versions
+              Generate Versions
             </Button>
             <Button
               variant="outline"
@@ -718,7 +721,7 @@ export function DocEditStudio({
               onClick={resetStudio}
               disabled={isBusy}
             >
-              Reset
+              Clear
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
@@ -747,7 +750,7 @@ export function DocEditStudio({
                   ? "Final version exported"
                   : run.review_payload?.instruction ??
                     "Select a version to finalize the run."
-                : "Run a document edit job to compare outputs here."}
+                : "Generate competing revisions here, then keep the strongest one."}
             </div>
             {run && (
               <div className="text-muted-foreground mt-1 text-[11px]">
@@ -1013,9 +1016,11 @@ export function DocEditStudio({
 export function DocEditDialog({
   disabled,
   mode,
+  showTrigger = true,
 }: {
   disabled?: boolean;
   mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
+  showTrigger?: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
@@ -1027,7 +1032,6 @@ export function DocEditDialog({
     setMounted(true);
   }, []);
 
-  // Listen for cross-component "open with content" events (e.g. from artifact panel)
   useEffect(() => {
     if (!mounted) {
       return;
@@ -1038,11 +1042,14 @@ export function DocEditDialog({
       setStudioKey((k) => k + 1);
       setOpen(true);
     };
-    window.addEventListener("maestroflow:doc-edit-open", handler);
-    return () => window.removeEventListener("maestroflow:doc-edit-open", handler);
+    window.addEventListener(DOC_EDIT_OPEN_EVENT, handler);
+    return () => window.removeEventListener(DOC_EDIT_OPEN_EVENT, handler);
   }, [mounted]);
 
   if (!mounted) {
+    if (!showTrigger) {
+      return null;
+    }
     return (
       <Button
         size="sm"
@@ -1051,24 +1058,26 @@ export function DocEditDialog({
         disabled
       >
         <FilePenLineIcon className="size-4" />
-        Doc Edit
+          Revision Lab
       </Button>
     );
   }
 
   return (
     <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (!v) setIsFullscreen(false); }}>
-      <SheetTrigger asChild>
-        <Button
-          size="sm"
-          variant="outline"
-          className="rounded-full border-2 px-4"
-          disabled={(disabled ?? false) || env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
-        >
-          <FilePenLineIcon className="size-4" />
-          Doc Edit
-        </Button>
-      </SheetTrigger>
+      {showTrigger ? (
+        <SheetTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-full border-2 px-4"
+            disabled={(disabled ?? false) || env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
+          >
+            <FilePenLineIcon className="size-4" />
+            Revision Lab
+          </Button>
+        </SheetTrigger>
+      ) : null}
       <SheetContent
         side="right"
         showClose={false}
@@ -1082,10 +1091,10 @@ export function DocEditDialog({
         <SheetHeader className="flex shrink-0 flex-row items-center justify-between border-b px-4 py-2">
           <SheetTitle className="flex items-center gap-2 text-base font-semibold">
             <FilePenLineIcon className="size-4" />
-            Doc Edit
+            Revision Lab
           </SheetTitle>
           <SheetDescription className="sr-only">
-            Parallel document editing studio
+            Compare and choose writing revisions
           </SheetDescription>
           <div className="flex items-center gap-1">
             <Button

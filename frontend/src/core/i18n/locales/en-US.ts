@@ -160,13 +160,16 @@ export const enUS: Translations = {
 
   // Sidebar
   sidebar: {
+    activity: "Activity",
+    writing: "Writing",
     newChat: "New chat",
     chats: "Chats",
     recentChats: "Recent chats",
     demoChats: "Demo chats",
     agents: "Agents",
-    docEdits: "Doc edits",
-    newDocEdit: "New doc edit",
+    agentPresets: "Presets",
+    docEdits: "Revision Lab",
+    newDocEdit: "New revision session",
     documents: "Documents",
     executive: "Executive",
   },
@@ -209,6 +212,10 @@ export const enUS: Translations = {
   breadcrumb: {
     workspace: "Workspace",
     chats: "Chats",
+    agents: "Agents",
+    documents: "Documents",
+    docEdits: "Revision Lab",
+    executive: "Executive",
   },
 
   // Workspace

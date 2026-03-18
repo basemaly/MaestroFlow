@@ -10,7 +10,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_LANGGRAPH_URL = "http://localhost:2024"
+_DEFAULT_LANGGRAPH_URL = "http://langgraph:8000"
 
 
 def _get_langgraph_url() -> str:
@@ -89,6 +89,7 @@ async def run_lead_agent(
     try:
         thread = await client.threads.create()
         thread_id = thread["thread_id"]
+        configurable["thread_id"] = thread_id
 
         result = await client.runs.wait(
             thread_id,

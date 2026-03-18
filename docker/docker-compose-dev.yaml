@@ -126,6 +126,7 @@ services:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
       - CI=true
+      - MAESTROFLOW_INTERNAL_GATEWAY_URL=http://gateway:8001
     env_file:
       - ../frontend/.env
     networks:

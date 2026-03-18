@@ -8,7 +8,6 @@ import {
   GlobeIcon,
   GraduationCapIcon,
   LayersIcon,
-  LibraryIcon,
   LightbulbIcon,
   PaperclipIcon,
   PlusIcon,
@@ -85,6 +84,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 
+import { AgentPresetMenu, KnowledgeSourceMenu } from "./context-controls";
 import { ExecutiveIcon } from "./executive-icon";
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
@@ -217,43 +217,6 @@ function ResearchToolsMenu({
             );
           })}
         </DropdownMenuGroup>
-      </PromptInputActionMenuContent>
-    </PromptInputActionMenu>
-  );
-}
-
-function KnowledgeSourceMenu({
-  value,
-  onChange,
-}: {
-  value: "auto" | "calibre-library";
-  onChange: (value: "auto" | "calibre-library") => void;
-}) {
-  return (
-    <PromptInputActionMenu>
-      <Tooltip
-        content={
-          value === "calibre-library"
-            ? "Scoped to Calibre Library"
-            : "Choose a knowledge source"
-        }
-      >
-        <PromptInputActionMenuTrigger className="gap-1! px-2!">
-          <LibraryIcon className="size-3 text-muted-foreground/70" />
-          <span className="text-xs">
-            {value === "calibre-library" ? "Calibre" : "Auto"}
-          </span>
-        </PromptInputActionMenuTrigger>
-      </Tooltip>
-      <PromptInputActionMenuContent className="w-56">
-        <PromptInputActionMenuItem onSelect={() => onChange("auto")}>
-          Auto knowledge source
-        </PromptInputActionMenuItem>
-        <PromptInputActionMenuItem
-          onSelect={() => onChange("calibre-library")}
-        >
-          Calibre Library
-        </PromptInputActionMenuItem>
       </PromptInputActionMenuContent>
     </PromptInputActionMenu>
   );
@@ -910,6 +873,15 @@ export function InputBox({
           <ResearchToolsMenu
             activeGroups={(context.research_tools as string[] | undefined) ?? []}
             onToggle={handleResearchToolToggle}
+          />
+          <AgentPresetMenu
+            value={typeof context.agent_name === "string" ? context.agent_name : undefined}
+            onChange={(agent_name) =>
+              onContextChange?.({
+                ...context,
+                agent_name,
+              })
+            }
           />
           <KnowledgeSourceMenu
             value={

@@ -28,6 +28,9 @@ export function AgentGallery({ initialAgents }: { initialAgents?: Agent[] }) {
           <p className="text-muted-foreground mt-0.5 text-sm">
             {t.agents.description}
           </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Use these as reusable presets from chat, documents, and Executive.
+          </p>
         </div>
         <Button onClick={handleNewAgent}>
           <PlusIcon className="mr-1.5 h-4 w-4" />

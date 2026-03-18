@@ -1,8 +1,11 @@
 "use client";
 
+import { ArrowRightIcon, BookOpenTextIcon, SparklesIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocEditStudio } from "@/components/workspace/doc-edit-dialog";
 import { ExternalServiceBanner } from "@/components/workspace/external-service-banner";
@@ -35,7 +38,26 @@ export default function DocEditsPage() {
           <div className="min-h-0">
             <Card className="h-full py-4">
               <CardHeader className="px-4">
-                <CardTitle className="text-base">Recent Doc Edit Runs</CardTitle>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <SparklesIcon className="size-4" />
+                      {t.sidebar.docEdits}
+                    </CardTitle>
+                    <div className="text-muted-foreground text-sm">
+                      Use this for heavier compare-and-choose sessions. For normal drafting, stay in Documents and open Revision Lab only when needed.
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{runs.length} runs</Badge>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href="/workspace/docs">
+                        <BookOpenTextIcon className="size-4" />
+                        Back to Documents
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-3 px-4">
                 {isLoading && (
@@ -60,9 +82,12 @@ export default function DocEditsPage() {
                 )}
                 {!isLoading && !isError && runs.map((run) => (
                   <Link key={run.run_id} href={`/workspace/doc-edits/${run.run_id}`}>
-                    <div className="rounded-lg border p-3 text-sm hover:bg-accent/40">
-                      <div className="font-medium">{run.title ?? run.run_id}</div>
-                      <div className="text-muted-foreground mt-1 text-xs">
+                    <div className="rounded-xl border p-3 text-sm transition-colors hover:bg-accent/40">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="font-medium">{run.title ?? run.run_id}</div>
+                        <ArrowRightIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      </div>
+                      <div className="text-muted-foreground mt-2 text-xs">
                         {run.status} · {run.timestamp ? formatTimeAgo(run.timestamp) : "Unknown time"}
                       </div>
                       <div className="text-muted-foreground mt-1 text-xs">

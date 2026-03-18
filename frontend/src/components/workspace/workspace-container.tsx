@@ -128,5 +128,9 @@ function nameOfSegment(
   if (!segment) return t.common.home;
   if (segment === "workspace") return t.breadcrumb.workspace;
   if (segment === "chats") return t.breadcrumb.chats;
+  if (segment === "agents") return t.breadcrumb.agents;
+  if (segment === "docs") return t.breadcrumb.documents;
+  if (segment === "doc-edits") return t.breadcrumb.docEdits;
+  if (segment === "executive") return t.breadcrumb.executive;
   return segment[0]?.toUpperCase() + segment.slice(1);
 }

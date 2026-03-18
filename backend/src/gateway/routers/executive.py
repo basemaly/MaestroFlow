@@ -31,6 +31,7 @@ from src.executive.service import (
     list_audit_payload,
     preview_action_payload,
     reject_approval_payload,
+    run_agent_payload,
     update_executive_settings_payload,
 )
 
@@ -46,6 +47,15 @@ class ExecutiveActionRequestModel(BaseModel):
 
 class ExecutiveChatRequest(BaseModel):
     messages: list[dict[str, str]] = Field(default_factory=list)
+
+
+class ExecutiveAgentRunRequest(BaseModel):
+    prompt: str = Field(min_length=1)
+    agent_name: str | None = None
+    model_name: str | None = None
+    mode: str = "standard"
+    thinking_enabled: bool = False
+    subagent_enabled: bool = False
 
 
 @router.get("/registry")
@@ -138,6 +148,21 @@ def executive_update_settings(request: ExecutiveSettingsUpdateRequest) -> dict:
 @router.post("/chat")
 async def executive_chat(request: ExecutiveChatRequest) -> dict:
     return await run_executive_chat(request.messages)
+
+
+@router.post("/agent-runs")
+async def executive_agent_run(request: ExecutiveAgentRunRequest) -> dict:
+    try:
+        return await run_agent_payload(
+            prompt=request.prompt,
+            model_name=request.model_name,
+            mode=request.mode,
+            thinking_enabled=request.thinking_enabled,
+            subagent_enabled=request.subagent_enabled,
+            agent_name=request.agent_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
