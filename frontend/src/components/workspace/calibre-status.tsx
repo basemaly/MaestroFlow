@@ -13,6 +13,7 @@ type CalibreStatusPayload = {
   configured?: boolean;
   dataset_name?: string;
   dataset_id?: string;
+  collection?: string;
   indexed_books?: number;
   indexed_chunks?: number;
   last_sync_at?: string | null;
@@ -127,6 +128,11 @@ export function CalibreStatus() {
         {status.dataset_name ?? "Calibre Library"} ·{" "}
         {status.available ? `${status.indexed_books ?? 0} books` : "Unavailable"}
       </span>
+      {status.collection && (
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {status.collection}
+        </span>
+      )}
       {status.available && status.healthy === false && (
         <span className="text-amber-600">Degraded</span>
       )}

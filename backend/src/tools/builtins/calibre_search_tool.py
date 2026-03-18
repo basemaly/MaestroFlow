@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
 
 from langchain.tools import tool
 
 from src.integrations.surfsense.calibre import SurfSenseCalibreClient
+
+
+def _default_collection() -> str | None:
+    value = os.getenv("CALIBRE_DEFAULT_COLLECTION", "Knowledge Management").strip()
+    return value or None
 
 
 @tool("calibre_library_search", parse_docstring=True)
@@ -16,6 +22,7 @@ async def calibre_library_search(
     title: str | None = None,
     author: str | None = None,
     tag: str | None = None,
+    collection: str | None = None,
 ) -> str:
     """Search the Calibre Library indexed by SurfSense.
 
@@ -28,6 +35,7 @@ async def calibre_library_search(
         title: Optional exact title filter.
         author: Optional author filter.
         tag: Optional tag filter.
+        collection: Optional Calibre collection scope. Defaults to the configured scoped collection.
     """
     filters: dict[str, object] = {}
     if title:
@@ -41,6 +49,7 @@ async def calibre_library_search(
         query=query,
         top_k=top_k,
         filters=filters,
+        collection=collection or _default_collection(),
     )
     items = payload.get("items", [])
     if not items:

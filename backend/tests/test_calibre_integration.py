@@ -1,4 +1,5 @@
 import asyncio
+import json
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -11,6 +12,8 @@ from src.tools.builtins.calibre_search_tool import calibre_library_search
 def test_surfsense_calibre_client_posts_query():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v1/maestroflow/calibre/query"
+        payload = json.loads(request.content.decode())
+        assert payload["collection"] == "Knowledge Management"
         return httpx.Response(
             200,
             json={"items": [{"title": "Technopoly", "text": "Technology and culture"}]},
@@ -54,10 +57,11 @@ def test_calibre_health_route_degrades_on_http_error():
 
 
 def test_calibre_search_tool_formats_hits():
-    async def fake_query_calibre(*, query: str, top_k: int, filters: dict):
+    async def fake_query_calibre(*, query: str, top_k: int, filters: dict, collection: str):
         assert query == "postman technology"
         assert top_k == 3
         assert filters == {"authors": "Neil Postman"}
+        assert collection == "Knowledge Management"
         return {
             "items": [
                 {
@@ -84,3 +88,18 @@ def test_calibre_search_tool_formats_hits():
     output = asyncio.run(run())
     assert "Technopoly" in output
     assert "Neil Postman" in output
+
+
+def test_calibre_status_route_forwards_collection():
+    async def run() -> dict:
+        with patch.object(
+            calibre_router.SurfSenseCalibreClient,
+            "get_calibre_status",
+            new=AsyncMock(return_value={"dataset_name": "Calibre Library - Knowledge Management"}),
+        ) as mocked:
+            payload = await calibre_router.get_calibre_status(collection="Knowledge Management")
+            mocked.assert_awaited_once_with(collection="Knowledge Management")
+            return payload
+
+    payload = asyncio.run(run())
+    assert payload["dataset_name"] == "Calibre Library - Knowledge Management"
