@@ -20,6 +20,26 @@ _health_cache: dict[str | None, tuple[dict, float]] = {}
 _CACHE_TTL_SECONDS = 60
 
 
+def _invalidate_calibre_cache(collection: str | None = None) -> None:
+    """Invalidate status and health cache entries affected by a sync or reindex."""
+    for key in {collection, None}:
+        _status_cache.pop(key, None)
+        _health_cache.pop(key, None)
+
+
+def _http_error_message(exc: httpx.HTTPError) -> str:
+    """Build a non-empty diagnostic message for upstream HTTP failures."""
+    message = str(exc).strip()
+    if message:
+        return message
+
+    request = getattr(exc, "request", None)
+    if request is not None:
+        return f"{type(exc).__name__} while calling {request.method} {request.url}"
+
+    return type(exc).__name__
+
+
 class CalibreQueryRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_k: int = Field(default=8, ge=1, le=20)
@@ -59,7 +79,7 @@ async def get_calibre_status(collection: str | None = None) -> dict:
             "error": None,
         }
     except httpx.HTTPError as exc:
-        last_error = str(exc)
+        last_error = _http_error_message(exc)
         response = {
             "available": False,
             "configured": False,
@@ -90,6 +110,7 @@ async def get_calibre_status(collection: str | None = None) -> dict:
 async def sync_calibre(full: bool = False, collection: str | None = None) -> dict:
     try:
         payload = await SurfSenseCalibreClient().sync_calibre(full=full, collection=collection)
+        _invalidate_calibre_cache(collection)
         return {
             **payload,
             "available": True,
@@ -103,7 +124,7 @@ async def sync_calibre(full: bool = False, collection: str | None = None) -> dic
             "error": None,
         }
     except httpx.HTTPError as exc:
-        last_error = str(exc)
+        last_error = _http_error_message(exc)
         return {
             "available": False,
             "last_error": last_error,
@@ -127,6 +148,7 @@ async def sync_calibre(full: bool = False, collection: str | None = None) -> dic
 async def reindex_calibre(collection: str | None = None) -> dict:
     try:
         payload = await SurfSenseCalibreClient().reindex_calibre(collection=collection)
+        _invalidate_calibre_cache(collection)
         return {
             **payload,
             "available": True,
@@ -140,7 +162,7 @@ async def reindex_calibre(collection: str | None = None) -> dict:
             "error": None,
         }
     except httpx.HTTPError as exc:
-        last_error = str(exc)
+        last_error = _http_error_message(exc)
         return {
             "available": False,
             "last_error": last_error,
@@ -192,7 +214,7 @@ async def get_calibre_health(collection: str | None = None) -> dict:
             "error": None,
         }
     except httpx.HTTPError as exc:
-        last_error = str(exc)
+        last_error = _http_error_message(exc)
         response = {
             "available": False,
             "healthy": False,
@@ -241,7 +263,7 @@ async def query_calibre(req: CalibreQueryRequest) -> dict:
             "error": None,
         }
     except httpx.HTTPError as exc:
-        warning = str(exc)
+        warning = _http_error_message(exc)
         return {
             "items": [],
             "total": 0,

@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class StageKind(str, Enum):
@@ -68,7 +72,7 @@ class StageOutput(BaseModel):
     iteration: int
     output: str
     thread_id: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utc_now)
     quality_score: float | None = Field(
         default=None,
         ge=0.0,
@@ -133,7 +137,7 @@ class ProjectCheckpoint(BaseModel):
     title: str
     description: str
     status: Literal["pending", "approved", "rejected"] = "pending"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utc_now)
     decision_notes: str | None = None
 
 
@@ -175,8 +179,8 @@ class ExecutiveProject(BaseModel):
     )
 
     # Timeline
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utc_now)
+    updated_at: datetime = Field(default_factory=_utc_now)
     started_at: datetime | None = None
     completed_at: datetime | None = None
     deadline: datetime | None = None

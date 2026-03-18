@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 ExecutiveState = Literal["healthy", "degraded", "unavailable", "misconfigured", "disabled", "unknown"]
@@ -59,7 +63,7 @@ class ExecutiveStatusSnapshot(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     dependencies: list[ExecutiveDependency] = Field(default_factory=list)
     recommended_actions: list[str] = Field(default_factory=list)
-    checked_at: datetime = Field(default_factory=datetime.utcnow)
+    checked_at: datetime = Field(default_factory=_utc_now)
 
 
 class ExecutiveActionRequest(BaseModel):
@@ -127,7 +131,7 @@ class ExecutiveAdvisoryRule(BaseModel):
 
 
 class ExecutiveSystemStatus(BaseModel):
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=_utc_now)
     summary: dict[str, int] = Field(default_factory=dict)
     components: list[ExecutiveStatusSnapshot] = Field(default_factory=list)
 

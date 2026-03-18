@@ -4,15 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Toaster } from "sonner";
 
-import dynamic from "next/dynamic";
-
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { WorkspaceBackground } from "@/components/workspace/workspace-background";
 import { WorkspaceSidebar } from "@/components/workspace/workspace-sidebar";
-
-const ExecutiveDrawerTrigger = dynamic(
-  () => import("@/components/workspace/executive-drawer").then((m) => m.ExecutiveDrawerTrigger),
-  { ssr: false },
-);
 import { getLocalSettings, useLocalSettings } from "@/core/settings";
 
 const queryClient = new QueryClient();
@@ -44,12 +38,9 @@ export default function WorkspaceLayout({
         onOpenChange={handleOpenChange}
       >
         <WorkspaceSidebar />
-        <SidebarInset className="relative min-w-0">
+        <SidebarInset className="relative isolate min-w-0 overflow-hidden">
+          <WorkspaceBackground />
           {children}
-          {/* Global Executive quick-access FAB */}
-          <div className="fixed bottom-5 right-5 z-40">
-            <ExecutiveDrawerTrigger isSidebarOpen={false} asFab />
-          </div>
         </SidebarInset>
       </SidebarProvider>
       <Toaster position="top-center" />

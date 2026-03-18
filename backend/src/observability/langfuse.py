@@ -14,6 +14,29 @@ logger = logging.getLogger(__name__)
 _client_lock = threading.Lock()
 _client: Any = None
 _client_init_failed: bool = False  # avoid repeated init attempts after permanent failure
+_otel_noise_filter_installed = False
+
+
+class _OpenTelemetryContextNoiseFilter(logging.Filter):
+    """Suppress known-benign OTEL detach noise from Langfuse generator shutdown."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not (
+            record.name == "opentelemetry.context"
+            and isinstance(record.msg, str)
+            and "Failed to detach context" in record.msg
+        )
+
+
+def _install_otel_noise_filter() -> None:
+    global _otel_noise_filter_installed
+    if _otel_noise_filter_installed:
+        return
+    logging.getLogger("opentelemetry.context").addFilter(_OpenTelemetryContextNoiseFilter())
+    _otel_noise_filter_installed = True
+
+
+_install_otel_noise_filter()
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +457,8 @@ def get_langfuse_callback_handler(
     parent_observation_id: str | None = None,
 ) -> Any | None:
     """Return a Langfuse v4 CallbackHandler for LangChain model tracing."""
+    if not get_langfuse_config().langchain_callbacks_enabled:
+        return None
     if _get_client() is None:
         return None
     try:

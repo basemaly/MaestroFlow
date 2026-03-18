@@ -82,7 +82,7 @@ export const enUS: Translations = {
     ultraMode: "Ultra",
     ultraModeDescription:
       "Pro mode with subagents to divide work; best for complex multi-step tasks",
-    reasoningEffort: "Reasoning Effort",
+    reasoningEffort: "Reasoning",
     reasoningEffortMinimal: "Minimal",
     reasoningEffortMinimalDescription: "Retrieval + Direct Output",
     reasoningEffortLow: "Low",
@@ -167,6 +167,7 @@ export const enUS: Translations = {
     agents: "Agents",
     docEdits: "Doc edits",
     newDocEdit: "New doc edit",
+    documents: "Documents",
     executive: "Executive",
   },
 

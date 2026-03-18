@@ -85,7 +85,7 @@ def _maybe_attach_rate_limit_fallback(
         return model_instance
 
     try:
-        fallback_model = create_chat_model(name=fallback_name, thinking_enabled=False)
+        fallback_model = _create_base_chat_model_cached(fallback_name, False)
     except ValueError:
         logger.debug(
             "Rate-limit fallback model '%s' not found in config — skipping fallback for '%s'",
@@ -203,6 +203,8 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     # Get cached base model instance (reuses connections across calls)
     model_instance = _create_base_chat_model_cached(name, thinking_enabled)
 
+    callbacks: list[object] = []
+
     # Attach per-call tracers with unique trace IDs
     if is_tracing_enabled():
         try:
@@ -212,10 +214,7 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             tracer = LangChainTracer(
                 project_name=tracing_config.project,
             )
-            existing_callbacks = list(model_instance.callbacks or [])
-            # Remove any previous LangSmith tracers to avoid duplication
-            existing_callbacks = [cb for cb in existing_callbacks if not isinstance(cb, LangChainTracer)]
-            model_instance.callbacks = [*existing_callbacks, tracer]
+            callbacks.append(tracer)
             logger.debug(f"LangSmith tracing attached to model '{name}' (project='{tracing_config.project}')")
         except Exception as e:
             logger.warning(f"Failed to attach LangSmith tracing to model '{name}': {e}")
@@ -226,11 +225,11 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             parent_observation_id=parent_observation_id,
         )
         if langfuse_handler is not None:
-            existing_callbacks = list(model_instance.callbacks or [])
-            # Remove any previous Langfuse handlers to avoid duplication
-            existing_callbacks = [cb for cb in existing_callbacks if type(cb).__name__ != "LangfuseCallbackHandler"]
-            model_instance.callbacks = [*existing_callbacks, langfuse_handler]
+            callbacks.append(langfuse_handler)
     except Exception as e:
         logger.warning(f"Failed to attach Langfuse tracing to model '{name}': {e}")
+
+    if callbacks:
+        model_instance = model_instance.with_config(callbacks=callbacks)
 
     return model_instance

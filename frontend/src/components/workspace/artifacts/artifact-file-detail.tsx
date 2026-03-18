@@ -10,6 +10,7 @@ import {
   SquareArrowOutUpRightIcon,
   XIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
@@ -33,6 +34,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CodeEditor } from "@/components/workspace/code-editor";
 import { useArtifactContent } from "@/core/artifacts/hooks";
 import { urlOfArtifact } from "@/core/artifacts/utils";
+import { useCreateDocument } from "@/core/documents/hooks";
 import { useI18n } from "@/core/i18n/hooks";
 import { installSkill } from "@/core/skills/api";
 import { useSnippets } from "@/core/snippets";
@@ -57,7 +59,9 @@ export function ArtifactFileDetail({
   threadId: string;
 }) {
   const { t } = useI18n();
+  const router = useRouter();
   const { artifacts, setOpen, select } = useArtifacts();
+  const createDocument = useCreateDocument();
   const isWriteFile = useMemo(() => {
     return filepathFromProps.startsWith("write-file:");
   }, [filepathFromProps]);
@@ -232,15 +236,22 @@ export function ArtifactFileDetail({
             {language === "markdown" && isCodeFile && (
               <ArtifactAction
                 icon={PenLineIcon}
-                label="Edit in Doc Edit"
-                tooltip="Edit in Doc Edit"
+                label="Edit in Block Editor"
+                tooltip="Edit in Block Editor"
                 disabled={!content}
-                onClick={() => {
-                  window.dispatchEvent(
-                    new CustomEvent("maestroflow:doc-edit-open", {
-                      detail: { content: displayContent },
-                    }),
-                  );
+                onClick={async () => {
+                  try {
+                    const document = await createDocument.mutateAsync({
+                      title: getFileName(filepath),
+                      content_markdown: displayContent,
+                      source_thread_id: threadId,
+                      source_filepath: filepath,
+                    });
+                    void router.push(`/workspace/docs/${document.doc_id}`);
+                    setOpen(false);
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : "Failed to open block editor");
+                  }
                 }}
               />
             )}

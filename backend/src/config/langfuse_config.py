@@ -8,6 +8,7 @@ _config_lock = threading.Lock()
 
 class LangfuseConfig(BaseModel):
     enabled: bool = Field(...)
+    langchain_callbacks_enabled: bool = Field(default=False)
     public_key: str | None = Field(...)
     secret_key: str | None = Field(...)
     host: str = Field(...)
@@ -37,8 +38,15 @@ def get_langfuse_config() -> LangfuseConfig:
             if enabled_env is not None
             else bool(public_key and secret_key)
         )
+        callbacks_enabled_env = os.environ.get("LANGFUSE_LANGCHAIN_CALLBACKS")
+        callbacks_enabled = (
+            callbacks_enabled_env.lower() == "true"
+            if callbacks_enabled_env is not None
+            else False
+        )
         _langfuse_config = LangfuseConfig(
             enabled=enabled,
+            langchain_callbacks_enabled=callbacks_enabled,
             public_key=public_key,
             secret_key=secret_key,
             host=os.environ.get("LANGFUSE_HOST")

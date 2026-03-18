@@ -390,3 +390,51 @@
   --container-width-md: calc(var(--spacing) * 204);
   --container-width-lg: calc(var(--spacing) * 256);
 }
+
+.maestro-block-editor {
+  line-height: 1.75;
+}
+
+.maestro-block-editor > * + * {
+  margin-top: 0.85rem;
+}
+
+.maestro-block-editor p.is-editor-empty:first-child::before {
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.maestro-block-editor h1,
+.maestro-block-editor h2,
+.maestro-block-editor h3 {
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.maestro-block-editor pre {
+  overflow-x: auto;
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  padding: 1rem;
+}
+
+.maestro-block-editor blockquote {
+  border-left: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  padding-left: 1rem;
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+}
+
+.maestro-block-editor table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.maestro-block-editor td,
+.maestro-block-editor th {
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  padding: 0.55rem 0.7rem;
+}

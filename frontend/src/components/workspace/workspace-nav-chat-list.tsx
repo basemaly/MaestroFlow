@@ -1,6 +1,6 @@
 "use client";
 
-import { BotIcon, FilePenLineIcon, MessagesSquare, ShieldCheckIcon } from "lucide-react";
+import { BookOpenTextIcon, BotIcon, FilePenLineIcon, MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -12,6 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ExecutiveIcon } from "@/components/workspace/executive-icon";
 import { useI18n } from "@/core/i18n/hooks";
 
 function NavItem({
@@ -57,6 +58,14 @@ export function WorkspaceNavChatList() {
     <SidebarGroup className="pt-1">
       <SidebarMenu>
         <NavItem
+          href="/workspace/executive"
+          icon={ExecutiveIcon}
+          label={t.sidebar.executive}
+          isActive={pathname.startsWith("/workspace/executive")}
+          isSidebarOpen={isSidebarOpen}
+          iconClassName="text-amber-500"
+        />
+        <NavItem
           href="/workspace/chats"
           icon={MessagesSquare}
           label={t.sidebar.chats}
@@ -78,12 +87,11 @@ export function WorkspaceNavChatList() {
           isSidebarOpen={isSidebarOpen}
         />
         <NavItem
-          href="/workspace/executive"
-          icon={ShieldCheckIcon}
-          label={t.sidebar.executive}
-          isActive={pathname.startsWith("/workspace/executive")}
+          href="/workspace/docs"
+          icon={BookOpenTextIcon}
+          label={t.sidebar.documents}
+          isActive={pathname.startsWith("/workspace/docs")}
           isSidebarOpen={isSidebarOpen}
-          iconClassName="text-amber-500"
         />
       </SidebarMenu>
     </SidebarGroup>

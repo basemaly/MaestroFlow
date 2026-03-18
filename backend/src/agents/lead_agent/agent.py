@@ -218,6 +218,8 @@ Being proactive with task management demonstrates thoroughness and ensures all r
 
 
 # ThreadDataMiddleware must be before SandboxMiddleware to ensure thread_id is available
+# MessageNormalizationMiddleware should run early so downstream middleware always sees
+# provider-safe LangChain message objects instead of raw dict payloads.
 # UploadsMiddleware should be after ThreadDataMiddleware to access thread_id
 # DanglingToolCallMiddleware patches missing ToolMessages before model sees the history
 # SummarizationMiddleware should be early to reduce context before other processing
@@ -225,7 +227,6 @@ Being proactive with task management demonstrates thoroughness and ensures all r
 # TitleMiddleware generates title after first exchange
 # MemoryMiddleware queues conversation for memory update (after TitleMiddleware)
 # ViewImageMiddleware should be before ClarificationMiddleware to inject image details before LLM
-# MessageNormalizationMiddleware should run late so all prior middleware output is provider-safe
 # ClarificationMiddleware should be last to intercept clarification requests after model calls
 def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_name: str | None = None):
     """Build middleware chain based on runtime configuration.
@@ -240,6 +241,7 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     middlewares = [
         TurnTracingMiddleware(),
         ThreadDataMiddleware(),
+        MessageNormalizationMiddleware(),
         UploadsMiddleware(),
         SandboxMiddleware(),
         ExternalServiceFallbackMiddleware(),
@@ -278,8 +280,6 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
             get_subagent_concurrency_override() or get_subagents_app_config().max_concurrent,
         )
         middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
-
-    middlewares.append(MessageNormalizationMiddleware())
 
     # AgentTagMiddleware stamps AI messages with agent_id when agent_id_override is set
     middlewares.append(AgentTagMiddleware())

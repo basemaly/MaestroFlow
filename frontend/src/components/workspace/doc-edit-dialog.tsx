@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowUpRightIcon,
   CheckCircle2Icon,
   DiffIcon,
   FilePenLineIcon,
@@ -14,6 +15,7 @@ import {
   XIcon,
 } from "lucide-react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -57,6 +59,7 @@ import {
   useUploadDocEditFile,
 } from "@/core/doc-editing/hooks";
 import type { DocEditRun } from "@/core/doc-editing/types";
+import { useCreateDocument } from "@/core/documents/hooks";
 import { useModels } from "@/core/models/hooks";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
@@ -211,6 +214,8 @@ export function DocEditStudio({
   const [viewMode, setViewMode] = useState<"side-by-side" | "diff">("side-by-side");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { models } = useModels();
+  const router = useRouter();
+  const createDocument = useCreateDocument();
 
   const startRun = useStartDocEditRun();
   const selectVersion = useSelectDocEditVersion();
@@ -385,6 +390,28 @@ export function DocEditStudio({
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+    }
+  }
+
+  async function handleOpenVersionInEditor(versionId: string) {
+    const version = sortedVersions.find((item) => (item.version_id ?? item.skill_name) === versionId);
+    const content =
+      version?.output ??
+      (version?.version_id ? versionsSummaryBySkill.get(version.version_id)?.preview ?? "" : "");
+    if (!content.trim()) {
+      toast.error("That version has no editable content yet");
+      return;
+    }
+    try {
+      const documentRecord = await createDocument.mutateAsync({
+        title: `${runTitle} · ${formatSkillLabel(version?.skill_name ?? versionId)}`,
+        content_markdown: content,
+        source_run_id: run?.run_id,
+        source_version_id: version?.version_id ?? versionId,
+      });
+      void router.push(`/workspace/docs/${documentRecord.doc_id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -791,6 +818,17 @@ export function DocEditStudio({
                 <DiffIcon className="mr-1.5 size-4" />
                 Diff
               </Button>
+              {comparedVersion && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleOpenVersionInEditor(comparedVersion.version_id ?? comparedVersion.skill_name)}
+                  disabled={createDocument.isPending}
+                >
+                  <ArrowUpRightIcon className="mr-1.5 size-4" />
+                  Open in Block Editor
+                </Button>
+              )}
             </div>
 
             {viewMode === "diff" ? (
@@ -926,6 +964,16 @@ export function DocEditStudio({
                             Select This Version
                           </Button>
                         )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full border-2"
+                          onClick={() => void handleOpenVersionInEditor(version.version_id ?? version.skill_name)}
+                          disabled={createDocument.isPending}
+                        >
+                          <ArrowUpRightIcon className="size-4" />
+                          Open in Editor
+                        </Button>
                       </div>
                     </div>
                   </CardHeader>

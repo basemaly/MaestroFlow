@@ -7,7 +7,9 @@ from src.config import get_app_config, is_langfuse_enabled
 from src.reflection import resolve_variable
 from src.tools.builtins import (
     ask_clarification_tool,
+    ingest_calibre_books_to_search_space,
     calibre_library_search,
+    preview_calibre_books_for_search_space,
     present_file_tool,
     task_tool,
     view_image_tool,
@@ -49,6 +51,8 @@ def _wrap_tool_with_tracing(t: BaseTool) -> BaseTool:
 BUILTIN_TOOLS = [
     present_file_tool,
     ask_clarification_tool,
+    preview_calibre_books_for_search_space,
+    ingest_calibre_books_to_search_space,
     calibre_library_search,
 ]
 

@@ -245,7 +245,7 @@ export default function ChatPage() {
               <SnippetShelf />
             </div>
           </header>
-          <main className="flex min-h-0 max-w-full grow flex-col">
+          <main className="relative isolate flex min-h-0 max-w-full grow flex-col">
             <DeerIntroOverlay active={isNewThread} />
             <ExternalServiceBanner />
             {planningReview && (
@@ -322,7 +322,7 @@ export default function ChatPage() {
                   "relative w-full",
                   isNewThread && "-translate-y-[calc(50vh-96px)]",
                   isNewThread
-                    ? "max-w-(--container-width-sm)"
+                    ? "max-w-[60rem]"
                     : "max-w-(--container-width-md)",
                 )}
               >

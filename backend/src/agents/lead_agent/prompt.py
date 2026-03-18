@@ -460,7 +460,12 @@ def apply_prompt_template(
     calibre_hint = (
         "\n<calibre_scope>\n"
         "For book, author, chapter, passage, or personal-library questions, use `calibre_library_search` "
-        "before answering whenever the request appears to need grounded library evidence.\n"
+        "before answering whenever the request appears to need grounded library evidence. "
+        "If the user explicitly asks to ingest or import Calibre books into SurfSense working knowledge, "
+        "first use `preview_calibre_books_for_search_space` so they can review the matches, then use "
+        "`ingest_calibre_books_to_search_space` after approval. Those tools accept natural-language book "
+        "descriptions plus exact filters like tag, author, title, series, publisher, and collection, but "
+        "they still require an explicit search space choice.\n"
         "</calibre_scope>"
     )
     if knowledge_source == "calibre-library":
@@ -468,7 +473,11 @@ def apply_prompt_template(
             "\n<calibre_scope>\n"
             "The user explicitly scoped this conversation to the Calibre Library. "
             "Use `calibre_library_search` before answering book, author, theme, or passage questions, "
-            "and cite title plus section_title when available.\n"
+            "and cite title plus section_title when available. "
+            "If they ask to ingest Calibre books into working knowledge or a SurfSense search space, "
+            "use `preview_calibre_books_for_search_space` first, then `ingest_calibre_books_to_search_space` "
+            "once they approve the candidate books. Those tools support natural-language discovery plus "
+            "exact filters, not just exact tags.\n"
             "</calibre_scope>"
         )
 

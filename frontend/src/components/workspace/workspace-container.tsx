@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
@@ -15,9 +16,12 @@ import {
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
 
-import { GithubIcon } from "./github-icon";
 import { SnippetShelf } from "./snippet-shelf";
-import { Tooltip } from "./tooltip";
+
+const ExecutiveDrawerTrigger = dynamic(
+  () => import("@/components/workspace/executive-drawer").then((m) => m.ExecutiveDrawerTrigger),
+  { ssr: false },
+);
 
 export function WorkspaceContainer({
   className,
@@ -93,16 +97,7 @@ export function WorkspaceHeader({
       </div>
       <div className="flex items-center gap-2 pr-4">
         <SnippetShelf />
-        <Tooltip content={t.workspace.githubTooltip}>
-          <a
-            href="https://github.com/basemaly/MaestroFlow"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="opacity-75 transition hover:opacity-100"
-          >
-            <GithubIcon className="size-6" />
-          </a>
-        </Tooltip>
+        <ExecutiveDrawerTrigger isSidebarOpen={false} variant="header" />
       </div>
     </header>
   );

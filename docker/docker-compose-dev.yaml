@@ -159,7 +159,10 @@ services:
       - LANGGRAPH_BASE_URL=http://langgraph:8000
       - GATEWAY_BASE_URL=http://gateway:8001
       - SURFSENSE_BASE_URL=http://host.docker.internal:8002
+      - LANGFUSE_BASE_URL=http://host.docker.internal:3000
       - LANGFUSE_HOST=http://host.docker.internal:3000
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:3000/api/public/otel
+      - LANGSMITH_WORKSPACE_ID=${LANGSMITH_WORKSPACE_ID:-}
       - LANGGRAPH_CHECKPOINTER_URL=postgresql://postgres:postgres@langgraph-postgres:5432/maestroflow_langgraph_v2
       - DEER_FLOW_EXTENSIONS_CONFIG_PATH=/app/extensions_config.json
     env_file:
@@ -187,7 +190,10 @@ services:
       - CI=true
       - LITELLM_PROXY_BASE_URL=http://host.docker.internal:4000/v1
       - SURFSENSE_BASE_URL=http://host.docker.internal:8002
+      - LANGFUSE_BASE_URL=http://host.docker.internal:3000
       - LANGFUSE_HOST=http://host.docker.internal:3000
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:3000/api/public/otel
+      - LANGSMITH_WORKSPACE_ID=${LANGSMITH_WORKSPACE_ID:-}
       - LANGGRAPH_CHECKPOINTER_URL=postgresql://postgres:postgres@langgraph-postgres:5432/maestroflow_langgraph_v2
       - LANGGRAPH_RUNTIME_EDITION=inmem
       - REDIS_URI=redis://langgraph-redis:6379/0

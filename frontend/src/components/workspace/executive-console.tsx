@@ -8,7 +8,6 @@ import {
   CopyIcon,
   DownloadIcon,
   RefreshCcwIcon,
-  ShieldCheckIcon,
   SquareIcon,
   WrenchIcon,
 } from "lucide-react";
@@ -19,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { ExecutiveIcon } from "@/components/workspace/executive-icon";
 import { ExecutiveProjects } from "@/components/workspace/executive-projects";
 import { Tooltip } from "@/components/workspace/tooltip";
 import {
@@ -344,12 +344,12 @@ export function ExecutiveConsole() {
   return (
     <div className="grid size-full min-h-0 grid-cols-1 gap-6 p-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.95fr)]">
       <div className="flex min-h-0 flex-col gap-6">
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           {Object.entries(statusQuery.data?.summary ?? {}).map(([label, count]) => (
-            <Card key={label} className={cn("border-border/60 bg-background/70 py-4 overflow-hidden", summaryCardAccent[label])}>
-              <CardHeader className="px-4 pb-2">
-                <CardDescription className="capitalize">{label}</CardDescription>
-                <CardTitle className={cn("text-2xl", summaryCountColor[label])}>{count}</CardTitle>
+            <Card key={label} className={cn("border-border/60 bg-background/70 py-3 overflow-hidden", summaryCardAccent[label])}>
+              <CardHeader className="px-3 pb-1">
+                <CardDescription className="text-[11px] uppercase tracking-[0.12em]">{label}</CardDescription>
+                <CardTitle className={cn("text-xl sm:text-2xl", summaryCountColor[label])}>{count}</CardTitle>
               </CardHeader>
             </Card>
           ))}
@@ -359,7 +359,7 @@ export function ExecutiveConsole() {
           <CardHeader className="flex flex-row items-center justify-between px-4">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                <ShieldCheckIcon className="size-4 text-amber-500" />
+                <ExecutiveIcon className="size-4" />
                 System Overview
               </CardTitle>
               <CardDescription>
@@ -708,8 +708,8 @@ export function ExecutiveConsole() {
               <Textarea
                 value={chatInput}
                 onChange={(event) => setChatInput(event.target.value)}
-                rows={3}
-                className="min-h-[5.5rem] resize-none"
+                rows={6}
+                className="min-h-[10rem] resize-none"
                 disabled={isChatResponding}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {

@@ -4,12 +4,16 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from src.config.memory_config import get_memory_config
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 @dataclass
@@ -18,7 +22,7 @@ class ConversationContext:
 
     thread_id: str
     messages: list[Any]
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=_utc_now)
     agent_name: str | None = None
 
 

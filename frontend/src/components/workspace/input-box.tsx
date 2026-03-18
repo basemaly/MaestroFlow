@@ -12,7 +12,6 @@ import {
   LightbulbIcon,
   PaperclipIcon,
   PlusIcon,
-  ShieldCheckIcon,
   SparklesIcon,
   RocketIcon,
   SearchIcon,
@@ -86,11 +85,19 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 
+import { ExecutiveIcon } from "./executive-icon";
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
 import { Tooltip } from "./tooltip";
 
 type InputMode = "flash" | "thinking" | "pro" | "ultra";
+
+function compactModelName(label: string | undefined): string {
+  if (!label) {
+    return "";
+  }
+  return label.replace(/\s*\(LiteLLM\)\s*/g, "").trim();
+}
 
 // ---------------------------------------------------------------------------
 // Research Tools definitions
@@ -120,7 +127,7 @@ const RESEARCH_TOOLS = [
   {
     group: "opt:factcheck",
     label: "Fact Check",
-    icon: ShieldCheckIcon,
+    icon: ExecutiveIcon,
     tooltip:
       "Automatically verifies key claims in the research against web evidence, marking each as Supported, Refuted, or Uncertain. Adds a reliability layer to AI-generated research.",
   },
@@ -581,7 +588,7 @@ export function InputBox({
     <div ref={promptRootRef} className="relative">
       <PromptInput
         className={cn(
-          "bg-background/90 rounded-[1.4rem] border border-border/70 shadow-sm backdrop-blur-sm transition-all duration-300 ease-out *:data-[slot='input-group']:rounded-[1.4rem]",
+          "bg-background/90 rounded-[1.35rem] border border-border/70 shadow-sm backdrop-blur-sm transition-all duration-300 ease-out *:data-[slot='input-group']:rounded-[1.35rem]",
           className,
         )}
         disabled={disabled}
@@ -602,15 +609,15 @@ export function InputBox({
         </PromptInputAttachments>
         <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
           <PromptInputTextarea
-            className={cn("size-full")}
+            className={cn("size-full min-h-[8.75rem] px-1")}
             disabled={disabled}
             placeholder={t.inputBox.placeholder}
             autoFocus={autoFocus}
             defaultValue={initialValue}
           />
         </PromptInputBody>
-        <PromptInputFooter className="flex border-t border-border/60 bg-background/65">
-          <PromptInputTools>
+        <PromptInputFooter className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-t border-border/60 bg-background/65 px-2 py-2">
+          <PromptInputTools className="flex flex-wrap items-center gap-1">
           {/* TODO: Add more connectors here
           <PromptInputActionMenu>
             <PromptInputActionMenuTrigger className="px-2!" />
@@ -792,8 +799,8 @@ export function InputBox({
           </PromptInputActionMenu>
           {supportReasoningEffort && context.mode !== "flash" && (
             <PromptInputActionMenu>
-              <PromptInputActionMenuTrigger className="gap-1! px-2!">
-                <div className="text-xs font-normal">
+              <PromptInputActionMenuTrigger className="max-w-[9.75rem] gap-1! px-2!">
+                <div className="truncate text-xs font-normal">
                   {t.inputBox.reasoningEffort}:{" "}
                   {context.reasoning_effort === "minimal" ? t.inputBox.reasoningEffortMinimal
                     : context.reasoning_effort === "low" ? t.inputBox.reasoningEffortLow
@@ -917,14 +924,14 @@ export function InputBox({
             }
           />
         </PromptInputTools>
-        <PromptInputTools className={context.mode === "ultra" ? undefined : "hidden"}>
+        <PromptInputTools className={cn("flex flex-wrap items-center gap-1", context.mode === "ultra" ? undefined : "hidden")}>
             <ModelSelector
               open={subagentModelDialogOpen}
               onOpenChange={setSubagentModelDialogOpen}
             >
               <ModelSelectorTrigger asChild>
-                <PromptInputButton>
-                  <ModelSelectorName className="text-xs font-normal">
+                <PromptInputButton className="max-w-[15rem] px-2">
+                  <ModelSelectorName className="truncate text-xs font-normal">
                     {`${t.inputBox.subagentModel}: ${subagentDisplayName}`}
                   </ModelSelectorName>
                 </PromptInputButton>
@@ -949,7 +956,7 @@ export function InputBox({
                       value={m.name}
                       onSelect={() => handleSubagentModelSelect(m.name)}
                     >
-                      <ModelSelectorName>{m.display_name}</ModelSelectorName>
+                      <ModelSelectorName>{compactModelName(m.display_name)}</ModelSelectorName>
                       {m.name === context.subagent_model ? (
                         <CheckIcon className="ml-auto size-4" />
                       ) : (
@@ -961,15 +968,15 @@ export function InputBox({
               </ModelSelectorContent>
             </ModelSelector>
           </PromptInputTools>
-        <PromptInputTools>
+        <PromptInputTools className="flex flex-wrap items-center gap-1">
           <ModelSelector
             open={modelDialogOpen}
             onOpenChange={setModelDialogOpen}
           >
             <ModelSelectorTrigger asChild>
-              <PromptInputButton>
-                <ModelSelectorName className="text-xs font-normal">
-                  {selectedModel?.display_name}
+              <PromptInputButton className="max-w-[13rem] px-2">
+                <ModelSelectorName className="truncate text-xs font-normal">
+                  {compactModelName(selectedModel?.display_name)}
                 </ModelSelectorName>
               </PromptInputButton>
             </ModelSelectorTrigger>
@@ -982,7 +989,7 @@ export function InputBox({
                     value={m.name}
                     onSelect={() => handleModelSelect(m.name)}
                   >
-                    <ModelSelectorName>{m.display_name}</ModelSelectorName>
+                    <ModelSelectorName>{compactModelName(m.display_name)}</ModelSelectorName>
                     {m.name === context.model_name ? (
                       <CheckIcon className="ml-auto size-4" />
                     ) : (

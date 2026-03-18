@@ -56,7 +56,9 @@ export function CalibreStatus() {
   async function load() {
     setLoading(true);
     try {
-      const response = await fetch(`${getBackendBaseURL()}/api/calibre/status`);
+      const response = await fetch(`${getBackendBaseURL()}/api/calibre/status`, {
+        cache: "no-store",
+      });
       const payload = await readCalibrePayload(response);
       if (!response.ok || !payload) {
         setStatus(fallbackFromResponse(response, "Calibre status endpoint unavailable"));
