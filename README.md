@@ -320,14 +320,16 @@ Since the fork from Deerflow in March 2026, MaestroFlow has undergone massive co
 
 ### ✨ New Features
 - **Editorial Subagents:** Introduced specialized agents including an argument critic, a writing refiner, and specific skills subagents.
-- **Document Editing Suite:** Added multi-model document edit comparisons, version control workflows, and specific doc-edit workflow modes.
-- **Executive System & Planning:** Rolled out a new backend executive system, sophisticated planning review, and workflow steering.
+- **Documents + Revision Lab:** Shifted writing into persistent Documents, with Revision Lab handling heavier compare-and-choose refinement sessions.
+- **Executive System & Planning:** Rolled out a new backend executive system, sophisticated planning review, workflow steering, and operational controls.
+- **Autoresearcher Lab:** Added a dedicated manual-only optimization lab for prompt experiments, UI design optimization loops, benchmark tracking, and Executive-gated promotion where applicable.
 - **Project Management:** Added executive project management features and an All-in-One (AIO) sandbox.
 
 ### 🎨 UI Improvements
-- **Subtask UI & Workspace:** Added task result parsing and visual quality badges. Tightened workspace navigation and message handling.
+- **Subtask UI & Workspace:** Added task result parsing and visual quality badges. Tightened workspace navigation, context handling, and message flow.
 - **Hydration & Loading:** Implemented server-side hydration for workspace agents and documents.
 - **Model Selector & Toolbar:** Added a dedicated subagent model selector and restored the executive trigger button within the chat toolbar.
+- **Unified Workspace Surfaces:** Added a Context Dock, a consolidated Activity feed, dedicated Autoresearcher navigation, and cleaner separation between lab work and control-plane actions.
 
 ### 🔗 Workflow Integrations
 - **SurfSense Handoff:** Integrated SurfSense handoff workflow to handle deep research queries, later merged with Calibre functionalities for comprehensive Knowledge Management tasks.
@@ -336,6 +338,18 @@ Since the fork from Deerflow in March 2026, MaestroFlow has undergone massive co
 Use it as-is. Or tear it apart and make it yours.
 
 ## Core Features
+
+### Workspace Surfaces
+
+MaestroFlow now has clearer product surfaces instead of one overloaded chat shell:
+
+- **Chats:** General-purpose conversational work with planning, tools, and subagents.
+- **Documents:** The primary writing and editing surface for persistent drafts.
+- **Revision Lab:** A heavier compare-and-choose workspace for multi-version document refinement.
+- **Executive:** The control plane for approvals, service health, routing policy, and operational actions.
+- **Autoresearcher:** A manual-only optimization lab for prompt experiments and benchmark runs. It does not auto-run or auto-promote changes into production defaults.
+  - Supports prompt experiments for selected subagent roles.
+  - Supports explicit `ui_design` experiments that render a component with Playwright, critique it, mutate it, and retain the strongest candidate.
 
 ### Skills & Tools
 

@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from src.channels.service import get_channel_service
+from src.autoresearch.service import list_experiment_summaries
 from src.config import get_app_config, get_extensions_config
 from src.doc_editing.run_tracker import list_runs
 from src.executive.models import ExecutiveDependency, ExecutiveStatusSnapshot, ExecutiveSystemStatus
@@ -251,6 +252,32 @@ async def collect_component_status(component_id: str) -> ExecutiveStatusSnapshot
             details=status,
             metrics={"enabled_channels": enabled_count, "running_channels": running_count},
             recommended_actions=["restart_channel", "collect_component_diagnostics"],
+        )
+
+    if component_id == "autoresearch":
+        experiments = list_experiment_summaries(limit=50)
+        awaiting = [item for item in experiments if item.promotion_status == "awaiting_approval"]
+        running = [item for item in experiments if item.status == "running"]
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state="degraded" if awaiting else "healthy",
+            summary=f"{len(experiments)} experiments tracked, {len(awaiting)} awaiting approval.",
+            details={
+                "awaiting_approval": [item.model_dump(mode="json") for item in awaiting[:5]],
+                "running": [item.model_dump(mode="json") for item in running[:5]],
+            },
+            metrics={
+                "experiments": len(experiments),
+                "awaiting_approval": len(awaiting),
+                "running": len(running),
+            },
+            recommended_actions=[
+                "approve_autoresearch_experiment",
+                "reject_autoresearch_experiment",
+                "rollback_autoresearch_prompt",
+                "stop_autoresearch_experiment",
+            ],
         )
 
     return ExecutiveStatusSnapshot(

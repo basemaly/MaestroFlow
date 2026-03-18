@@ -3,6 +3,7 @@
 import logging
 from dataclasses import replace
 
+from src.autoresearch.prompts import get_effective_prompt
 from src.subagents.builtins import BUILTIN_SUBAGENTS
 from src.subagents.config import SubagentConfig
 
@@ -37,6 +38,11 @@ def get_subagent_config(name: str) -> SubagentConfig | None:
     if effective_model is not None and effective_model != config.model:
         logger.debug(f"Subagent '{name}': model overridden by config.yaml ({config.model!r} -> {effective_model!r})")
         config = replace(config, model=effective_model)
+
+    effective_prompt = get_effective_prompt(name, fallback_factory=lambda: config.system_prompt)
+    if effective_prompt != config.system_prompt:
+        logger.debug("Subagent '%s': system prompt overridden by Autoresearch champion registry", name)
+        config = replace(config, system_prompt=effective_prompt)
 
     return config
 

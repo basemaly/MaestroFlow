@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from src.gateway.routers import (
     agents,
     artifacts,
+    autoresearch,
     calibre,
     channels,
     doc_editing,
@@ -25,6 +26,10 @@ from src.gateway.routers import (
 
 
 OPENAPI_TAGS = [
+    {
+        "name": "autoresearch",
+        "description": "Autoresearch experiment registry, prompt labs, and promotion workflow",
+    },
     {
         "name": "langgraph",
         "description": "Compatibility shims for LangGraph thread state/history endpoints",
@@ -134,6 +139,7 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
     app.include_router(memory.router)
     app.include_router(skills.router)
     app.include_router(artifacts.router)
+    app.include_router(autoresearch.router)
     app.include_router(calibre.router)
     app.include_router(uploads.router)
     app.include_router(agents.router)
