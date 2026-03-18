@@ -106,3 +106,13 @@ def resolve_surfsense_search_space_id(
         explicit_search_space_id=explicit_search_space_id,
         project_key=project_key,
     )
+
+
+def get_calibre_default_collection() -> str | None:
+    """Get the default Calibre collection from environment variable.
+
+    Reads CALIBRE_DEFAULT_COLLECTION env var, defaults to "Knowledge Management".
+    Returns None if the value is empty after stripping whitespace.
+    """
+    value = os.getenv("CALIBRE_DEFAULT_COLLECTION", "Knowledge Management").strip()
+    return value or None

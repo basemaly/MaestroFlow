@@ -85,6 +85,10 @@ export function CalibreStatus() {
       setStatus(payload);
       if (!response.ok || payload.last_error) {
         toast.error(payload.last_error);
+      } else {
+        toast.success("Calibre library synced");
+        // Refresh status after a brief delay to show updated sync time
+        setTimeout(() => void load(), 1000);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -105,6 +109,10 @@ export function CalibreStatus() {
       setStatus(payload);
       if (!response.ok || payload.last_error) {
         toast.error(payload.last_error);
+      } else {
+        toast.success("Calibre library reindexed");
+        // Refresh status after a brief delay to show updated sync time
+        setTimeout(() => void load(), 1000);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));

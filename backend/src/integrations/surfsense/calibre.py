@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from .client import SurfSenseClient
-
-
-def _default_collection() -> str | None:
-    value = os.getenv("CALIBRE_DEFAULT_COLLECTION", "Knowledge Management").strip()
-    return value or None
+from .config import get_calibre_default_collection
 
 
 class SurfSenseCalibreClient(SurfSenseClient):
@@ -22,7 +17,7 @@ class SurfSenseCalibreClient(SurfSenseClient):
         return await self._request(
             "GET",
             "/maestroflow/calibre/status",
-            params={"collection": collection or _default_collection()},
+            params={"collection": collection or get_calibre_default_collection()},
         )
 
     async def get_calibre_health(
@@ -33,7 +28,7 @@ class SurfSenseCalibreClient(SurfSenseClient):
         return await self._request(
             "GET",
             "/maestroflow/calibre/health",
-            params={"collection": collection or _default_collection()},
+            params={"collection": collection or get_calibre_default_collection()},
         )
 
     async def sync_calibre(
@@ -47,7 +42,7 @@ class SurfSenseCalibreClient(SurfSenseClient):
             "/maestroflow/calibre/sync",
             params={
                 "full": str(full).lower(),
-                "collection": collection or _default_collection(),
+                "collection": collection or get_calibre_default_collection(),
             },
         )
 
@@ -55,7 +50,7 @@ class SurfSenseCalibreClient(SurfSenseClient):
         return await self._request(
             "POST",
             "/maestroflow/calibre/reindex",
-            params={"collection": collection or _default_collection()},
+            params={"collection": collection or get_calibre_default_collection()},
         )
 
     async def query_calibre(
@@ -73,6 +68,6 @@ class SurfSenseCalibreClient(SurfSenseClient):
                 "query": query,
                 "top_k": top_k,
                 "filters": filters or {},
-                "collection": collection or _default_collection(),
+                "collection": collection or get_calibre_default_collection(),
             },
         )
