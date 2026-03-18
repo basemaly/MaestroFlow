@@ -396,7 +396,14 @@ def get_agent_soul(agent_name: str | None) -> str:
     return ""
 
 
-def apply_prompt_template(subagent_enabled: bool = False, max_concurrent_subagents: int = 3, *, agent_name: str | None = None, available_skills: set[str] | None = None) -> str:
+def apply_prompt_template(
+    subagent_enabled: bool = False,
+    max_concurrent_subagents: int = 3,
+    *,
+    agent_name: str | None = None,
+    available_skills: set[str] | None = None,
+    knowledge_source: str | None = None,
+) -> str:
     # Get memory context
     memory_context = _get_memory_context(agent_name)
 
@@ -436,4 +443,23 @@ def apply_prompt_template(subagent_enabled: bool = False, max_concurrent_subagen
         subagent_thinking=subagent_thinking,
     )
 
-    return prompt + f"\n<current_date>{datetime.now().strftime('%Y-%m-%d, %A')}</current_date>"
+    calibre_hint = (
+        "\n<calibre_scope>\n"
+        "For book, author, chapter, passage, or personal-library questions, use `calibre_library_search` "
+        "before answering whenever the request appears to need grounded library evidence.\n"
+        "</calibre_scope>"
+    )
+    if knowledge_source == "calibre-library":
+        calibre_hint = (
+            "\n<calibre_scope>\n"
+            "The user explicitly scoped this conversation to the Calibre Library. "
+            "Use `calibre_library_search` before answering book, author, theme, or passage questions, "
+            "and cite title plus section_title when available.\n"
+            "</calibre_scope>"
+        )
+
+    return (
+        prompt
+        + calibre_hint
+        + f"\n<current_date>{datetime.now().strftime('%Y-%m-%d, %A')}</current_date>"
+    )

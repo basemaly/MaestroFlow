@@ -9,6 +9,7 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
+import { CalibreStatus } from "@/components/workspace/calibre-status";
 import { ChatBox, useThreadChat } from "@/components/workspace/chats";
 import { DeerIntroOverlay } from "@/components/workspace/deer-intro-overlay";
 import { DocEditDialog } from "@/components/workspace/doc-edit-dialog";
@@ -251,6 +252,7 @@ export default function AgentChatPage() {
                 {manualPlanReview ? "Plan Review Armed" : "Review Plan"}
               </Button>
               <SurfSenseActions />
+              <CalibreStatus />
               <DocEditDialog
                 disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
                 mode={settings.context.mode}

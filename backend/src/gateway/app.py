@@ -9,6 +9,7 @@ from src.gateway.config import get_gateway_config
 from src.gateway.routers import (
     agents,
     artifacts,
+    calibre,
     channels,
     doc_editing,
     executive,
@@ -110,6 +111,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
         openapi_url="/openapi.json",
         openapi_tags=[
             {
+                "name": "calibre",
+                "description": "Calibre library retrieval and sync surfaced through SurfSense",
+            },
+            {
                 "name": "models",
                 "description": "Operations for querying available AI models and their configurations",
             },
@@ -189,6 +194,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Artifacts API is mounted at /api/threads/{thread_id}/artifacts
     app.include_router(artifacts.router)
+
+    # Calibre knowledge API is mounted at /api/calibre
+    app.include_router(calibre.router)
 
     # Uploads API is mounted at /api/threads/{thread_id}/uploads
     app.include_router(uploads.router)

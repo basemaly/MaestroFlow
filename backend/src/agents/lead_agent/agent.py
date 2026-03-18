@@ -303,6 +303,7 @@ def make_lead_agent(config: RunnableConfig):
     )
     is_bootstrap = cfg.get("is_bootstrap", False)
     agent_name = cfg.get("agent_name")
+    knowledge_source = cfg.get("knowledge_source")
     # research_tools: opt-in group names the user enabled in the UI
     # e.g. ["opt:exa", "opt:serper", "opt:jina-deepresearch", "opt:factcheck"]
     research_tools: list[str] = cfg.get("research_tools") or []
@@ -355,7 +356,12 @@ def make_lead_agent(config: RunnableConfig):
 
     if is_bootstrap:
         # Special bootstrap agent with minimal prompt for initial custom agent creation flow
-        system_prompt = apply_prompt_template(subagent_enabled=subagent_enabled, max_concurrent_subagents=max_concurrent_subagents, available_skills=set(["bootstrap"]))
+        system_prompt = apply_prompt_template(
+            subagent_enabled=subagent_enabled,
+            max_concurrent_subagents=max_concurrent_subagents,
+            available_skills=set(["bootstrap"]),
+            knowledge_source=knowledge_source,
+        )
 
         return create_agent(
             model=create_chat_model(
@@ -379,6 +385,11 @@ def make_lead_agent(config: RunnableConfig):
         ),
         tools=get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled, extra_groups=research_tools),
         middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name),
-        system_prompt=apply_prompt_template(subagent_enabled=subagent_enabled, max_concurrent_subagents=max_concurrent_subagents, agent_name=agent_name),
+        system_prompt=apply_prompt_template(
+            subagent_enabled=subagent_enabled,
+            max_concurrent_subagents=max_concurrent_subagents,
+            agent_name=agent_name,
+            knowledge_source=knowledge_source,
+        ),
         state_schema=ThreadState,
     )
