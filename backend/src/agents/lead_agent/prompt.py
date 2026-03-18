@@ -432,10 +432,24 @@ def apply_prompt_template(
     # Get skills section
     skills_section = get_skills_prompt_section(available_skills)
 
+    # Inject agent persistent memory if present
+    if agent_name:
+        try:
+            from src.agents.agent_memory import get_memory
+            mem = get_memory(agent_name)
+            if mem.strip():
+                agent_memory_block = f"\n\n<agent_memory>\n{mem}\n</agent_memory>"
+            else:
+                agent_memory_block = ""
+        except Exception:
+            agent_memory_block = ""
+    else:
+        agent_memory_block = ""
+
     # Format the prompt with dynamic skills and memory
     prompt = SYSTEM_PROMPT_TEMPLATE.format(
         agent_name=agent_name or "DeerFlow 2.0",
-        soul=get_agent_soul(agent_name),
+        soul=get_agent_soul(agent_name) + agent_memory_block,
         skills_section=skills_section,
         memory_context=memory_context,
         subagent_section=subagent_section,

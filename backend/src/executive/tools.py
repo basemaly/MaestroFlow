@@ -6,6 +6,7 @@ from typing import Any
 from langchain_core.tools import tool
 
 from src.executive import service
+from src.executive import project_service
 
 
 @tool("executive_get_system_state")
@@ -135,3 +136,178 @@ async def executive_run_agent(
         thinking_enabled=thinking_enabled,
         subagent_enabled=subagent_enabled,
     )
+
+
+# ---------------------------------------------------------------------------
+# Project Orchestration Tools
+# ---------------------------------------------------------------------------
+
+
+@tool("executive_create_project")
+async def executive_create_project(
+    title: str,
+    goal: str,
+    stages_json: str,
+    options_json: str = "{}",
+) -> dict[str, Any]:
+    """
+    Create a persistent multi-stage orchestration project.
+
+    Use this for goals requiring 3+ coordinated stages, iterative refinement,
+    or user-confirmed handoffs (e.g. research → draft → edit × 3 → fact-check → finalise).
+
+    Args:
+        title: Short project title.
+        goal: The overarching objective this project is steering toward.
+        stages_json: JSON array of stage objects. Each stage must include:
+            - stage_id (str): unique identifier (e.g. "research", "draft")
+            - title (str): human-readable stage name
+            - prompt_template (str): template with vars {goal}, {previous_output},
+              {context}, {iteration}, {stage_title}, {stage_description}, {expected_output}
+            Optional: kind, description, agent_id (route stage to a specific custom
+              agent by name), model_name, mode, thinking_enabled,
+              subagent_enabled, checkpoint_before, checkpoint_after,
+              input_from (list of stage_ids), expected_output,
+              iteration_policy (max_iterations, goal_check_prompt, quality_threshold,
+              require_approval_each)
+        options_json: JSON object for TerminationCondition. Optional keys:
+            max_duration_minutes, goal_reached_prompt, max_total_iterations.
+
+    Returns project summary dict with project_id, status, and stage list.
+    """
+    stages_raw = json.loads(stages_json or "[]")
+    options = json.loads(options_json or "{}")
+    project = await project_service.create_project(
+        title=title,
+        goal=goal,
+        stages_raw=stages_raw,
+        options=options,
+    )
+    return {
+        **project.summary_dict(),
+        "stages": [
+            {"stage_id": s.stage_id, "title": s.title, "kind": s.kind.value, "status": s.status.value}
+            for s in project.stages
+        ],
+    }
+
+
+@tool("executive_get_project")
+async def executive_get_project(project_id: str) -> dict[str, Any]:
+    """
+    Get the full status of an orchestration project.
+
+    Returns stage timeline, iteration counts, output previews, pending checkpoints,
+    and overall project status. Call this to monitor a running project.
+    """
+    project = project_service.get_project_or_raise(project_id)
+    stages_info = []
+    for s in project.stages:
+        stages_info.append({
+            "stage_id": s.stage_id,
+            "title": s.title,
+            "kind": s.kind.value,
+            "status": s.status.value,
+            "iteration_count": s.iteration_count,
+            "max_iterations": s.iteration_policy.max_iterations,
+            "output_preview": (s.current_output or "")[:500] if s.current_output else None,
+            "error": s.error,
+        })
+    checkpoints = [
+        {"checkpoint_id": cp.checkpoint_id, "title": cp.title, "kind": cp.kind, "status": cp.status}
+        for cp in project.checkpoints
+        if cp.status == "pending"
+    ]
+    return {
+        **project.summary_dict(),
+        "goal": project.goal,
+        "stages": stages_info,
+        "pending_checkpoints": checkpoints,
+        "context_keys": list(project.context.keys()),
+    }
+
+
+@tool("executive_list_projects")
+def executive_list_projects(status_filter: str = "") -> list[dict[str, Any]]:
+    """
+    List orchestration projects, optionally filtered by status.
+
+    status_filter: one of planning, waiting_approval, running, paused,
+                   completed, cancelled, failed, or empty for all.
+    """
+    return project_service.list_projects_summary(status_filter or None)
+
+
+@tool("executive_advance_project")
+async def executive_advance_project(project_id: str) -> dict[str, Any]:
+    """
+    Execute the next pending stage of a project.
+
+    If a checkpoint is pending, returns waiting_approval with checkpoint_id.
+    Otherwise starts the next stage in the background and returns immediately.
+    Poll executive_get_project to monitor progress.
+    """
+    result = await project_service.advance_project(project_id)
+    return result.model_dump()
+
+
+@tool("executive_iterate_stage")
+async def executive_iterate_stage(
+    project_id: str,
+    stage_id: str,
+    instruction: str = "",
+) -> dict[str, Any]:
+    """
+    Force another iteration of a completed stage.
+
+    Use this when you want to refine or improve a stage's output beyond what
+    the iteration_policy would trigger automatically.
+
+    Args:
+        project_id: The project to update.
+        stage_id: The stage_id of the stage to re-run.
+        instruction: Optional refinement instruction injected into context.
+    """
+    return await project_service.iterate_stage(project_id, stage_id, instruction)
+
+
+@tool("executive_approve_project_checkpoint")
+async def executive_approve_project_checkpoint(
+    project_id: str,
+    checkpoint_id: str,
+    notes: str = "",
+) -> dict[str, Any]:
+    """
+    Approve a pending project checkpoint to unblock project progression.
+
+    After approval the project will automatically advance to the next stage
+    (or start the current stage if the checkpoint was pre_stage).
+
+    Args:
+        project_id: Project containing the checkpoint.
+        checkpoint_id: The checkpoint to approve.
+        notes: Optional notes recorded in the checkpoint decision.
+    """
+    return await project_service.approve_checkpoint(project_id, checkpoint_id, notes)
+
+
+from src.agents.agent_memory import append_to_memory as _append_agent_memory
+
+
+@tool("executive_write_agent_memory")
+def executive_write_agent_memory(agent_name: str, content: str) -> str:
+    """Append a note to an agent's persistent memory after completing a project stage.
+    The memory will be injected into the agent's system prompt in future conversations.
+
+    Args:
+        agent_name: The name of the custom agent (must exist in the agents directory)
+        content: The text to append to the agent's memory (findings, preferences, context)
+
+    Returns:
+        Confirmation message
+    """
+    try:
+        _append_agent_memory(agent_name, content)
+        return f"Memory updated for agent '{agent_name}'."
+    except Exception as e:
+        return f"Error updating memory: {e}"

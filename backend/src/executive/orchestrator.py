@@ -50,6 +50,7 @@ async def run_lead_agent(
     mode: str = "standard",
     thinking_enabled: bool = False,
     subagent_enabled: bool = False,
+    agent_name: str | None = None,
 ) -> dict[str, Any]:
     """
     Spawn a lead_agent run on the LangGraph server and wait for the final result.
@@ -82,6 +83,8 @@ async def run_lead_agent(
     }
     if model_name:
         configurable["model_name"] = model_name
+    if agent_name:
+        configurable["agent_name"] = agent_name
 
     try:
         thread = await client.threads.create()

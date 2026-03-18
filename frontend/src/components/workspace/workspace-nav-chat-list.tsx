@@ -9,57 +9,82 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/core/i18n/hooks";
+
+function NavItem({
+  href,
+  icon: Icon,
+  label,
+  isActive,
+  isSidebarOpen,
+  iconClassName,
+}: {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  isActive: boolean;
+  isSidebarOpen: boolean;
+  iconClassName?: string;
+}) {
+  return (
+    <SidebarMenuItem>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SidebarMenuButton isActive={isActive} asChild>
+            <Link className="text-muted-foreground" href={href}>
+              <Icon className={iconClassName} />
+              <span>{label}</span>
+            </Link>
+          </SidebarMenuButton>
+        </TooltipTrigger>
+        {!isSidebarOpen && (
+          <TooltipContent side="right">{label}</TooltipContent>
+        )}
+      </Tooltip>
+    </SidebarMenuItem>
+  );
+}
 
 export function WorkspaceNavChatList() {
   const { t } = useI18n();
   const pathname = usePathname();
+  const { open: isSidebarOpen } = useSidebar();
 
   return (
     <SidebarGroup className="pt-1">
       <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton isActive={pathname === "/workspace/chats"} asChild>
-            <Link className="text-muted-foreground" href="/workspace/chats">
-              <MessagesSquare />
-              <span>{t.sidebar.chats}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/agents")}
-            asChild
-          >
-            <Link className="text-muted-foreground" href="/workspace/agents">
-              <BotIcon />
-              <span>{t.sidebar.agents}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/doc-edits")}
-            asChild
-          >
-            <Link className="text-muted-foreground" href="/workspace/doc-edits">
-              <FilePenLineIcon />
-              <span>{t.sidebar.docEdits}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/executive")}
-            asChild
-          >
-            <Link className="text-muted-foreground" href="/workspace/executive">
-              <ShieldCheckIcon />
-              <span>{t.sidebar.executive}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        <NavItem
+          href="/workspace/chats"
+          icon={MessagesSquare}
+          label={t.sidebar.chats}
+          isActive={pathname === "/workspace/chats"}
+          isSidebarOpen={isSidebarOpen}
+        />
+        <NavItem
+          href="/workspace/agents"
+          icon={BotIcon}
+          label={t.sidebar.agents}
+          isActive={pathname.startsWith("/workspace/agents")}
+          isSidebarOpen={isSidebarOpen}
+        />
+        <NavItem
+          href="/workspace/doc-edits"
+          icon={FilePenLineIcon}
+          label={t.sidebar.docEdits}
+          isActive={pathname.startsWith("/workspace/doc-edits")}
+          isSidebarOpen={isSidebarOpen}
+        />
+        <NavItem
+          href="/workspace/executive"
+          icon={ShieldCheckIcon}
+          label={t.sidebar.executive}
+          isActive={pathname.startsWith("/workspace/executive")}
+          isSidebarOpen={isSidebarOpen}
+          iconClassName="text-amber-500"
+        />
       </SidebarMenu>
     </SidebarGroup>
   );

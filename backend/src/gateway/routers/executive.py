@@ -4,6 +4,20 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.executive.agent import run_executive_chat
+from src.executive.project_models import (
+    ApproveCheckpointRequest,
+    CreateProjectRequest,
+    IterateStageRequest,
+)
+from src.executive.project_service import (
+    advance_project,
+    approve_checkpoint,
+    cancel_project,
+    create_project,
+    iterate_stage,
+    list_projects_summary,
+    get_project_or_raise,
+)
 from src.executive.service import (
     confirm_approval_payload,
     execute_action_payload,
@@ -124,3 +138,115 @@ def executive_update_settings(request: ExecutiveSettingsUpdateRequest) -> dict:
 @router.post("/chat")
 async def executive_chat(request: ExecutiveChatRequest) -> dict:
     return await run_executive_chat(request.messages)
+
+
+# ---------------------------------------------------------------------------
+# Project Orchestration Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/projects")
+async def projects_create(request: CreateProjectRequest) -> dict:
+    try:
+        project = await create_project(
+            title=request.title,
+            goal=request.goal,
+            stages_raw=request.stages,
+            options=request.options,
+        )
+        return {
+            **project.summary_dict(),
+            "stages": [
+                {"stage_id": s.stage_id, "title": s.title, "kind": s.kind.value, "status": s.status.value}
+                for s in project.stages
+            ],
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/projects")
+async def projects_list(status: str = "") -> dict:
+    return {"projects": list_projects_summary(status or None)}
+
+
+@router.get("/projects/{project_id}")
+async def projects_get(project_id: str) -> dict:
+    try:
+        project = get_project_or_raise(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    stages_info = []
+    for s in project.stages:
+        stages_info.append({
+            "stage_id": s.stage_id,
+            "title": s.title,
+            "kind": s.kind.value,
+            "status": s.status.value,
+            "iteration_count": s.iteration_count,
+            "max_iterations": s.iteration_policy.max_iterations,
+            "output_preview": (s.current_output or "")[:500] if s.current_output else None,
+            "current_output": s.current_output,
+            "outputs": [
+                {"iteration": o.iteration, "output": o.output, "quality_score": o.quality_score, "created_at": o.created_at.isoformat()}
+                for o in s.outputs
+            ],
+            "error": s.error,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+        })
+    checkpoints = [
+        {
+            "checkpoint_id": cp.checkpoint_id,
+            "stage_id": cp.stage_id,
+            "title": cp.title,
+            "description": cp.description,
+            "kind": cp.kind,
+            "status": cp.status,
+            "created_at": cp.created_at.isoformat(),
+        }
+        for cp in project.checkpoints
+    ]
+    return {
+        **project.summary_dict(),
+        "goal": project.goal,
+        "stages": stages_info,
+        "checkpoints": checkpoints,
+        "context": project.context,
+        "started_at": project.started_at.isoformat() if project.started_at else None,
+        "completed_at": project.completed_at.isoformat() if project.completed_at else None,
+        "deadline": project.deadline.isoformat() if project.deadline else None,
+    }
+
+
+@router.post("/projects/{project_id}/advance")
+async def projects_advance(project_id: str) -> dict:
+    try:
+        result = await advance_project(project_id)
+        return result.model_dump()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/stages/{stage_id}/iterate")
+async def projects_iterate_stage(project_id: str, stage_id: str, request: IterateStageRequest) -> dict:
+    try:
+        return await iterate_stage(project_id, stage_id, request.instruction)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/checkpoints/{checkpoint_id}/approve")
+async def projects_approve_checkpoint(project_id: str, checkpoint_id: str, request: ApproveCheckpointRequest) -> dict:
+    try:
+        return await approve_checkpoint(project_id, checkpoint_id, request.notes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/projects/{project_id}")
+async def projects_cancel(project_id: str) -> dict:
+    try:
+        return await cancel_project(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

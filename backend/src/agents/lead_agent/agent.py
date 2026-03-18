@@ -6,6 +6,7 @@ from langchain.agents.middleware import SummarizationMiddleware
 from langchain_core.runnables import RunnableConfig
 
 from src.agents.lead_agent.prompt import apply_prompt_template
+from src.agents.middlewares.agent_tag_middleware import AgentTagMiddleware
 from src.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from src.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
 from src.agents.middlewares.external_service_fallback_middleware import ExternalServiceFallbackMiddleware
@@ -280,6 +281,9 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
 
     middlewares.append(MessageNormalizationMiddleware())
 
+    # AgentTagMiddleware stamps AI messages with agent_id when agent_id_override is set
+    middlewares.append(AgentTagMiddleware())
+
     # ClarificationMiddleware should always be last
     middlewares.append(ClarificationMiddleware())
     return middlewares
@@ -308,7 +312,10 @@ def make_lead_agent(config: RunnableConfig):
     # e.g. ["opt:exa", "opt:serper", "opt:jina-deepresearch", "opt:factcheck"]
     research_tools: list[str] = cfg.get("research_tools") or []
 
-    agent_config = load_agent_config(agent_name) if not is_bootstrap else None
+    agent_id_override = cfg.get("agent_id_override")
+    effective_agent_name = agent_id_override or agent_name
+
+    agent_config = load_agent_config(effective_agent_name) if not is_bootstrap else None
     # Custom agent model or fallback to global/default model resolution
     agent_model_name = agent_config.model if agent_config and agent_config.model else _resolve_model_name()
 
@@ -376,6 +383,10 @@ def make_lead_agent(config: RunnableConfig):
         )
 
     # Default lead agent (unchanged behavior)
+    tools = get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled, extra_groups=research_tools)
+    if agent_config and agent_config.allowed_tools:
+        tools = [t for t in tools if t.name in agent_config.allowed_tools]
+
     return create_agent(
         model=create_chat_model(
             name=model_name,
@@ -383,12 +394,12 @@ def make_lead_agent(config: RunnableConfig):
             reasoning_effort=reasoning_effort,
             trace_id=config["metadata"].get("trace_id"),
         ),
-        tools=get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled, extra_groups=research_tools),
-        middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name),
+        tools=tools,
+        middleware=_build_middlewares(config, model_name=model_name, agent_name=effective_agent_name),
         system_prompt=apply_prompt_template(
             subagent_enabled=subagent_enabled,
             max_concurrent_subagents=max_concurrent_subagents,
-            agent_name=agent_name,
+            agent_name=effective_agent_name,
             knowledge_source=knowledge_source,
         ),
         state_schema=ThreadState,

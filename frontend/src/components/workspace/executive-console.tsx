@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { ExecutiveProjects } from "@/components/workspace/executive-projects";
 import { Tooltip } from "@/components/workspace/tooltip";
 import {
   confirmExecutiveApproval,
@@ -43,6 +44,30 @@ const stateClasses: Record<ExecutiveState, string> = {
   unavailable: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
   misconfigured: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
   unknown: "border-muted-foreground/20 bg-muted text-muted-foreground",
+};
+
+const summaryCardAccent: Record<string, string> = {
+  healthy: "border-l-4 border-l-emerald-500",
+  degraded: "border-l-4 border-l-amber-500",
+  unavailable: "border-l-4 border-l-red-500",
+  misconfigured: "border-l-4 border-l-orange-500",
+  unknown: "border-l-4 border-l-muted-foreground/30",
+};
+
+const summaryCountColor: Record<string, string> = {
+  healthy: "text-emerald-400",
+  degraded: "text-amber-400",
+  unavailable: "text-red-400",
+  misconfigured: "text-orange-400",
+  unknown: "text-muted-foreground",
+};
+
+const componentBorderAccent: Record<ExecutiveState, string> = {
+  healthy: "border-l-2 border-l-emerald-500/60",
+  degraded: "border-l-2 border-l-amber-500/60",
+  unavailable: "border-l-2 border-l-red-500/60",
+  misconfigured: "border-l-2 border-l-orange-500/60",
+  unknown: "border-l-2 border-l-muted-foreground/20",
 };
 
 function severityToState(severity: ExecutiveRiskLevel): ExecutiveState {
@@ -307,10 +332,10 @@ export function ExecutiveConsole() {
       <div className="flex min-h-0 flex-col gap-6">
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {Object.entries(statusQuery.data?.summary ?? {}).map(([label, count]) => (
-            <Card key={label} className="border-border/60 bg-background/70 py-4">
+            <Card key={label} className={cn("border-border/60 bg-background/70 py-4 overflow-hidden", summaryCardAccent[label])}>
               <CardHeader className="px-4 pb-2">
                 <CardDescription className="capitalize">{label}</CardDescription>
-                <CardTitle className="text-2xl">{count}</CardTitle>
+                <CardTitle className={cn("text-2xl", summaryCountColor[label])}>{count}</CardTitle>
               </CardHeader>
             </Card>
           ))}
@@ -320,7 +345,7 @@ export function ExecutiveConsole() {
           <CardHeader className="flex flex-row items-center justify-between px-4">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                <ShieldCheckIcon className="size-4" />
+                <ShieldCheckIcon className="size-4 text-amber-500" />
                 System Overview
               </CardTitle>
               <CardDescription>
@@ -345,7 +370,7 @@ export function ExecutiveConsole() {
             {(statusQuery.data?.components ?? []).map((component) => (
               <div
                 key={component.component_id}
-                className="rounded-xl border border-border/70 bg-background/75 p-4"
+                className={cn("rounded-xl border border-border/70 bg-background/75 p-4 overflow-hidden", componentBorderAccent[component.state])}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
@@ -590,7 +615,7 @@ export function ExecutiveConsole() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <BotIcon className="size-4" />
+                  <BotIcon className="size-4 text-amber-500" />
                   Executive Chat
                 </CardTitle>
                 <CardDescription>
@@ -710,6 +735,8 @@ export function ExecutiveConsole() {
             </div>
           </CardContent>
         </Card>
+
+        <ExecutiveProjects />
 
         <Card className="border-border/60 py-4">
           <CardHeader className="px-4">

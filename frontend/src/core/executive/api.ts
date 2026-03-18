@@ -1,4 +1,6 @@
 import type {
+  AdvanceProjectResponse,
+  CreateProjectParams,
   ExecutiveActionPreview,
   ExecutiveActionDefinition,
   ExecutiveAdvisoryRule,
@@ -6,7 +8,9 @@ import type {
   ExecutiveAuditEntry,
   ExecutiveComponent,
   ExecutiveExecutionResult,
+  ExecutiveProject,
   ExecutiveSystemStatus,
+  ProjectSummary,
 } from "./types";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -102,5 +106,65 @@ export function executiveChat(
     method: "POST",
     signal,
     body: JSON.stringify({ messages }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Project Orchestration API
+// ---------------------------------------------------------------------------
+
+export function createProject(params: CreateProjectParams): Promise<ExecutiveProject> {
+  return api("/api/executive/projects", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export function listProjects(statusFilter?: string): Promise<{ projects: ProjectSummary[] }> {
+  const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
+  return api(`/api/executive/projects${qs}`);
+}
+
+export function getProject(projectId: string): Promise<ExecutiveProject> {
+  return api(`/api/executive/projects/${encodeURIComponent(projectId)}`);
+}
+
+export function advanceProject(projectId: string): Promise<AdvanceProjectResponse> {
+  return api(`/api/executive/projects/${encodeURIComponent(projectId)}/advance`, {
+    method: "POST",
+  });
+}
+
+export function iterateStage(
+  projectId: string,
+  stageId: string,
+  instruction?: string,
+): Promise<{ project_id: string; stage_id: string; iteration: number; status: string; message: string }> {
+  return api(
+    `/api/executive/projects/${encodeURIComponent(projectId)}/stages/${encodeURIComponent(stageId)}/iterate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ instruction: instruction ?? "" }),
+    },
+  );
+}
+
+export function approveProjectCheckpoint(
+  projectId: string,
+  checkpointId: string,
+  notes?: string,
+): Promise<{ project_id: string; checkpoint_id: string; status: string; next?: unknown }> {
+  return api(
+    `/api/executive/projects/${encodeURIComponent(projectId)}/checkpoints/${encodeURIComponent(checkpointId)}/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify({ notes: notes ?? "" }),
+    },
+  );
+}
+
+export function cancelProject(projectId: string): Promise<{ project_id: string; status: string }> {
+  return api(`/api/executive/projects/${encodeURIComponent(projectId)}`, {
+    method: "DELETE",
   });
 }

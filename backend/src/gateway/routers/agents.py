@@ -8,6 +8,7 @@ import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from src.agents.agent_memory import clear_memory, get_memory, set_memory
 from src.config.agents_config import AgentConfig, list_custom_agents, load_agent_config, load_agent_soul
 from src.config.paths import get_paths
 
@@ -270,6 +271,9 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
             if new_tool_groups is not None:
                 updated["tool_groups"] = new_tool_groups
 
+            if agent_cfg.allowed_tools:
+                updated["allowed_tools"] = agent_cfg.allowed_tools
+
             config_file = agent_dir / "config.yaml"
             with open(config_file, "w", encoding="utf-8") as f:
                 yaml.dump(updated, f, default_flow_style=False, allow_unicode=True)
@@ -289,6 +293,148 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
     except Exception as e:
         logger.error(f"Failed to update agent '{name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to update agent: {str(e)}")
+
+
+class AgentMemoryUpdateRequest(BaseModel):
+    content: str
+
+
+class AgentToolsUpdateRequest(BaseModel):
+    allowed_tools: list[str]
+
+
+@router.get("/agents/{name}/tools")
+async def get_agent_tools(name: str):
+    try:
+        cfg = load_agent_config(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    return {"allowed_tools": getattr(cfg, "allowed_tools", [])}
+
+
+@router.put("/agents/{name}/tools")
+async def update_agent_tools(name: str, request: AgentToolsUpdateRequest):
+    try:
+        cfg = load_agent_config(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    agent_dir = get_paths().agent_dir(name)
+    updated: dict = {"name": cfg.name, "description": cfg.description}
+    if cfg.model is not None:
+        updated["model"] = cfg.model
+    if cfg.tool_groups is not None:
+        updated["tool_groups"] = cfg.tool_groups
+    if request.allowed_tools:
+        updated["allowed_tools"] = request.allowed_tools
+    config_file = agent_dir / "config.yaml"
+    with open(config_file, "w", encoding="utf-8") as f:
+        yaml.dump(updated, f, default_flow_style=False, allow_unicode=True)
+    return {"allowed_tools": request.allowed_tools}
+
+
+@router.get("/agents/{name}/memory")
+async def get_agent_memory(name: str):
+    try:
+        load_agent_config(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    return {"content": get_memory(name)}
+
+
+@router.put("/agents/{name}/memory")
+async def update_agent_memory(name: str, request: AgentMemoryUpdateRequest):
+    try:
+        load_agent_config(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    set_memory(name, request.content)
+    return {"content": request.content}
+
+
+@router.delete("/agents/{name}/memory")
+async def delete_agent_memory(name: str):
+    try:
+        load_agent_config(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    clear_memory(name)
+    return {"content": ""}
+
+
+from src.agents.scheduler.storage import (
+    create_schedule as _create_schedule,
+    list_schedules as _list_schedules,
+    get_schedule as _get_schedule,
+    update_schedule as _update_schedule,
+    delete_schedule as _delete_schedule,
+)
+
+
+class CreateScheduleRequest(BaseModel):
+    cron_expr: str
+    prompt: str
+    enabled: bool = True
+
+
+class UpdateScheduleRequest(BaseModel):
+    cron_expr: str | None = None
+    prompt: str | None = None
+    enabled: bool | None = None
+
+
+@router.post("/agents/{name}/schedules")
+async def create_agent_schedule(name: str, request: CreateScheduleRequest):
+    try:
+        load_agent_config(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    try:
+        from croniter import croniter
+        croniter(request.cron_expr)
+    except Exception:
+        raise HTTPException(status_code=422, detail=f"Invalid cron expression: {request.cron_expr}")
+    return _create_schedule(name, request.cron_expr, request.prompt, request.enabled)
+
+
+@router.get("/agents/{name}/schedules")
+async def list_agent_schedules(name: str):
+    try:
+        load_agent_config(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    return _list_schedules(agent_name=name)
+
+
+@router.get("/agents/{name}/schedules/{schedule_id}")
+async def get_agent_schedule(name: str, schedule_id: str):
+    schedule = _get_schedule(schedule_id)
+    if not schedule or schedule["agent_name"] != name:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return schedule
+
+
+@router.patch("/agents/{name}/schedules/{schedule_id}")
+async def update_agent_schedule(name: str, schedule_id: str, request: UpdateScheduleRequest):
+    schedule = _get_schedule(schedule_id)
+    if not schedule or schedule["agent_name"] != name:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    updates = request.model_dump(exclude_none=True)
+    if "cron_expr" in updates:
+        try:
+            from croniter import croniter
+            croniter(updates["cron_expr"])
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid cron expression")
+    return _update_schedule(schedule_id, **updates)
+
+
+@router.delete("/agents/{name}/schedules/{schedule_id}")
+async def delete_agent_schedule(name: str, schedule_id: str):
+    schedule = _get_schedule(schedule_id)
+    if not schedule or schedule["agent_name"] != name:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    _delete_schedule(schedule_id)
+    return {"deleted": True}
 
 
 class UserProfileResponse(BaseModel):

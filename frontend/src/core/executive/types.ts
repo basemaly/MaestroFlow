@@ -123,3 +123,109 @@ export type ExecutiveAdvisoryRule = {
   component_id?: string | null;
   recommendation?: ExecutiveRecommendation | null;
 };
+
+// ---------------------------------------------------------------------------
+// Project Orchestration Types
+// ---------------------------------------------------------------------------
+
+export type ProjectStatus =
+  | "planning"
+  | "waiting_approval"
+  | "running"
+  | "paused"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+export type StageStatus =
+  | "pending"
+  | "waiting_approval"
+  | "running"
+  | "completed"
+  | "skipped"
+  | "failed";
+
+export type StageKind =
+  | "research"
+  | "draft"
+  | "edit"
+  | "fact_check"
+  | "critique"
+  | "synthesize"
+  | "finalize"
+  | "custom";
+
+export type CheckpointKind = "pre_stage" | "post_stage" | "iteration" | "goal_check";
+
+export type StageOutputRecord = {
+  iteration: number;
+  output: string;
+  quality_score?: number | null;
+  created_at: string;
+};
+
+export type StageInfo = {
+  stage_id: string;
+  title: string;
+  kind: StageKind;
+  status: StageStatus;
+  iteration_count: number;
+  max_iterations: number;
+  output_preview?: string | null;
+  current_output?: string | null;
+  outputs?: StageOutputRecord[];
+  error?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  agent_id?: string | null;
+};
+
+export type CheckpointInfo = {
+  checkpoint_id: string;
+  stage_id?: string | null;
+  title: string;
+  description: string;
+  kind: CheckpointKind;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+};
+
+export type ProjectSummary = {
+  project_id: string;
+  title: string;
+  status: ProjectStatus;
+  current_stage?: string | null;
+  current_stage_index: number;
+  total_stages: number;
+  total_iterations: number;
+  pending_checkpoint?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExecutiveProject = ProjectSummary & {
+  goal: string;
+  stages: StageInfo[];
+  checkpoints: CheckpointInfo[];
+  context: Record<string, unknown>;
+  started_at?: string | null;
+  completed_at?: string | null;
+  deadline?: string | null;
+};
+
+export type CreateProjectParams = {
+  title: string;
+  goal: string;
+  stages: Record<string, unknown>[];
+  options?: Record<string, unknown>;
+};
+
+export type AdvanceProjectResponse = {
+  project_id: string;
+  status: string;
+  stage_id?: string | null;
+  stage_title?: string | null;
+  iteration?: number | null;
+  checkpoint_id?: string | null;
+  message: string;
+};

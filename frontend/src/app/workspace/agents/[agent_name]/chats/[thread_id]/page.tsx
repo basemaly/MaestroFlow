@@ -2,7 +2,7 @@
 
 import { BotIcon, ClipboardCheckIcon, PlusSquare } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
@@ -22,7 +22,7 @@ import { SurfSenseActions } from "@/components/workspace/surfsense-actions";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { Tooltip } from "@/components/workspace/tooltip";
-import { useAgent } from "@/core/agents";
+import { useAgent, useAgents } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
 import { useNotification } from "@/core/notification/hooks";
 import {
@@ -49,12 +49,15 @@ export default function AgentChatPage() {
   const [planningBusy, setPlanningBusy] = useState(false);
   const [manualPlanReview, setManualPlanReview] = useState(false);
   const router = useRouter();
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const inputAreaRef = useRef<HTMLDivElement | null>(null);
 
   const { agent_name } = useParams<{
     agent_name: string;
   }>();
 
   const { agent } = useAgent(agent_name);
+  const { agents } = useAgents();
 
   const { threadId, isNewThread, setIsNewThread, isInvalidThreadRoute } =
     useThreadChat();
@@ -70,6 +73,21 @@ export default function AgentChatPage() {
     toast.error("That chat link is no longer valid. Starting a new thread instead.");
     router.replace(`/workspace/agents/${agent_name}/chats/new`);
   }, [agent_name, isInvalidThreadRoute, router]);
+
+  // @mention autocomplete: watch textarea for @… patterns
+  useEffect(() => {
+    const container = inputAreaRef.current;
+    if (!container) return;
+    function onInput(e: Event) {
+      const ta = e.target as HTMLTextAreaElement;
+      const match = /@([A-Za-z0-9_-]*)$/.exec(ta.value);
+      setMentionSearch(match ? (match[1] ?? null) : null);
+    }
+    const ta = container.querySelector<HTMLTextAreaElement>("textarea");
+    if (!ta) return;
+    ta.addEventListener("input", onInput);
+    return () => ta.removeEventListener("input", onInput);
+  });
 
   const { showNotification } = useNotification();
   const [thread, sendMessage, serviceWarning, isRecursionError, continueResearch] = useThreadStream({
@@ -152,13 +170,24 @@ export default function AgentChatPage() {
     [agent_name, mergeContextPatch, pendingMessage, planningReview, sendMessage, threadId],
   );
 
+  const MENTION_RE = /^@([A-Za-z0-9_-]+)\s*/;
+
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
       setSubmitWarning(null);
+      setMentionSearch(null);
       if (planningReview) {
         toast.error("Finish the active plan review before sending another prompt.");
         return;
       }
+
+      // Parse @mention at start of message to route to a different agent
+      const mentionMatch = MENTION_RE.exec(message.text.trim());
+      const agentIdOverride = mentionMatch ? mentionMatch[1] : undefined;
+      const extraContext: Record<string, unknown> = agentIdOverride
+        ? { agent_id_override: agentIdOverride }
+        : {};
+
       if (isFirstTurn || manualPlanReview) {
         setPlanningBusy(true);
         void startFirstTurnReview({
@@ -179,7 +208,7 @@ export default function AgentChatPage() {
               setPendingMessage(message);
               return;
             }
-            return sendMessage(threadId, message, { agent_name });
+            return sendMessage(threadId, message, { agent_name, ...extraContext });
           })
           .catch((error: unknown) => {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -192,7 +221,7 @@ export default function AgentChatPage() {
           });
         return;
       }
-      void sendMessage(threadId, message, { agent_name }).catch(
+      void sendMessage(threadId, message, { agent_name, ...extraContext }).catch(
         (error: unknown) => {
           const errorMessage =
             error instanceof Error ? error.message : String(error);
@@ -201,6 +230,7 @@ export default function AgentChatPage() {
         },
       );
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- MENTION_RE is stable
     [agent_name, isFirstTurn, manualPlanReview, planningReview, sendMessage, settings.context, threadId],
   );
 
@@ -346,6 +376,7 @@ export default function AgentChatPage() {
 
             <div className="absolute right-0 bottom-0 left-0 z-30 flex justify-center px-4">
               <div
+                ref={inputAreaRef}
                 className={cn(
                   "relative w-full",
                   isNewThread && "-translate-y-[calc(50vh-96px)]",
@@ -354,6 +385,35 @@ export default function AgentChatPage() {
                     : "max-w-(--container-width-md)",
                 )}
               >
+                {/* @mention autocomplete popover */}
+                {mentionSearch !== null && agents.length > 0 && (
+                  <div className="absolute bottom-full mb-1 left-0 z-50 rounded-xl border border-border/60 bg-background shadow-lg w-48 overflow-hidden">
+                    {agents
+                      .filter((a) => a.name.toLowerCase().includes(mentionSearch.toLowerCase()))
+                      .slice(0, 6)
+                      .map((a) => (
+                        <button
+                          key={a.name}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted/60 text-left"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const ta = inputAreaRef.current?.querySelector<HTMLTextAreaElement>("textarea");
+                            if (ta) {
+                              const newText = ta.value.replace(/@([A-Za-z0-9_-]*)$/, `@${a.name} `);
+                              // Trigger a native input event so the controlled component updates
+                              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+                              nativeInputValueSetter?.call(ta, newText);
+                              ta.dispatchEvent(new Event("input", { bubbles: true }));
+                            }
+                            setMentionSearch(null);
+                          }}
+                        >
+                          <BotIcon className="size-3 text-muted-foreground" />
+                          {a.name}
+                        </button>
+                      ))}
+                  </div>
+                )}
                 <div className="absolute -top-4 right-0 left-0 z-0">
                   <div className="absolute right-0 bottom-0 left-0">
                     <TodoList

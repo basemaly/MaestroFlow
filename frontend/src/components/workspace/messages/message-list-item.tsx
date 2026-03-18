@@ -1,5 +1,5 @@
 import type { Message } from "@langchain/langgraph-sdk";
-import { FileIcon, Loader2Icon } from "lucide-react";
+import { BotIcon, FileIcon, Loader2Icon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { memo, useMemo, type ImgHTMLAttributes } from "react";
 import rehypeKatex from "rehype-katex";
@@ -210,6 +210,12 @@ function MessageContent_({
 
   return (
     <AIElementMessageContent className={className}>
+      {(message.additional_kwargs as { agent_id?: string } | undefined)?.agent_id && (
+        <span className="mb-1 inline-flex items-center gap-1 rounded-full border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          <BotIcon className="size-2.5" />
+          {(message.additional_kwargs as { agent_id?: string }).agent_id}
+        </span>
+      )}
       {filesList}
       <MarkdownContent
         content={contentToDisplay}

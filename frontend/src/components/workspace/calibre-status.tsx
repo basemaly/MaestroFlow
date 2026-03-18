@@ -62,7 +62,11 @@ export function CalibreStatus() {
         setStatus(fallbackFromResponse(response, "Calibre status endpoint unavailable"));
         return;
       }
-      setStatus({ ...FALLBACK_STATUS, ...payload });
+      setStatus({
+        ...FALLBACK_STATUS,
+        ...payload,
+        healthy: payload.healthy ?? (payload.available && !payload.last_error),
+      });
     } catch (error) {
       setStatus({
         ...FALLBACK_STATUS,
@@ -129,32 +133,45 @@ export function CalibreStatus() {
     return null;
   }
 
+  const shortName = "Calibre Library";
+  const syncLabel = status.last_sync_at
+    ? (() => {
+        const d = new Date(status.last_sync_at);
+        const now = new Date();
+        const diffMs = now.getTime() - d.getTime();
+        const diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return "Synced just now";
+        if (diffMin < 60) return `Synced ${diffMin}m ago`;
+        const diffH = Math.floor(diffMin / 60);
+        if (diffH < 24) return `Synced ${diffH}h ago`;
+        return `Synced ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+      })()
+    : null;
+
   return (
-    <div className="hidden items-center gap-2 rounded-md border px-2 py-1 text-xs lg:flex">
-      <BookIcon className="size-3.5" />
-      <span>
-        {status.dataset_name ?? "Calibre Library"} ·{" "}
-        {status.available ? `${status.indexed_books ?? 0} books` : "Unavailable"}
+    <div className="hidden shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs lg:flex">
+      <BookIcon className="size-3.5 shrink-0" />
+      <span className="whitespace-nowrap">
+        {shortName} · {status.available ? `${status.indexed_books ?? 0} books` : "Unavailable"}
       </span>
       {status.collection && (
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="whitespace-nowrap rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {status.collection}
         </span>
       )}
       {status.available && status.healthy === false && (
-        <span className="text-amber-600">Degraded</span>
+        <span className="whitespace-nowrap text-amber-600">Degraded</span>
       )}
-      {status.last_sync_at && (
-        <span className="text-muted-foreground">
-          Synced {new Date(status.last_sync_at).toLocaleString()}
-        </span>
+      {syncLabel && (
+        <span className="whitespace-nowrap text-muted-foreground">{syncLabel}</span>
       )}
       <Button
         size="sm"
         variant="ghost"
-        className="h-6 px-1.5"
+        className="h-6 shrink-0 px-1.5"
         onClick={() => void sync()}
         disabled={loading}
+        title="Sync Calibre library"
       >
         {loading ? (
           <Loader2Icon className="size-3 animate-spin" />
@@ -165,9 +182,10 @@ export function CalibreStatus() {
       <Button
         size="sm"
         variant="ghost"
-        className="h-6 px-1.5"
+        className="h-6 shrink-0 px-1.5"
         onClick={() => void reindex()}
         disabled={loading}
+        title="Full reindex"
       >
         Full
       </Button>

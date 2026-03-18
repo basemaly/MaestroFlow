@@ -42,6 +42,7 @@ export function useThreadStream({
   onToolEnd,
 }: ThreadStreamOptions) {
   const { t } = useI18n();
+  const apiClient = getAPIClient(isMock);
   // Track the thread ID that is currently streaming to handle thread changes during streaming
   const [onStreamThreadId, setOnStreamThreadId] = useState(() => threadId);
   // Ref to track current thread ID across async callbacks without causing re-renders,
@@ -91,7 +92,7 @@ export function useThreadStream({
   const [isRecursionError, setIsRecursionError] = useState(false);
 
   const thread = useStream<AgentThreadState>({
-    client: getAPIClient(isMock),
+    client: apiClient,
     assistantId: "lead_agent",
     threadId: onStreamThreadId,
     reconnectOnMount: true,

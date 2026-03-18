@@ -65,6 +65,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("No IM channels configured or channel service failed to start")
 
+    # Start agent scheduler
+    try:
+        from src.agents.scheduler.service import start_scheduler
+
+        await start_scheduler()
+    except Exception:
+        logger.exception("Failed to start agent scheduler")
+
     yield
 
     # Stop channel service on shutdown
@@ -74,6 +82,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await stop_channel_service()
     except Exception:
         logger.exception("Failed to stop channel service")
+
+    # Stop agent scheduler
+    try:
+        from src.agents.scheduler.service import stop_scheduler
+
+        await stop_scheduler()
+    except Exception:
+        logger.exception("Failed to stop agent scheduler")
     logger.info("Shutting down API Gateway")
 
 

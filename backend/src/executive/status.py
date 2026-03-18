@@ -83,37 +83,43 @@ async def collect_component_status(component_id: str) -> ExecutiveStatusSnapshot
         )
 
     if component_id == "frontend":
-        ok, error = await _probe("http://127.0.0.1:2027/workspace/chats/new")
+        nginx_url = os.environ.get("NGINX_INTERNAL_URL", "http://nginx:2027")
+        probe_url = f"{nginx_url}/workspace/chats/new"
+        ok, error = await _probe(probe_url)
         return ExecutiveStatusSnapshot(
             component_id=component_id,
             label=component.label,
             state="healthy" if ok else "unavailable",
             summary="Frontend is reachable through nginx." if ok else f"Frontend is unavailable: {error}",
-            details={"url": "http://127.0.0.1:2027/workspace/chats/new"},
+            details={"url": probe_url},
             metrics={"reachable": ok},
             recommended_actions=["run_connectivity_check", "tail_component_logs"],
         )
 
     if component_id == "gateway":
-        ok, error = await _probe("http://127.0.0.1:8001/health")
+        gateway_url = os.environ.get("GATEWAY_INTERNAL_URL", "http://127.0.0.1:8001")
+        probe_url = f"{gateway_url}/health"
+        ok, error = await _probe(probe_url)
         return ExecutiveStatusSnapshot(
             component_id=component_id,
             label=component.label,
             state="healthy" if ok else "unavailable",
             summary="Gateway API is reachable." if ok else f"Gateway API is unavailable: {error}",
-            details={"url": "http://127.0.0.1:8001/health"},
+            details={"url": probe_url},
             metrics={"reachable": ok},
             recommended_actions=["run_connectivity_check", "tail_component_logs"],
         )
 
     if component_id == "nginx":
-        ok, error = await _probe("http://127.0.0.1:2027/health")
+        nginx_url = os.environ.get("NGINX_INTERNAL_URL", "http://nginx:2027")
+        probe_url = f"{nginx_url}/health"
+        ok, error = await _probe(probe_url)
         return ExecutiveStatusSnapshot(
             component_id=component_id,
             label=component.label,
             state="healthy" if ok else "unavailable",
             summary="Nginx reverse proxy is serving MaestroFlow." if ok else f"Nginx is unavailable: {error}",
-            details={"url": "http://127.0.0.1:2027/health"},
+            details={"url": probe_url},
             metrics={"reachable": ok},
             recommended_actions=["run_connectivity_check", "tail_component_logs"],
         )
