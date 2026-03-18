@@ -41,6 +41,7 @@ export function DocumentsPageClient({
     [documents],
   );
   const revisionCount = runsData?.runs.length ?? 0;
+  const latestRevisionRun = runsData?.runs[0];
   const latestRevision = runsData?.runs[0]?.timestamp
     ? formatTimeAgo(runsData.runs[0].timestamp)
     : "No revisions yet";
@@ -76,6 +77,14 @@ export function DocumentsPageClient({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {latestRevisionRun ? (
+                <Button variant="ghost" asChild>
+                  <Link href={`/workspace/doc-edits/${latestRevisionRun.run_id}`}>
+                    <ArrowUpRightIcon className="size-4" />
+                    Resume latest revision
+                  </Link>
+                </Button>
+              ) : null}
               <Button variant="outline" asChild>
                 <Link href="/workspace/doc-edits">
                   <SparklesIcon className="size-4" />

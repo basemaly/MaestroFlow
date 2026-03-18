@@ -8,7 +8,6 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
-import Underline from "@tiptap/extension-underline";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
@@ -84,7 +83,6 @@ export const BlockEditor = forwardRef<BlockEditorHandle, {
       StarterKit.configure({
         codeBlock: false,
       }),
-      Underline,
       Placeholder.configure({
         placeholder: "Start writing, paste markdown, or build with the toolbar...",
       }),

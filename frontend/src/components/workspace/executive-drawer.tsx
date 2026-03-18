@@ -124,6 +124,13 @@ function ExecutiveAgentLifecycle() {
   const [agentName, setAgentName] = useState<string | undefined>(undefined);
   const [mode, setMode] = useState<"standard" | "pro" | "ultra">("pro");
   const [lastThreadId, setLastThreadId] = useState<string | null>(null);
+  const [stoppingProjectId, setStoppingProjectId] = useState<string | null>(null);
+
+  const quickPrompts = [
+    "Audit the current document workflow and recommend one simplification.",
+    "Review active warnings and tell me what actually needs attention.",
+    "Summarize where the current thread is stuck and propose the next move.",
+  ];
 
   const projectsQuery = useQuery({
     queryKey: ["executive", "projects", "drawer"],
@@ -155,10 +162,14 @@ function ExecutiveAgentLifecycle() {
   const stopMutation = useMutation({
     mutationFn: (projectId: string) => cancelProject(projectId),
     onSuccess: () => {
+      setStoppingProjectId(null);
       toast.success("Workflow stopped");
       void queryClient.invalidateQueries({ queryKey: ["executive", "projects"] });
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+    onError: (error) => {
+      setStoppingProjectId(null);
+      toast.error(error instanceof Error ? error.message : String(error));
+    },
   });
 
   const activeProjects =
@@ -206,12 +217,30 @@ function ExecutiveAgentLifecycle() {
             Ultra
           </Button>
         </div>
+        <div className="flex flex-wrap gap-2">
+          {quickPrompts.map((template) => (
+            <Button
+              key={template}
+              size="sm"
+              type="button"
+              variant="ghost"
+              className="h-auto whitespace-normal rounded-full border border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground"
+              onClick={() => setPrompt(template)}
+            >
+              {template}
+            </Button>
+          ))}
+        </div>
         <textarea
           className="min-h-[92px] w-full resize-none rounded-lg border border-border/50 bg-background/80 px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-amber-500/40"
           placeholder="Spawn a specialist run. Example: Audit the current Drafting workflow and recommend one simplification."
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
         />
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <span>{mode === "standard" ? "Fastest, lowest overhead." : mode === "pro" ? "Balanced planning and execution." : "Deepest run with subagents enabled."}</span>
+          {agentName ? <span>Preset: {agentName}</span> : <span>Using default MaestroFlow lead agent.</span>}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
@@ -265,9 +294,12 @@ function ExecutiveAgentLifecycle() {
                     variant="ghost"
                     className="text-muted-foreground"
                     disabled={stopMutation.isPending}
-                    onClick={() => stopMutation.mutate(project.project_id)}
+                    onClick={() => {
+                      setStoppingProjectId(project.project_id);
+                      stopMutation.mutate(project.project_id);
+                    }}
                   >
-                    {stopMutation.isPending ? (
+                    {stopMutation.isPending && stoppingProjectId === project.project_id ? (
                       <Loader2Icon className="size-3.5 animate-spin" />
                     ) : (
                       <SquareIcon className="size-3.5" />

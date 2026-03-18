@@ -3,6 +3,7 @@
 import { BookCopyIcon, CompassIcon, Layers3Icon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 import { ArtifactTrigger } from "./artifacts";
 import { CalibreStatus } from "./calibre-status";
@@ -30,14 +31,18 @@ export function ContextDock({
   includeArtifacts?: boolean;
   includeRevisionLab?: boolean;
 }) {
+  const sourceSummary =
+    knowledgeSource === "calibre-library" ? "Calibre scoped" : "Auto source";
+  const presetSummary = agentPreset ?? "Default preset";
+
   return (
-    <div className="rounded-2xl border border-border/60 bg-background/70 px-3 py-2 shadow-sm backdrop-blur-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-muted-foreground flex items-center gap-2 pr-1 text-[11px] font-medium uppercase tracking-[0.16em]">
+    <div className="rounded-2xl border border-border/60 bg-background/75 px-3 py-2 shadow-sm backdrop-blur-sm">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <div className="text-muted-foreground flex items-center gap-1.5 pr-1 text-[10px] font-medium uppercase tracking-[0.14em]">
           <Layers3Icon className="size-3.5" />
-          Context Dock
+          Context
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           <KnowledgeSourceMenu
             value={knowledgeSource}
             onChange={onKnowledgeSourceChange}
@@ -57,13 +62,19 @@ export function ContextDock({
           <SnippetShelf />
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="gap-1 text-[10px]">
+          <Badge
+            variant="outline"
+            className={cn(
+              "gap-1 text-[10px]",
+              knowledgeSource === "calibre-library" && "border-sky-500/30 bg-sky-500/5 text-sky-700 dark:text-sky-200",
+            )}
+          >
             <CompassIcon className="size-3" />
-            {knowledgeSource === "calibre-library" ? "Calibre-scoped" : "Auto-scoped"}
+            {sourceSummary}
           </Badge>
           <Badge variant="outline" className="gap-1 text-[10px]">
             <BookCopyIcon className="size-3" />
-            {agentPreset ? `Preset ${agentPreset}` : "Default agent"}
+            {presetSummary}
           </Badge>
         </div>
       </div>

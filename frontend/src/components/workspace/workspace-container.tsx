@@ -16,10 +16,12 @@ import {
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
 
-import { SnippetShelf } from "./snippet-shelf";
-
 const ExecutiveDrawerTrigger = dynamic(
   () => import("@/components/workspace/executive-drawer").then((m) => m.ExecutiveDrawerTrigger),
+  { ssr: false },
+);
+const SnippetShelf = dynamic(
+  () => import("@/components/workspace/snippet-shelf").then((m) => m.SnippetShelf),
   { ssr: false },
 );
 

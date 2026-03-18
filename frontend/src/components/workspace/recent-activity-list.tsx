@@ -37,6 +37,7 @@ type ActivityItem = {
   updatedAt: string;
   icon: React.ElementType;
   accent?: string;
+  priority: number;
 };
 
 export function RecentActivityList() {
@@ -78,6 +79,7 @@ export function RecentActivityList() {
         meta: "Chat session",
         updatedAt: thread.updated_at ?? thread.created_at ?? new Date().toISOString(),
         icon: MessagesSquareIcon,
+        priority: 1,
       });
     }
 
@@ -89,6 +91,7 @@ export function RecentActivityList() {
         meta: `${document.status} · ${formatTimeAgo(document.updated_at)}`,
         updatedAt: document.updated_at,
         icon: BookOpenTextIcon,
+        priority: document.status === "active" ? 3 : 2,
       });
     }
 
@@ -101,6 +104,7 @@ export function RecentActivityList() {
         meta: `${run.status} · ${formatTimeAgo(run.timestamp)}`,
         updatedAt: run.timestamp,
         icon: FilePenLineIcon,
+        priority: run.status === "awaiting_selection" ? 5 : 3,
       });
     }
 
@@ -113,10 +117,15 @@ export function RecentActivityList() {
         updatedAt: approval.created_at,
         icon: ClipboardCheckIcon,
         accent: "text-amber-500",
+        priority: 8,
       });
     }
 
-    for (const entry of (auditQuery.data?.entries ?? []).slice(0, 8)) {
+    for (const entry of (auditQuery.data?.entries ?? [])
+      .filter(
+        (item) => item.status !== "succeeded" || item.component_id === "lead_agent",
+      )
+      .slice(0, 6)) {
       items.push({
         key: `audit-${entry.audit_id}`,
         href: "/workspace/executive",
@@ -129,15 +138,22 @@ export function RecentActivityList() {
             : entry.component_id === "lead_agent"
               ? BotIcon
               : ClipboardCheckIcon,
+        priority:
+          entry.status === "failed"
+            ? 7
+            : entry.component_id === "lead_agent"
+              ? 4
+              : 2,
       });
     }
 
     return items
       .sort(
         (left, right) =>
+          right.priority - left.priority ||
           new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
       )
-      .slice(0, 10);
+      .slice(0, 8);
   }, [approvalsQuery.data?.approvals, auditQuery.data?.entries, documentsData?.documents, runsData?.runs, threads]);
 
   if (!hydrated || activities.length === 0) {
