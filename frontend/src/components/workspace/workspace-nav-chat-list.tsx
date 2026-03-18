@@ -1,7 +1,6 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { BookOpenTextIcon, BotIcon, FilePenLineIcon, MessagesSquare } from "lucide-react";
 import { BookOpenTextIcon, BotIcon, FlaskConicalIcon, FilePenLineIcon, MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
