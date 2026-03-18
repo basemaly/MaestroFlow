@@ -19,6 +19,35 @@ type CalibreStatusPayload = {
   last_error?: string | null;
 };
 
+const FALLBACK_STATUS: CalibreStatusPayload = {
+  available: false,
+  configured: false,
+  healthy: false,
+  dataset_name: "Calibre Library",
+  last_error: "Calibre integration is unavailable.",
+};
+
+async function readCalibrePayload(
+  response: Response,
+): Promise<CalibreStatusPayload | null> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return null;
+  }
+
+  return (await response.json()) as CalibreStatusPayload;
+}
+
+function fallbackFromResponse(
+  response: Response,
+  message: string,
+): CalibreStatusPayload {
+  return {
+    ...FALLBACK_STATUS,
+    last_error: `${message} (${response.status})`,
+  };
+}
+
 export function CalibreStatus() {
   const [status, setStatus] = useState<CalibreStatusPayload | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,10 +56,17 @@ export function CalibreStatus() {
     setLoading(true);
     try {
       const response = await fetch(`${getBackendBaseURL()}/api/calibre/status`);
-      const payload = (await response.json()) as CalibreStatusPayload;
-      setStatus(payload);
+      const payload = await readCalibrePayload(response);
+      if (!response.ok || !payload) {
+        setStatus(fallbackFromResponse(response, "Calibre status endpoint unavailable"));
+        return;
+      }
+      setStatus({ ...FALLBACK_STATUS, ...payload });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      setStatus({
+        ...FALLBACK_STATUS,
+        last_error: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       setLoading(false);
     }
@@ -42,9 +78,11 @@ export function CalibreStatus() {
       const response = await fetch(`${getBackendBaseURL()}/api/calibre/sync`, {
         method: "POST",
       });
-      const payload = (await response.json()) as CalibreStatusPayload;
+      const payload =
+        (await readCalibrePayload(response)) ??
+        fallbackFromResponse(response, "Calibre sync endpoint unavailable");
       setStatus(payload);
-      if (payload.last_error) {
+      if (!response.ok || payload.last_error) {
         toast.error(payload.last_error);
       }
     } catch (error) {
@@ -60,9 +98,11 @@ export function CalibreStatus() {
       const response = await fetch(`${getBackendBaseURL()}/api/calibre/reindex`, {
         method: "POST",
       });
-      const payload = (await response.json()) as CalibreStatusPayload;
+      const payload =
+        (await readCalibrePayload(response)) ??
+        fallbackFromResponse(response, "Calibre reindex endpoint unavailable");
       setStatus(payload);
-      if (payload.last_error) {
+      if (!response.ok || payload.last_error) {
         toast.error(payload.last_error);
       }
     } catch (error) {
