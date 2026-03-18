@@ -12,7 +12,10 @@ export function useDocuments() {
   return useQuery({
     queryKey: ["documents"],
     queryFn: listDocuments,
-    staleTime: 15_000,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -21,7 +24,10 @@ export function useDocument(docId?: string) {
     queryKey: ["document", docId],
     queryFn: () => getDocument(docId!),
     enabled: !!docId,
-    staleTime: 15_000,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 

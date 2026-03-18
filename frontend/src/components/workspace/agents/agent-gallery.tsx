@@ -37,8 +37,26 @@ export function AgentGallery() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
-            {t.common.loading}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div
+                key={`agent-skeleton-${index}`}
+                className="rounded-2xl border border-border/60 bg-card/60 p-5"
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="h-10 w-10 animate-pulse rounded-xl bg-muted/60" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-28 animate-pulse rounded bg-muted/60" />
+                    <div className="h-3 w-20 animate-pulse rounded bg-muted/45" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="h-3 w-full animate-pulse rounded bg-muted/45" />
+                  <div className="h-3 w-[88%] animate-pulse rounded bg-muted/45" />
+                  <div className="h-3 w-[72%] animate-pulse rounded bg-muted/45" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : agents.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
