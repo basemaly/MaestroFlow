@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { useAgents } from "@/core/agents";
+import type { Agent } from "@/core/agents/types";
 import { useI18n } from "@/core/i18n/hooks";
 
 import { AgentCard } from "./agent-card";
 
-export function AgentGallery() {
+export function AgentGallery({ initialAgents }: { initialAgents?: Agent[] }) {
   const { t } = useI18n();
-  const { agents, isLoading } = useAgents();
+  const { agents, isLoading } = useAgents(initialAgents);
   const router = useRouter();
 
   const handleNewAgent = () => {
