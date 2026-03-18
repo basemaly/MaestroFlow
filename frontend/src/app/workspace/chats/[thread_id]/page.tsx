@@ -17,6 +17,7 @@ import {
 } from "@/components/workspace/chats";
 import { DeerIntroOverlay } from "@/components/workspace/deer-intro-overlay";
 import { DocEditDialog } from "@/components/workspace/doc-edit-dialog";
+import { ExecutiveDrawerTrigger } from "@/components/workspace/executive-drawer";
 import { ExternalServiceBanner } from "@/components/workspace/external-service-banner";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
@@ -243,6 +244,7 @@ export default function ChatPage() {
               />
               <ArtifactTrigger />
               <SnippetShelf />
+              <ExecutiveDrawerTrigger isSidebarOpen={false} variant="header" />
             </div>
           </header>
           <main className="relative isolate flex min-h-0 max-w-full grow flex-col">
