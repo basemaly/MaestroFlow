@@ -10,6 +10,7 @@ import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from src.gateway.contracts import build_error_envelope, build_health_envelope
 from src.gateway.services.external_services import get_external_services_status
 from src.integrations.surfsense import SurfSenseClient, get_surfsense_config, resolve_surfsense_search_space_id
 from src.models.routing import resolve_doc_edit_candidate_models
@@ -138,24 +139,71 @@ async def get_surfsense_integration_config(project_key: str | None = None) -> di
     config = get_surfsense_config()
     external = await get_external_services_status()
     surfsense_status = next((item for item in external["services"] if item["service"] == "surfsense"), None)
+    configured = bool(config.bearer_token)
+    available = surfsense_status["available"] if surfsense_status else False
+    warning = surfsense_status["message"] if surfsense_status else None
     return {
         "base_url": config.base_url,
         "sync_enabled": config.sync_enabled,
-        "configured": bool(config.bearer_token),
-        "available": surfsense_status["available"] if surfsense_status else False,
-        "warning": surfsense_status["message"] if surfsense_status else None,
+        "configured": configured,
+        "available": available,
+        "warning": warning,
         "default_search_space_id": config.default_search_space_id,
         "resolved_search_space_id": resolve_surfsense_search_space_id(project_key=project_key),
         "project_mapping_keys": sorted(config.project_mapping),
+        "health": build_health_envelope(
+            configured=configured,
+            available=available if configured else False,
+            summary="SurfSense integration config loaded." if configured else "SurfSense is not configured.",
+            details={"project_key": project_key, "base_url": config.base_url},
+            last_error=warning,
+        ),
+        "error": (
+            None
+            if configured and warning is None
+            else build_error_envelope(
+                error_code="surfsense_unavailable" if configured else "surfsense_not_configured",
+                message=warning or "SurfSense is not configured.",
+                retryable=configured,
+                details={"project_key": project_key},
+            )
+        ),
     }
 
 
 @router.get("/search-spaces")
 async def list_surfsense_search_spaces() -> dict:
     try:
-        return {"available": True, "items": await SurfSenseClient().list_search_spaces()}
+        items = await SurfSenseClient().list_search_spaces()
+        return {
+            "available": True,
+            "items": items,
+            "health": build_health_envelope(
+                configured=True,
+                available=True,
+                summary="SurfSense search spaces loaded.",
+                metrics={"item_count": len(items)},
+            ),
+            "error": None,
+        }
     except httpx.HTTPError as exc:
-        return {"available": False, "items": [], "warning": _surfsense_unavailable_message(str(exc))}
+        warning = _surfsense_unavailable_message(str(exc))
+        return {
+            "available": False,
+            "items": [],
+            "warning": warning,
+            "health": build_health_envelope(
+                configured=True,
+                available=False,
+                healthy=False,
+                summary="SurfSense search spaces unavailable.",
+                last_error=warning,
+            ),
+            "error": build_error_envelope(
+                error_code="surfsense_search_spaces_unavailable",
+                message=warning,
+            ),
+        }
 
 
 @router.post("/search")
@@ -182,10 +230,20 @@ async def search_surfsense(req: SurfSenseSearchRequest) -> dict:
                 top_k=req.top_k,
                 document_types=req.document_types or None,
             )
+            warning = access_notes[0]["summary"] if access_notes else None
             result = {
                 **result,
                 "available": True,
-                "warning": access_notes[0]["summary"] if access_notes else None,
+                "warning": warning,
+                "health": build_health_envelope(
+                    configured=True,
+                    available=True,
+                    summary="SurfSense search completed.",
+                    details={"requested_search_space_id": requested_search_space_id},
+                    last_error=warning,
+                    metrics={"total": result.get("total", 0)},
+                ),
+                "error": None,
             }
             if access_notes:
                 result = {
@@ -208,6 +266,19 @@ async def search_surfsense(req: SurfSenseSearchRequest) -> dict:
                 "warning": warning,
                 "requested_search_space_id": requested_search_space_id,
                 "search_space_id": live_search_space_id,
+                "health": build_health_envelope(
+                    configured=True,
+                    available=False,
+                    healthy=False,
+                    summary="SurfSense search failed.",
+                    details={"requested_search_space_id": requested_search_space_id},
+                    last_error=warning,
+                ),
+                "error": build_error_envelope(
+                    error_code="surfsense_search_failed",
+                    message=warning,
+                    details={"requested_search_space_id": requested_search_space_id},
+                ),
             }
             observation.update(output=result)
             return result
@@ -220,7 +291,24 @@ async def export_note_to_surfsense(req: SurfSenseExportRequest) -> dict:
         project_key=req.project_key,
     )
     if search_space_id is None:
-        return {"status": "skipped", "available": False, "warning": "No SurfSense search space is configured."}
+        warning = "No SurfSense search space is configured."
+        return {
+            "status": "skipped",
+            "available": False,
+            "warning": warning,
+            "health": build_health_envelope(
+                configured=False,
+                available=False,
+                healthy=False,
+                summary=warning,
+                last_error=warning,
+            ),
+            "error": build_error_envelope(
+                error_code="surfsense_export_not_configured",
+                message=warning,
+                retryable=False,
+            ),
+        }
 
     metadata = {
         "NOTE": True,
@@ -257,7 +345,18 @@ async def export_note_to_surfsense(req: SurfSenseExportRequest) -> dict:
                     source_markdown=req.content_markdown,
                     document_metadata=metadata,
                 )
-                result = {"status": "created", "search_space_id": search_space_id, "note_id": payload["id"]}
+                result = {
+                    "status": "created",
+                    "search_space_id": search_space_id,
+                    "note_id": payload["id"],
+                    "health": build_health_envelope(
+                        configured=True,
+                        available=True,
+                        summary="SurfSense note created.",
+                        metrics={"search_space_id": search_space_id},
+                    ),
+                    "error": None,
+                }
                 observation.update(output=result)
                 return result
 
@@ -268,14 +367,39 @@ async def export_note_to_surfsense(req: SurfSenseExportRequest) -> dict:
                 source_markdown=req.content_markdown,
                 document_metadata=metadata,
             )
-            result = {"status": "updated", "search_space_id": search_space_id, "note_id": existing["id"]}
+            result = {
+                "status": "updated",
+                "search_space_id": search_space_id,
+                "note_id": existing["id"],
+                "health": build_health_envelope(
+                    configured=True,
+                    available=True,
+                    summary="SurfSense note updated.",
+                    metrics={"search_space_id": search_space_id},
+                ),
+                "error": None,
+            }
             observation.update(output=result)
             return result
         except httpx.HTTPError as exc:
+            warning = _surfsense_unavailable_message(str(exc))
             result = {
                 "status": "skipped",
                 "available": False,
-                "warning": _surfsense_unavailable_message(str(exc)),
+                "warning": warning,
+                "health": build_health_envelope(
+                    configured=True,
+                    available=False,
+                    healthy=False,
+                    summary="SurfSense export failed.",
+                    metrics={"search_space_id": search_space_id},
+                    last_error=warning,
+                ),
+                "error": build_error_envelope(
+                    error_code="surfsense_export_failed",
+                    message=warning,
+                    details={"search_space_id": search_space_id},
+                ),
             }
             observation.update(output=result)
             return result
@@ -324,6 +448,17 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
                 "project_key": live_project_key,
                 "context_blocks": len(context_blocks),
             },
+            "health": build_health_envelope(
+                configured=True,
+                available=False,
+                healthy=False,
+                summary="SurfSense research could not start because LangGraph is unavailable.",
+                last_error=warning,
+            ),
+            "error": build_error_envelope(
+                error_code="langgraph_unavailable",
+                message=warning,
+            ),
         }
     trace_id = make_trace_id(seed=thread_id)
     resolved_candidates = resolve_doc_edit_candidate_models(
@@ -363,6 +498,7 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
             )
         except Exception as exc:
             logger.error("SurfSense escalation failed for thread %s", thread_id, exc_info=True)
+            warning = f"MaestroFlow research failed: {exc}"
             result = {
                 "thread_id": thread_id,
                 "search_space_id": requested_search_space_id,
@@ -370,7 +506,7 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
                     "MaestroFlow research is temporarily unavailable. "
                     "The rest of the app is still usable, but deep research could not be started right now."
                 ),
-                "warning": f"MaestroFlow research failed: {exc}",
+                "warning": warning,
                 "provenance": {
                     "source_system": "maestroflow",
                     "thread_id": thread_id,
@@ -381,6 +517,19 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
                     "requested_model": req.preferred_model,
                     "resolved_model": resolved_model_name,
                 },
+                "health": build_health_envelope(
+                    configured=True,
+                    available=False,
+                    healthy=False,
+                    summary="SurfSense research execution failed.",
+                    details={"thread_id": thread_id},
+                    last_error=warning,
+                ),
+                "error": build_error_envelope(
+                    error_code="surfsense_research_failed",
+                    message=warning,
+                    details={"thread_id": thread_id},
+                ),
             }
             observation.update(output=summarize_for_trace(result))
             return result
@@ -406,6 +555,14 @@ async def research_with_surfsense_context(req: SurfSenseResearchRequest) -> dict
                 "requested_model": req.preferred_model,
                 "resolved_model": resolved_model_name,
             },
+            "health": build_health_envelope(
+                configured=True,
+                available=True,
+                summary="SurfSense research completed.",
+                details={"thread_id": thread_id},
+                last_error=access_notes[0]["summary"] if access_notes else None,
+            ),
+            "error": None,
         }
         observation.update(output=summarize_for_trace(result))
         return result

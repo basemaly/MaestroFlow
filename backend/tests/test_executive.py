@@ -113,3 +113,27 @@ def test_collect_system_status_and_advisory(monkeypatch):
     litellm = next(item for item in status.components if item.component_id == "litellm")
     assert litellm.state == "unavailable"
     assert any(rule.component_id == "litellm" for rule in rules)
+
+
+def test_collect_system_status_marks_disabled_component(monkeypatch):
+    async def fake_external():
+        return {
+            "services": [
+                {"service": "litellm", "label": "LiteLLM", "configured": True, "available": False, "required": True, "url": "http://127.0.0.1:4000", "message": "LiteLLM is unreachable: boom"},
+                {"service": "langgraph", "label": "LangGraph", "configured": True, "available": True, "required": True, "url": "http://127.0.0.1:2024", "message": None},
+                {"service": "langfuse", "label": "Langfuse", "configured": True, "available": True, "required": False, "url": "http://127.0.0.1:3000", "message": None},
+                {"service": "surfsense", "label": "SurfSense", "configured": True, "available": True, "required": False, "url": "http://127.0.0.1:3004", "message": None},
+            ],
+            "degraded": True,
+            "warnings": [],
+        }
+
+    monkeypatch.setenv("EXECUTIVE_DISABLED_COMPONENTS", "litellm")
+    monkeypatch.setattr("src.executive.status.get_external_services_status", fake_external)
+    status = asyncio.run(collect_system_status())
+    rules = build_advisory(status)
+
+    litellm = next(item for item in status.components if item.component_id == "litellm")
+    assert litellm.state == "disabled"
+    assert status.summary["disabled"] >= 1
+    assert not any(rule.component_id == "litellm" for rule in rules)

@@ -14,6 +14,8 @@ def build_advisory(status: ExecutiveSystemStatus) -> list[ExecutiveAdvisoryRule]
 
     for component_id in ("litellm", "langgraph", "surfsense", "langfuse"):
         snapshot = by_component.get(component_id)
+        if snapshot and snapshot.state == "disabled":
+            continue
         if snapshot and snapshot.state in {"unavailable", "misconfigured"}:
             rules.append(
                 ExecutiveAdvisoryRule(

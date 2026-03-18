@@ -17,9 +17,19 @@ from src.executive.runtime_overrides import (
     get_subagent_timeout_override,
 )
 from src.gateway.services.external_services import get_external_services_status
+from src.langgraph.catalog_sync import get_catalog_sync_status
 from src.mcp.cache import get_cached_mcp_tools
 
 LOG_ROOT = Path(__file__).parents[3] / "logs"
+
+
+def _disabled_components() -> set[str]:
+    raw = os.environ.get("EXECUTIVE_DISABLED_COMPONENTS", "")
+    return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def _is_component_disabled(component_id: str) -> bool:
+    return component_id in _disabled_components()
 
 
 async def _probe(url: str, *, timeout: float = 2.5) -> tuple[bool, str | None]:
@@ -59,6 +69,17 @@ async def collect_component_status(component_id: str) -> ExecutiveStatusSnapshot
         return ExecutiveStatusSnapshot(component_id=component_id, label=component_id, state="unknown", summary="Unknown component.")
 
     component = registry[component_id]
+    if _is_component_disabled(component_id):
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state="disabled",
+            summary=f"{component.label} is intentionally disabled for this runtime profile.",
+            details={"disabled_by_profile": True},
+            metrics={},
+            recommended_actions=["collect_component_diagnostics"],
+        )
+
     external = await _external_status_map()
     app_config = get_app_config()
     extensions = get_extensions_config()
@@ -72,13 +93,25 @@ async def collect_component_status(component_id: str) -> ExecutiveStatusSnapshot
                 state="unknown",
                 summary="No external status available.",
             )
+        details = {"url": item.get("url"), "configured": item.get("configured"), "required": item.get("required")}
+        metrics = {"available": item.get("available")}
+        if component_id == "langgraph":
+            catalog_sync = await get_catalog_sync_status()
+            details["thread_catalog"] = catalog_sync
+            metrics.update(
+                {
+                    "catalog_fallback_hits": catalog_sync["fallback_hits"],
+                    "catalog_sync_failures": catalog_sync["native_sync_failures"],
+                    "catalog_last_reconciled_threads": catalog_sync["last_reconciled_threads"],
+                }
+            )
         return ExecutiveStatusSnapshot(
             component_id=component_id,
             label=component.label,
             state="healthy" if item["available"] else ("misconfigured" if not item["configured"] else "unavailable"),
             summary=item["message"] or f"{component.label} is reachable.",
-            details={"url": item.get("url"), "configured": item.get("configured"), "required": item.get("required")},
-            metrics={"available": item.get("available")},
+            details=details,
+            metrics=metrics,
             recommended_actions=["run_connectivity_check", "collect_component_diagnostics"] + (["restart_component"] if component.managed_scope == "host_managed" else []),
         )
 
@@ -229,6 +262,7 @@ async def collect_system_status() -> ExecutiveSystemStatus:
         "degraded": sum(1 for item in statuses if item.state == "degraded"),
         "unavailable": sum(1 for item in statuses if item.state == "unavailable"),
         "misconfigured": sum(1 for item in statuses if item.state == "misconfigured"),
+        "disabled": sum(1 for item in statuses if item.state == "disabled"),
         "unknown": sum(1 for item in statuses if item.state == "unknown"),
     }
     return ExecutiveSystemStatus(summary=summary, components=statuses)

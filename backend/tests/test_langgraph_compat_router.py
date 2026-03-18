@@ -164,3 +164,41 @@ def test_get_thread_falls_back_to_catalog_store():
         langgraph_compat.get_thread_catalog_store = original_store  # type: ignore[assignment]
 
     assert payload["values"]["title"] == "Saved"
+
+
+def test_update_thread_state_refreshes_catalog_from_native():
+    upserts = []
+    thread_id = "11111111-1111-1111-1111-111111111111"
+
+    class FakeStore:
+        def upsert_threads(self, threads):
+            upserts.extend(threads)
+
+    class FakeClient:
+        async def proxy_request(self, method, path, *, params=None, json_body=None):
+            assert method == "POST"
+            assert path == f"/threads/{thread_id}/state"
+            return {"ok": True}
+
+        async def get_thread(self, requested_thread_id):
+            assert requested_thread_id == thread_id
+            return {"thread_id": requested_thread_id, "values": {"title": "Refreshed"}}
+
+    class FakeRequest:
+        headers = {"content-type": "application/json"}
+
+        async def json(self):
+            return {"values": {"title": "updated"}}
+
+    original_client = langgraph_compat.LangGraphCompatClient
+    original_store = langgraph_compat.get_thread_catalog_store
+    langgraph_compat.LangGraphCompatClient = FakeClient  # type: ignore[assignment]
+    langgraph_compat.get_thread_catalog_store = lambda: FakeStore()  # type: ignore[assignment]
+    try:
+        payload = asyncio.run(langgraph_compat.update_thread_state(thread_id, FakeRequest()))
+    finally:
+        langgraph_compat.LangGraphCompatClient = original_client  # type: ignore[assignment]
+        langgraph_compat.get_thread_catalog_store = original_store  # type: ignore[assignment]
+
+    assert payload == {"ok": True}
+    assert upserts == [{"thread_id": thread_id, "values": {"title": "Refreshed"}}]

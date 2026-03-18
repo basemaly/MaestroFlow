@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-ExecutiveState = Literal["healthy", "degraded", "unavailable", "misconfigured", "unknown"]
+ExecutiveState = Literal["healthy", "degraded", "unavailable", "misconfigured", "disabled", "unknown"]
 ExecutiveRiskLevel = Literal["low", "medium", "high", "critical"]
 ExecutiveActionStatus = Literal["preview", "pending_approval", "approved", "rejected", "succeeded", "failed"]
 

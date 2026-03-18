@@ -73,6 +73,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("Failed to start agent scheduler")
 
+    try:
+        from src.langgraph.catalog_sync import start_catalog_reconciler
+
+        await start_catalog_reconciler()
+    except Exception:
+        logger.exception("Failed to start LangGraph catalog reconciler")
+
     yield
 
     # Stop channel service on shutdown
@@ -90,6 +97,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await stop_scheduler()
     except Exception:
         logger.exception("Failed to stop agent scheduler")
+    try:
+        from src.langgraph.catalog_sync import stop_catalog_reconciler
+
+        await stop_catalog_reconciler()
+    except Exception:
+        logger.exception("Failed to stop LangGraph catalog reconciler")
     logger.info("Shutting down API Gateway")
 
 

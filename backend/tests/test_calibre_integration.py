@@ -39,6 +39,8 @@ def test_calibre_status_route_degrades_on_http_error():
     payload = asyncio.run(run())
     assert payload["available"] is False
     assert "offline" in payload["last_error"]
+    assert payload["health"]["healthy"] is False
+    assert payload["error"]["error_code"] == "calibre_status_unavailable"
 
 
 def test_calibre_health_route_degrades_on_http_error():
@@ -54,6 +56,8 @@ def test_calibre_health_route_degrades_on_http_error():
     assert payload["available"] is False
     assert payload["healthy"] is False
     assert "offline" in payload["last_error"]
+    assert payload["health"]["healthy"] is False
+    assert payload["error"]["error_code"] == "calibre_health_unavailable"
 
 
 def test_calibre_search_tool_formats_hits():
@@ -103,3 +107,5 @@ def test_calibre_status_route_forwards_collection():
 
     payload = asyncio.run(run())
     assert payload["dataset_name"] == "Calibre Library - Knowledge Management"
+    assert payload["health"]["details"]["collection"] == "Knowledge Management"
+    assert payload["error"] is None

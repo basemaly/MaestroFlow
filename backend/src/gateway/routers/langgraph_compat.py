@@ -10,7 +10,13 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.langgraph.catalog_store import get_thread_catalog_store
+from src.langgraph.catalog_store import _is_uuid, get_thread_catalog_store
+from src.langgraph.catalog_sync import (
+    record_fallback_hit,
+    record_native_sync,
+    record_sync_failure,
+)
+
 DEFAULT_LANGGRAPH_INTERNAL_URL = os.getenv("LANGGRAPH_BASE_URL", "http://langgraph:8000")
 THREAD_SNAPSHOT_TTL_SECONDS = float(
     os.getenv("LANGGRAPH_THREAD_SNAPSHOT_TTL_SECONDS", "2.0")
@@ -146,6 +152,39 @@ def _normalize_query_params(request: Request) -> dict[str, Any]:
     return {key: value for key, value in request.query_params.items()}
 
 
+def _invalidate_thread_snapshot(thread_id: str) -> None:
+    _thread_snapshot_cache.pop(thread_id, None)
+
+
+async def _upsert_native_threads(threads: list[dict[str, Any]]) -> None:
+    if not threads:
+        return
+    valid_threads = [
+        thread for thread in threads if isinstance(thread.get("thread_id"), str) and _is_uuid(thread["thread_id"])
+    ]
+    if valid_threads:
+        get_thread_catalog_store().upsert_threads(valid_threads)
+        await record_native_sync(len(valid_threads))
+    for thread in threads:
+        thread_id = thread.get("thread_id")
+        if isinstance(thread_id, str):
+            _thread_snapshot_cache[thread_id] = CachedThreadSnapshot(
+                expires_at=time.monotonic() + THREAD_SNAPSHOT_TTL_SECONDS,
+                payload=thread,
+            )
+
+
+async def _refresh_thread_from_native(
+    client: LangGraphCompatClient, thread_id: str
+) -> dict[str, Any] | None:
+    _invalidate_thread_snapshot(thread_id)
+    native_thread = await client.get_thread(thread_id)
+    if native_thread.get("thread_id"):
+        await _upsert_native_threads([native_thread])
+        return native_thread
+    return None
+
+
 async def _get_thread_snapshot(
     client: LangGraphCompatClient, thread_id: str
 ) -> dict[str, Any]:
@@ -161,10 +200,7 @@ async def _get_thread_snapshot(
 
         thread = await client.get_thread(thread_id)
         if thread.get("thread_id"):
-            _thread_snapshot_cache[thread_id] = CachedThreadSnapshot(
-                expires_at=now + THREAD_SNAPSHOT_TTL_SECONDS,
-                payload=thread,
-            )
+            await _upsert_native_threads([thread])
         else:
             _thread_snapshot_cache.pop(thread_id, None)
         return thread
@@ -210,6 +246,7 @@ async def get_thread_history(thread_id: str, request: Request) -> list[dict[str,
     if not thread.get("thread_id"):
         return native_history
 
+    await record_fallback_hit()
     synthetic_state = _build_synthetic_thread_state(thread)
     limit_value = params.get("limit")
     if limit_value is not None:
@@ -238,6 +275,7 @@ async def get_thread_state(thread_id: str, request: Request) -> dict[str, Any]:
     if not thread.get("thread_id"):
         return native_state
 
+    await record_fallback_hit()
     return _build_synthetic_thread_state(thread)
 
 
@@ -251,10 +289,10 @@ async def search_threads(request: Request) -> list[dict[str, Any]]:
     try:
         native_threads = await client.search_threads(query)
         if native_threads:
-            store.upsert_threads(native_threads)
-    except Exception:
+            await _upsert_native_threads(native_threads)
+    except Exception as exc:
         # Keep serving the catalog even if native LangGraph search fails.
-        pass
+        await record_sync_failure(exc)
     return store.search_threads(
         ids=query.get("ids"),
         metadata=query.get("metadata"),
@@ -290,9 +328,10 @@ async def get_thread(thread_id: str) -> dict[str, Any]:
     try:
         native_thread = await client.get_thread(thread_id)
         if native_thread.get("thread_id"):
-            store.upsert_threads([native_thread])
+            await _upsert_native_threads([native_thread])
             return native_thread
-    except Exception:
+    except Exception as exc:
+        await record_sync_failure(exc)
         pass
     thread = store.get_thread(thread_id)
     if thread:
@@ -306,7 +345,7 @@ async def create_thread(request: Request) -> Any:
     client = LangGraphCompatClient()
     result = await client.proxy_request("POST", "/threads", json_body=payload)
     if isinstance(result, dict) and result.get("thread_id"):
-        get_thread_catalog_store().upsert_threads([result])
+        await _upsert_native_threads([result])
     return result
 
 
@@ -315,15 +354,12 @@ async def update_thread(thread_id: str, request: Request) -> Any:
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     client = LangGraphCompatClient()
     result = await client.proxy_request("PATCH", f"/threads/{thread_id}", json_body=payload)
-    if isinstance(result, dict) and result.get("thread_id"):
-        get_thread_catalog_store().upsert_threads([result])
-    else:
-        try:
-            native_thread = await client.get_thread(thread_id)
-            if native_thread.get("thread_id"):
-                get_thread_catalog_store().upsert_threads([native_thread])
-        except Exception:
-            pass
+    try:
+        await _refresh_thread_from_native(client, thread_id)
+    except Exception as exc:
+        await record_sync_failure(exc)
+        if isinstance(result, dict) and result.get("thread_id"):
+            await _upsert_native_threads([result])
     return result
 
 
@@ -331,6 +367,7 @@ async def update_thread(thread_id: str, request: Request) -> Any:
 async def delete_thread(thread_id: str) -> Any:
     client = LangGraphCompatClient()
     result = await client.proxy_request("DELETE", f"/threads/{thread_id}")
+    _invalidate_thread_snapshot(thread_id)
     get_thread_catalog_store().delete_thread(thread_id)
     return result
 
@@ -341,11 +378,9 @@ async def update_thread_state(thread_id: str, request: Request) -> Any:
     client = LangGraphCompatClient()
     result = await client.proxy_request("POST", f"/threads/{thread_id}/state", json_body=payload)
     try:
-        native_thread = await client.get_thread(thread_id)
-        if native_thread.get("thread_id"):
-            get_thread_catalog_store().upsert_threads([native_thread])
-    except Exception:
-        pass
+        await _refresh_thread_from_native(client, thread_id)
+    except Exception as exc:
+        await record_sync_failure(exc)
     return result
 
 
@@ -355,11 +390,9 @@ async def patch_thread_state(thread_id: str, request: Request) -> Any:
     client = LangGraphCompatClient()
     result = await client.proxy_request("PATCH", f"/threads/{thread_id}/state", json_body=payload)
     try:
-        native_thread = await client.get_thread(thread_id)
-        if native_thread.get("thread_id"):
-            get_thread_catalog_store().upsert_threads([native_thread])
-    except Exception:
-        pass
+        await _refresh_thread_from_native(client, thread_id)
+    except Exception as exc:
+        await record_sync_failure(exc)
     return result
 
 

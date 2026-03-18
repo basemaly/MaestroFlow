@@ -4,6 +4,7 @@ export type ExecutiveState =
   | "degraded"
   | "unavailable"
   | "misconfigured"
+  | "disabled"
   | "unknown";
 
 export type ExecutiveRecommendation = {

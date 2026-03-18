@@ -43,6 +43,7 @@ const stateClasses: Record<ExecutiveState, string> = {
   degraded: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   unavailable: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
   misconfigured: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  disabled: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
   unknown: "border-muted-foreground/20 bg-muted text-muted-foreground",
 };
 
@@ -51,6 +52,7 @@ const summaryCardAccent: Record<string, string> = {
   degraded: "border-l-4 border-l-amber-500",
   unavailable: "border-l-4 border-l-red-500",
   misconfigured: "border-l-4 border-l-orange-500",
+  disabled: "border-l-4 border-l-slate-500",
   unknown: "border-l-4 border-l-muted-foreground/30",
 };
 
@@ -59,6 +61,7 @@ const summaryCountColor: Record<string, string> = {
   degraded: "text-amber-400",
   unavailable: "text-red-400",
   misconfigured: "text-orange-400",
+  disabled: "text-slate-400",
   unknown: "text-muted-foreground",
 };
 
@@ -67,6 +70,7 @@ const componentBorderAccent: Record<ExecutiveState, string> = {
   degraded: "border-l-2 border-l-amber-500/60",
   unavailable: "border-l-2 border-l-red-500/60",
   misconfigured: "border-l-2 border-l-orange-500/60",
+  disabled: "border-l-2 border-l-slate-500/60",
   unknown: "border-l-2 border-l-muted-foreground/20",
 };
 

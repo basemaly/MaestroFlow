@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from src.gateway.contracts import build_error_envelope, build_health_envelope
 from src.integrations.surfsense.calibre import SurfSenseCalibreClient
 
 router = APIRouter(prefix="/api/calibre", tags=["calibre"])
@@ -40,14 +41,44 @@ async def get_calibre_status(collection: str | None = None) -> dict:
 
     try:
         payload = await SurfSenseCalibreClient().get_calibre_status(collection=collection)
-        response = {**payload, "available": True}
+        response = {
+            **payload,
+            "available": True,
+            "health": build_health_envelope(
+                configured=payload.get("configured", True),
+                available=True,
+                healthy=payload.get("healthy"),
+                summary=f"{payload.get('dataset_name', 'Calibre Library')} status available.",
+                details={"collection": collection, "dataset_name": payload.get("dataset_name")},
+                last_error=payload.get("last_error"),
+                metrics={
+                    "indexed_books": payload.get("indexed_books"),
+                    "indexed_chunks": payload.get("indexed_chunks"),
+                },
+            ),
+            "error": None,
+        }
     except httpx.HTTPError as exc:
+        last_error = str(exc)
         response = {
             "available": False,
             "configured": False,
             "dataset_name": "Calibre Library",
             "sync_mode": "nightly-incremental",
-            "last_error": str(exc),
+            "last_error": last_error,
+            "health": build_health_envelope(
+                configured=False,
+                available=False,
+                healthy=False,
+                summary="Calibre status endpoint unavailable.",
+                details={"collection": collection},
+                last_error=last_error,
+            ),
+            "error": build_error_envelope(
+                error_code="calibre_status_unavailable",
+                message=last_error,
+                details={"collection": collection},
+            ),
         }
 
     # Cache the response
@@ -59,18 +90,74 @@ async def get_calibre_status(collection: str | None = None) -> dict:
 async def sync_calibre(full: bool = False, collection: str | None = None) -> dict:
     try:
         payload = await SurfSenseCalibreClient().sync_calibre(full=full, collection=collection)
-        return {**payload, "available": True}
+        return {
+            **payload,
+            "available": True,
+            "health": build_health_envelope(
+                configured=True,
+                available=True,
+                summary="Calibre sync request accepted.",
+                details={"collection": collection, "full": full},
+                last_error=payload.get("last_error"),
+            ),
+            "error": None,
+        }
     except httpx.HTTPError as exc:
-        return {"available": False, "last_error": str(exc)}
+        last_error = str(exc)
+        return {
+            "available": False,
+            "last_error": last_error,
+            "health": build_health_envelope(
+                configured=True,
+                available=False,
+                healthy=False,
+                summary="Calibre sync request failed.",
+                details={"collection": collection, "full": full},
+                last_error=last_error,
+            ),
+            "error": build_error_envelope(
+                error_code="calibre_sync_failed",
+                message=last_error,
+                details={"collection": collection, "full": full},
+            ),
+        }
 
 
 @router.post("/reindex")
 async def reindex_calibre(collection: str | None = None) -> dict:
     try:
         payload = await SurfSenseCalibreClient().reindex_calibre(collection=collection)
-        return {**payload, "available": True}
+        return {
+            **payload,
+            "available": True,
+            "health": build_health_envelope(
+                configured=True,
+                available=True,
+                summary="Calibre reindex request accepted.",
+                details={"collection": collection},
+                last_error=payload.get("last_error"),
+            ),
+            "error": None,
+        }
     except httpx.HTTPError as exc:
-        return {"available": False, "last_error": str(exc)}
+        last_error = str(exc)
+        return {
+            "available": False,
+            "last_error": last_error,
+            "health": build_health_envelope(
+                configured=True,
+                available=False,
+                healthy=False,
+                summary="Calibre reindex request failed.",
+                details={"collection": collection},
+                last_error=last_error,
+            ),
+            "error": build_error_envelope(
+                error_code="calibre_reindex_failed",
+                message=last_error,
+                details={"collection": collection},
+            ),
+        }
 
 
 @router.get("/health")
@@ -87,14 +174,44 @@ async def get_calibre_health(collection: str | None = None) -> dict:
 
     try:
         payload = await SurfSenseCalibreClient().get_calibre_health(collection=collection)
-        response = {**payload, "available": True}
+        response = {
+            **payload,
+            "available": True,
+            "health": build_health_envelope(
+                configured=payload.get("configured", True),
+                available=True,
+                healthy=payload.get("healthy"),
+                summary=f"{payload.get('dataset_name', 'Calibre Library')} health available.",
+                details={"collection": collection, "dataset_name": payload.get("dataset_name")},
+                last_error=payload.get("last_error"),
+                metrics={
+                    "indexed_books": payload.get("indexed_books"),
+                    "indexed_chunks": payload.get("indexed_chunks"),
+                },
+            ),
+            "error": None,
+        }
     except httpx.HTTPError as exc:
+        last_error = str(exc)
         response = {
             "available": False,
             "healthy": False,
             "dataset_name": "Calibre Library",
             "sync_mode": "nightly-incremental",
-            "last_error": str(exc),
+            "last_error": last_error,
+            "health": build_health_envelope(
+                configured=False,
+                available=False,
+                healthy=False,
+                summary="Calibre health endpoint unavailable.",
+                details={"collection": collection},
+                last_error=last_error,
+            ),
+            "error": build_error_envelope(
+                error_code="calibre_health_unavailable",
+                message=last_error,
+                details={"collection": collection},
+            ),
         }
 
     # Cache the response
@@ -105,16 +222,42 @@ async def get_calibre_health(collection: str | None = None) -> dict:
 @router.post("/query")
 async def query_calibre(req: CalibreQueryRequest) -> dict:
     try:
-        return await SurfSenseCalibreClient().query_calibre(
+        payload = await SurfSenseCalibreClient().query_calibre(
             query=req.query,
             top_k=req.top_k,
             filters=req.filters,
             collection=req.collection,
         )
+        return {
+            **payload,
+            "health": build_health_envelope(
+                configured=True,
+                available=True,
+                summary="Calibre query completed.",
+                details={"collection": req.collection, "query": req.query},
+                metrics={"total": payload.get("total", len(payload.get("items", [])))},
+                last_error=payload.get("last_error"),
+            ),
+            "error": None,
+        }
     except httpx.HTTPError as exc:
+        warning = str(exc)
         return {
             "items": [],
             "total": 0,
             "dataset_name": "Calibre Library",
-            "warning": str(exc),
+            "warning": warning,
+            "health": build_health_envelope(
+                configured=True,
+                available=False,
+                healthy=False,
+                summary="Calibre query failed.",
+                details={"collection": req.collection, "query": req.query},
+                last_error=warning,
+            ),
+            "error": build_error_envelope(
+                error_code="calibre_query_failed",
+                message=warning,
+                details={"collection": req.collection, "query": req.query},
+            ),
         }

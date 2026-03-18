@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 
 from src.gateway.routers import surfsense as surfsense_router
+from src.gateway.routers import health as health_router
 from src.gateway.services.external_services import get_external_services_status
 from src.integrations.surfsense.client import SurfSenseClient
 from src.integrations.surfsense.config import get_surfsense_config
@@ -184,6 +185,8 @@ def test_search_surfsense_degrades_when_service_unavailable():
     assert result["available"] is False
     assert result["items"] == []
     assert "temporarily unavailable" in result["warning"]
+    assert result["health"]["healthy"] is False
+    assert result["error"]["error_code"] == "surfsense_search_failed"
 
 
 def test_export_note_to_surfsense_skips_when_not_configured():
@@ -200,6 +203,8 @@ def test_export_note_to_surfsense_skips_when_not_configured():
 
     assert result["status"] == "skipped"
     assert result["available"] is False
+    assert result["health"]["configured"] is False
+    assert result["error"]["error_code"] == "surfsense_export_not_configured"
 
 
 def test_research_with_surfsense_context_degrades_when_langgraph_unavailable():
@@ -221,14 +226,23 @@ def test_research_with_surfsense_context_degrades_when_langgraph_unavailable():
     assert result["thread_id"] == "123e4567-e89b-12d3-a456-426614174000"
     assert "temporarily unavailable" in result["final_answer"]
     assert "langgraph offline" in result["warning"]
+    assert result["health"]["healthy"] is False
+    assert result["error"]["error_code"] == "surfsense_research_failed"
 
 
 def test_research_with_surfsense_context_degrades_when_thread_creation_fails():
     async def run():
-        with patch.object(
-            surfsense_router,
-            "_create_or_resolve_langgraph_thread",
-            new=AsyncMock(side_effect=RuntimeError("langgraph create offline")),
+        with (
+            patch.object(
+                surfsense_router.SurfSenseClient,
+                "list_search_spaces",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                surfsense_router,
+                "_create_or_resolve_langgraph_thread",
+                new=AsyncMock(side_effect=RuntimeError("langgraph create offline")),
+            ),
         ):
             return await surfsense_router.research_with_surfsense_context(
                 surfsense_router.SurfSenseResearchRequest(question="What changed?")
@@ -239,6 +253,8 @@ def test_research_with_surfsense_context_degrades_when_thread_creation_fails():
     assert result["thread_id"] is None
     assert "temporarily unavailable" in result["final_answer"]
     assert "langgraph create offline" in result["warning"]
+    assert result["health"]["healthy"] is False
+    assert result["error"]["error_code"] == "langgraph_unavailable"
 
 
 def test_external_services_status_reports_unavailable_services(monkeypatch):
@@ -265,3 +281,21 @@ def test_external_services_status_reports_unavailable_services(monkeypatch):
     assert services["surfsense"]["available"] is False
     assert services["litellm"]["available"] is False
     assert services["langgraph"]["available"] is False
+
+
+def test_external_services_health_route_wraps_status_with_health_envelope():
+    async def fake_status():
+        return {
+            "services": [{"service": "langgraph", "available": True}],
+            "degraded": False,
+            "warnings": [],
+        }
+
+    async def run():
+        with patch.object(health_router, "get_external_services_status", new=fake_status):
+            return await health_router.external_services_health()
+
+    payload = asyncio.run(run())
+    assert payload["health"]["healthy"] is True
+    assert payload["error"] is None
+    assert payload["services"][0]["service"] == "langgraph"
