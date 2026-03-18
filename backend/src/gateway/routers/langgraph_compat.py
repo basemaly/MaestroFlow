@@ -354,14 +354,21 @@ async def update_thread(thread_id: str, request: Request) -> Any:
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     client = LangGraphCompatClient()
     result = await client.proxy_request("PATCH", f"/threads/{thread_id}", json_body=payload)
-    try:
-        await _refresh_thread_from_native(client, thread_id)
-    except Exception as exc:
-        await record_sync_failure(exc)
-        if isinstance(result, dict) and result.get("thread_id"):
-            await _upsert_native_threads([result])
-    return result
+    
+    _invalidate_thread_snapshot(thread_id)
+    if "metadata" in payload:
+        try:
+            get_thread_catalog_store().patch_thread(thread_id, payload["metadata"])
+        except Exception as exc:
+            await record_sync_failure(exc)
 
+    if isinstance(result, dict) and result.get("thread_id"):
+        try:
+            await _upsert_native_threads([result])
+        except Exception:
+            pass
+
+    return result
 
 @router.delete("/threads/{thread_id}")
 async def delete_thread(thread_id: str) -> Any:
@@ -371,28 +378,42 @@ async def delete_thread(thread_id: str) -> Any:
     get_thread_catalog_store().delete_thread(thread_id)
     return result
 
-
 @router.post("/threads/{thread_id}/state")
 async def update_thread_state(thread_id: str, request: Request) -> Any:
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     client = LangGraphCompatClient()
     result = await client.proxy_request("POST", f"/threads/{thread_id}/state", json_body=payload)
+
+    _invalidate_thread_snapshot(thread_id)
+    if "values" in payload:
+        try:
+            get_thread_catalog_store().update_thread_state(thread_id, payload["values"])
+        except Exception as exc:
+            await record_sync_failure(exc)
     try:
         await _refresh_thread_from_native(client, thread_id)
     except Exception as exc:
         await record_sync_failure(exc)
-    return result
 
+    return result
 
 @router.patch("/threads/{thread_id}/state")
 async def patch_thread_state(thread_id: str, request: Request) -> Any:
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     client = LangGraphCompatClient()
     result = await client.proxy_request("PATCH", f"/threads/{thread_id}/state", json_body=payload)
+
+    _invalidate_thread_snapshot(thread_id)
+    if "values" in payload:
+        try:
+            get_thread_catalog_store().update_thread_state(thread_id, payload["values"])
+        except Exception as exc:
+            await record_sync_failure(exc)
     try:
         await _refresh_thread_from_native(client, thread_id)
     except Exception as exc:
         await record_sync_failure(exc)
+
     return result
 
 

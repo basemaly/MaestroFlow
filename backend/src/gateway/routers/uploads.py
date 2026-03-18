@@ -4,6 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+import aiofiles
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
@@ -118,28 +119,40 @@ async def upload_files(
                 logger.warning(f"Skipping file with unsafe filename: {file.filename!r}")
                 continue
 
-            content = await file.read()
             file_path = uploads_dir / safe_filename
-            file_path.write_bytes(content)
+            file_size = 0
+            
+            # Stream chunks directly to disk to prevent OOM
+            async with aiofiles.open(file_path, "wb") as f:
+                while chunk := await file.read(65536):
+                    await f.write(chunk)
+                    file_size += len(chunk)
 
             # Build relative path from backend root
             relative_path = str(paths.sandbox_uploads_dir(thread_id) / safe_filename)
             virtual_path = f"{VIRTUAL_PATH_PREFIX}/uploads/{safe_filename}"
 
-            # Keep local sandbox source of truth in thread-scoped host storage.
-            # For non-local sandboxes, also sync to virtual path for runtime visibility.
-            if sandbox_id != "local":
-                sandbox.update_file(virtual_path, content)
+            # Only sync to virtual path if it's a remote sandbox (provisioner)
+            # Local Docker containers already have the directory volume-mounted
+            if sandbox_id != "local" and not getattr(sandbox_provider, "_backend", None).__class__.__name__ == "LocalContainerBackend":
+                # Stream the file to the remote sandbox in smaller chunks if supported,
+                # but since update_file requires bytes, we read it safely (OOM risk remains for massive files on remote only)
+                # To fully solve OOM on remote, the Sandbox protocol needs a streaming update_file.
+                # For now, we only bypass this for local container mode where it is redundant and causing local OOMs.
+                try:
+                    sandbox.update_file(virtual_path, file_path.read_bytes())
+                except Exception as e:
+                    logger.error(f"Failed to sync file to remote sandbox: {e}")
 
             file_info = {
                 "filename": safe_filename,
-                "size": str(len(content)),
+                "size": str(file_size),
                 "path": relative_path,  # Actual filesystem path (relative to backend/)
                 "virtual_path": virtual_path,  # Path for Agent in sandbox
                 "artifact_url": f"/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/{safe_filename}",  # HTTP URL
             }
 
-            logger.info(f"Saved file: {safe_filename} ({len(content)} bytes) to {relative_path}")
+            logger.info(f"Saved file: {safe_filename} ({file_size} bytes) to {relative_path}")
 
             # Check if file should be converted to markdown
             file_ext = file_path.suffix.lower()

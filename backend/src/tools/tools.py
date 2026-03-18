@@ -1,4 +1,8 @@
+import asyncio
+import hashlib
+import json
 import logging
+import threading
 from typing import Any
 
 from langchain.tools import BaseTool
@@ -18,8 +22,42 @@ from src.tools.builtins import (
 logger = logging.getLogger(__name__)
 
 
-def _wrap_tool_with_tracing(t: BaseTool) -> BaseTool:
-    """Monkey-patch invoke/ainvoke to add a Langfuse tool span around each call.
+_tool_cache = {}
+_tool_async_locks = {}
+_tool_sync_locks = {}
+_tool_async_locks_lock = threading.Lock()
+_tool_sync_locks_lock = threading.Lock()
+
+CACHEABLE_TOOLS_KEYWORDS = {"search", "read", "get", "preview", "view", "fetch", "list", "mcp_"}
+
+def _is_cacheable(tool_name: str) -> bool:
+    name = tool_name.lower()
+    return any(k in name for k in CACHEABLE_TOOLS_KEYWORDS) and "task" not in name and "bash" not in name and "write" not in name
+
+def _get_cache_key(tool_name: str, input_args: Any) -> str:
+    try:
+        if isinstance(input_args, dict):
+            serialized = json.dumps(input_args, sort_keys=True)
+        else:
+            serialized = str(input_args)
+        return f"{tool_name}:{hashlib.md5(serialized.encode()).hexdigest()}"
+    except Exception:
+        return f"{tool_name}:{str(input_args)}"
+
+def _get_sync_lock(key: str) -> threading.Lock:
+    with _tool_sync_locks_lock:
+        if key not in _tool_sync_locks:
+            _tool_sync_locks[key] = threading.Lock()
+        return _tool_sync_locks[key]
+
+def _get_async_lock(key: str) -> asyncio.Lock:
+    with _tool_async_locks_lock:
+        if key not in _tool_async_locks:
+            _tool_async_locks[key] = asyncio.Lock()
+        return _tool_async_locks[key]
+
+def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> BaseTool:
+    """Monkey-patch invoke/ainvoke to add deduplication and optional Langfuse tool span.
 
     Pydantic-backed tool instances reject normal attribute assignment for methods
     like ``invoke`` and ``ainvoke``. Use ``object.__setattr__`` so cached MCP and
@@ -32,16 +70,59 @@ def _wrap_tool_with_tracing(t: BaseTool) -> BaseTool:
     original_invoke = t.invoke
     original_ainvoke = t.ainvoke
     tool_name = t.name
+    is_cacheable = _is_cacheable(tool_name)
 
     def traced_invoke(input: Any, config: Any = None, **kwargs: Any) -> Any:
-        from src.observability import observe_span
-        with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
+        def _do_invoke():
+            if trace_enabled:
+                from src.observability import observe_span
+                with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
+                    return original_invoke(input, config, **kwargs)
             return original_invoke(input, config, **kwargs)
 
+        if not is_cacheable:
+            return _do_invoke()
+
+        cache_key = _get_cache_key(tool_name, input)
+        if cache_key in _tool_cache:
+            logger.info(f"Sync cache hit for tool {tool_name}")
+            return _tool_cache[cache_key]
+
+        lock = _get_sync_lock(cache_key)
+        with lock:
+            if cache_key in _tool_cache:
+                logger.info(f"Sync cache hit for tool {tool_name} (after lock)")
+                return _tool_cache[cache_key]
+            
+            result = _do_invoke()
+            _tool_cache[cache_key] = result
+            return result
+
     async def traced_ainvoke(input: Any, config: Any = None, **kwargs: Any) -> Any:
-        from src.observability import observe_span
-        with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
+        async def _do_ainvoke():
+            if trace_enabled:
+                from src.observability import observe_span
+                with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
+                    return await original_ainvoke(input, config, **kwargs)
             return await original_ainvoke(input, config, **kwargs)
+
+        if not is_cacheable:
+            return await _do_ainvoke()
+
+        cache_key = _get_cache_key(tool_name, input)
+        if cache_key in _tool_cache:
+            logger.info(f"Async cache hit for tool {tool_name}")
+            return _tool_cache[cache_key]
+
+        lock = _get_async_lock(cache_key)
+        async with lock:
+            if cache_key in _tool_cache:
+                logger.info(f"Async cache hit for tool {tool_name} (after lock)")
+                return _tool_cache[cache_key]
+            
+            result = await _do_ainvoke()
+            _tool_cache[cache_key] = result
+            return result
 
     object.__setattr__(t, "invoke", traced_invoke)
     object.__setattr__(t, "ainvoke", traced_ainvoke)
@@ -166,7 +247,7 @@ def get_available_tools(
 
     all_tools = loaded_tools + builtin_tools + mcp_tools
 
-    if is_langfuse_enabled():
-        all_tools = [_wrap_tool_with_tracing(t) for t in all_tools]
+    trace_enabled = is_langfuse_enabled()
+    all_tools = [_wrap_tool_with_caching_and_tracing(t, trace_enabled) for t in all_tools]
 
     return all_tools

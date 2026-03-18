@@ -192,6 +192,41 @@ class ThreadCatalogStore:
             cur.execute(f"delete from {CATALOG_TABLE} where thread_id = %s::uuid", (thread_id,))
             conn.commit()
 
+    def patch_thread(self, thread_id: str, metadata: dict[str, Any]) -> None:
+        self.ensure_schema()
+        if not _is_uuid(thread_id):
+            return
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                update {CATALOG_TABLE}
+                set metadata = metadata || %s::jsonb,
+                    raw_thread = jsonb_set(raw_thread, '{{metadata}}', (raw_thread->'metadata') || %s::jsonb),
+                    updated_at = now()
+                where thread_id = %s::uuid
+                """,
+                (json.dumps(_ensure_jsonable(metadata)), json.dumps(_ensure_jsonable(metadata)), thread_id)
+            )
+            conn.commit()
+
+    def update_thread_state(self, thread_id: str, values: dict[str, Any]) -> None:
+        self.ensure_schema()
+        if not _is_uuid(thread_id):
+            return
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                update {CATALOG_TABLE}
+                set values = values || %s::jsonb,
+                    raw_thread = jsonb_set(raw_thread, '{{values}}', COALESCE(raw_thread->'values', '{{}}'::jsonb) || %s::jsonb),
+                    state_updated_at = now(),
+                    updated_at = now()
+                where thread_id = %s::uuid
+                """,
+                (json.dumps(_ensure_jsonable(values)), json.dumps(_ensure_jsonable(values)), thread_id)
+            )
+            conn.commit()
+
     def get_thread(self, thread_id: str) -> dict[str, Any] | None:
         self.bootstrap_from_ops_catalog()
         if not _is_uuid(thread_id):

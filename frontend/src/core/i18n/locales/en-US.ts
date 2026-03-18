@@ -171,6 +171,7 @@ export const enUS: Translations = {
     docEdits: "Revision Lab",
     newDocEdit: "New revision session",
     documents: "Documents",
+    autoresearch: "Autoresearcher",
     executive: "Executive",
   },
 
@@ -215,6 +216,7 @@ export const enUS: Translations = {
     agents: "Agents",
     documents: "Documents",
     docEdits: "Revision Lab",
+    autoresearch: "Autoresearcher",
     executive: "Executive",
   },
 

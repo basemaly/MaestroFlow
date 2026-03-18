@@ -15,6 +15,8 @@
 
 services:
   langgraph-postgres:
+    profiles:
+      - core
     image: postgres:17
     container_name: deer-flow-langgraph-postgres
     environment:
@@ -36,6 +38,8 @@ services:
     restart: ${DOCKER_RESTART_POLICY:-no}
 
   langgraph-redis:
+    profiles:
+      - core
     image: redis:7-alpine
     container_name: deer-flow-langgraph-redis
     command: redis-server --save "" --appendonly no
@@ -90,6 +94,8 @@ services:
   # - nginx.local.conf (default): no provisioner route (local/aio modes)
   # - nginx.conf: includes provisioner route (provisioner mode)
   nginx:
+    profiles:
+      - core
     image: nginx:alpine
     container_name: deer-flow-nginx
     ports:
@@ -108,6 +114,8 @@ services:
 
   # Frontend - Next.js Development Server
   frontend:
+    profiles:
+      - core
     build:
       context: ../
       dockerfile: frontend/Dockerfile.dev
@@ -135,6 +143,8 @@ services:
 
   # Backend - Gateway API
   gateway:
+    profiles:
+      - core
     build:
       context: ../
       dockerfile: backend/Dockerfile
@@ -177,6 +187,8 @@ services:
 
   # Backend - LangGraph Server
   langgraph:
+    profiles:
+      - core
     build:
       context: ../
       dockerfile: backend/Dockerfile

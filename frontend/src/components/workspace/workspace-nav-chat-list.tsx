@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { BookOpenTextIcon, BotIcon, FilePenLineIcon, MessagesSquare } from "lucide-react";
+import { BookOpenTextIcon, BotIcon, FlaskConicalIcon, FilePenLineIcon, MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -108,6 +109,13 @@ export function WorkspaceNavChatList() {
           icon={FilePenLineIcon}
           label={t.sidebar.docEdits}
           isActive={pathname.startsWith("/workspace/doc-edits")}
+          isSidebarOpen={isSidebarOpen}
+        />
+        <NavItem
+          href="/workspace/autoresearch"
+          icon={FlaskConicalIcon}
+          label={t.sidebar.autoresearch}
+          isActive={pathname.startsWith("/workspace/autoresearch")}
           isSidebarOpen={isSidebarOpen}
         />
         <NavItem
