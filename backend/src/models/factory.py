@@ -1,4 +1,5 @@
 import logging
+from functools import lru_cache
 
 from langchain.chat_models import BaseChatModel
 
@@ -103,23 +104,26 @@ def _maybe_attach_rate_limit_fallback(
     )
 
 
-def create_chat_model(name: str | None = None, thinking_enabled: bool = False, **kwargs) -> BaseChatModel:
-    """Create a chat model instance from the config.
+@lru_cache(maxsize=32)
+def _create_base_chat_model_cached(name: str, thinking_enabled: bool) -> BaseChatModel:
+    """Create and cache a base chat model instance without tracers.
+
+    The cached model is reused across multiple calls with the same name and thinking_enabled,
+    reducing connection pool overhead and model instantiation latency.
+    Tracers are attached separately in create_chat_model() with per-call trace IDs.
 
     Args:
-        name: The name of the model to create. If None, the first model in the config will be used.
+        name: The name of the model to create.
+        thinking_enabled: Whether thinking/reasoning is enabled for this model.
 
     Returns:
-        A chat model instance.
+        A chat model instance without tracers attached.
     """
-    trace_id = kwargs.pop("trace_id", None)
-    parent_observation_id = kwargs.pop("parent_observation_id", None)
     config = get_app_config()
-    if name is None:
-        name = get_default_model_override() or config.models[0].name
     model_config = config.get_model_config(name)
     if model_config is None:
         raise ValueError(f"Model {name} not found in config") from None
+
     model_class = resolve_class(model_config.use, BaseChatModel)
     model_settings_from_config = model_config.model_dump(
         exclude_none=True,
@@ -135,8 +139,8 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             "supports_vision",
         },
     )
+
     # Compute effective when_thinking_enabled by merging in the `thinking` shortcut field.
-    # The `thinking` shortcut is equivalent to setting when_thinking_enabled["thinking"].
     has_thinking_settings = (model_config.when_thinking_enabled is not None) or (model_config.thinking is not None)
     effective_wte: dict = dict(model_config.when_thinking_enabled) if model_config.when_thinking_enabled else {}
     if model_config.thinking is not None:
@@ -147,44 +151,59 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             effective_wte,
             provider_use=model_config.use,
         )
+
+    # Apply thinking settings if enabled
     if thinking_enabled and has_thinking_settings:
         if not model_config.supports_thinking:
             raise ValueError(f"Model {name} does not support thinking. Set `supports_thinking` to true in the `config.yaml` to enable thinking.") from None
         if effective_wte and not _uses_reasoning_effort_for_thinking(model_config.use, model_config.model):
             model_settings_from_config = _deep_merge_dicts(model_settings_from_config, effective_wte)
         if _requires_temperature_one_with_thinking(model_config.use, model_config.model):
-            config_temperature = model_settings_from_config.get("temperature")
-            if config_temperature is not None and config_temperature != 1:
-                logger.info(
-                    "Overriding temperature=%s with temperature=1 for thinking-enabled model '%s'",
-                    config_temperature,
-                    name,
-                )
-                model_settings_from_config["temperature"] = 1
-            if "temperature" in kwargs and kwargs["temperature"] != 1:
-                logger.info(
-                    "Overriding runtime temperature=%s with temperature=1 for thinking-enabled model '%s'",
-                    kwargs["temperature"],
-                    name,
-                )
-                kwargs["temperature"] = 1
+            model_settings_from_config["temperature"] = 1
+
+    # Apply thinking disabled settings if not enabled
     if not thinking_enabled and has_thinking_settings:
         disabled_settings: dict = {}
-        if _uses_reasoning_effort_for_thinking(model_config.use, model_config.model):
-            disabled_settings = {}
-        elif effective_wte.get("extra_body", {}).get("thinking", {}).get("type"):
-            disabled_settings["extra_body"] = {"thinking": {"type": "disabled"}}
-            kwargs.update({"reasoning_effort": "minimal"})
-        elif effective_wte.get("thinking", {}).get("type"):
-            disabled_settings["thinking"] = {"type": "disabled"}
+        if not _uses_reasoning_effort_for_thinking(model_config.use, model_config.model):
+            if effective_wte.get("extra_body", {}).get("thinking", {}).get("type"):
+                disabled_settings["extra_body"] = {"thinking": {"type": "disabled"}}
+            elif effective_wte.get("thinking", {}).get("type"):
+                disabled_settings["thinking"] = {"type": "disabled"}
         if disabled_settings:
-            kwargs = _deep_merge_dicts(kwargs, disabled_settings)
-    if not model_config.supports_reasoning_effort and "reasoning_effort" in kwargs:
-        del kwargs["reasoning_effort"]
+            model_settings_from_config = _deep_merge_dicts(model_settings_from_config, disabled_settings)
 
-    model_instance = model_class(**kwargs, **model_settings_from_config)
+    # Create the base model instance
+    model_instance = model_class(**model_settings_from_config)
     model_instance = _maybe_attach_rate_limit_fallback(model_instance, name=name)
+    logger.debug(f"Created cached base model instance for '{name}' (thinking_enabled={thinking_enabled})")
+    return model_instance
 
+
+def create_chat_model(name: str | None = None, thinking_enabled: bool = False, **kwargs) -> BaseChatModel:
+    """Create a chat model instance from the config.
+
+    Uses a cached base model (keyed by name and thinking_enabled) for connection reuse,
+    then attaches per-call tracers with unique trace IDs.
+
+    Args:
+        name: The name of the model to create. If None, the first model in the config will be used.
+        thinking_enabled: Whether to enable thinking/reasoning for this model.
+        **kwargs: Additional parameters including trace_id and parent_observation_id for tracing.
+
+    Returns:
+        A chat model instance with per-call tracers attached.
+    """
+    trace_id = kwargs.pop("trace_id", None)
+    parent_observation_id = kwargs.pop("parent_observation_id", None)
+
+    config = get_app_config()
+    if name is None:
+        name = get_default_model_override() or config.models[0].name
+
+    # Get cached base model instance (reuses connections across calls)
+    model_instance = _create_base_chat_model_cached(name, thinking_enabled)
+
+    # Attach per-call tracers with unique trace IDs
     if is_tracing_enabled():
         try:
             from langchain_core.tracers.langchain import LangChainTracer
@@ -193,19 +212,25 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             tracer = LangChainTracer(
                 project_name=tracing_config.project,
             )
-            existing_callbacks = model_instance.callbacks or []
+            existing_callbacks = list(model_instance.callbacks or [])
+            # Remove any previous LangSmith tracers to avoid duplication
+            existing_callbacks = [cb for cb in existing_callbacks if not isinstance(cb, LangChainTracer)]
             model_instance.callbacks = [*existing_callbacks, tracer]
             logger.debug(f"LangSmith tracing attached to model '{name}' (project='{tracing_config.project}')")
         except Exception as e:
             logger.warning(f"Failed to attach LangSmith tracing to model '{name}': {e}")
+
     try:
         langfuse_handler = get_langfuse_callback_handler(
             trace_id=trace_id,
             parent_observation_id=parent_observation_id,
         )
         if langfuse_handler is not None:
-            existing_callbacks = model_instance.callbacks or []
+            existing_callbacks = list(model_instance.callbacks or [])
+            # Remove any previous Langfuse handlers to avoid duplication
+            existing_callbacks = [cb for cb in existing_callbacks if type(cb).__name__ != "LangfuseCallbackHandler"]
             model_instance.callbacks = [*existing_callbacks, langfuse_handler]
     except Exception as e:
         logger.warning(f"Failed to attach Langfuse tracing to model '{name}': {e}")
+
     return model_instance

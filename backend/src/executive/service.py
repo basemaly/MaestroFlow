@@ -62,3 +62,134 @@ def list_audit_payload(limit: int = 100) -> list[dict]:
 async def get_advisory_payload() -> list[dict]:
     status = await collect_system_status()
     return [rule.model_dump(mode="json") for rule in build_advisory(status)]
+
+
+def get_capabilities_payload() -> dict:
+    """
+    Return a snapshot of MaestroFlow's current capabilities:
+    configured models, available lead-agent tools, enabled skills,
+    registered subagent types, and execution modes.
+    """
+    capabilities: dict = {
+        "models": [],
+        "tools": [],
+        "skills": [],
+        "subagent_types": [],
+        "modes": [
+            {"name": "standard", "description": "Direct single-agent execution — no planning overhead"},
+            {"name": "pro", "description": "Multi-step todo list planning — agent tracks progress through tasks"},
+            {"name": "ultra", "description": "Full subagent fan-out — parallel workstreams via the task delegation tool"},
+        ],
+    }
+
+    try:
+        from src.config.app_config import get_app_config
+        for m in get_app_config().models:
+            capabilities["models"].append({
+                "name": m.name,
+                "supports_thinking": getattr(m, "supports_thinking", False),
+                "supports_vision": getattr(m, "supports_vision", False),
+            })
+    except Exception:
+        pass
+
+    try:
+        from src.tools import get_available_tools
+        default_model = capabilities["models"][0]["name"] if capabilities["models"] else None
+        tools = get_available_tools(model_name=default_model)
+        capabilities["tools"] = [
+            {"name": t.name, "description": (t.description or "")[:120]}
+            for t in tools
+        ]
+    except Exception:
+        pass
+
+    try:
+        from src.skills import load_skills
+        for s in load_skills():
+            capabilities["skills"].append({
+                "name": s.name,
+                "description": s.description,
+                "enabled": s.enabled,
+            })
+    except Exception:
+        pass
+
+    try:
+        from src.subagents.registry import get_subagent_names
+        capabilities["subagent_types"] = get_subagent_names()
+    except Exception:
+        capabilities["subagent_types"] = ["general-purpose", "bash"]
+
+    return capabilities
+
+
+async def analyze_prompt_payload(prompt: str, context: dict | None = None) -> dict:
+    """
+    Run a prompt through the LLM planning service and return its full analysis:
+    prompt audit, step plan, tool/model recommendations, clarification questions,
+    and actionable suggestions. No storage side effects.
+    """
+    # Lazy import to avoid circular dependency (planning/service.py imports from here)
+    from src.planning.service import _build_plan_with_llm  # type: ignore[attr-defined]
+
+    status = await get_status_payload()
+    advisory = await get_advisory_payload()
+    plan, complexity, questions, suggestions = await _build_plan_with_llm(
+        prompt=prompt,
+        context=context or {},
+        status=status,
+        advisory=advisory,
+    )
+    return {
+        "complexity": complexity,
+        "plan": plan.model_dump(mode="json"),
+        "questions": [q.model_dump(mode="json") for q in questions],
+        "suggestions": [s.model_dump(mode="json") for s in suggestions],
+    }
+
+
+EXECUTIVE_FRONTIER_MODELS = [
+    "gemini-3.1-pro-preview-customtools",
+    "gemini-3.1-pro-preview",
+    "gemini-2-5-pro",
+    "claude-opus-4-6",
+    "claude-opus-4-1",
+    "gpt-5",
+]
+
+EXECUTIVE_DEFAULT_MODEL = "gemini-3.1-pro-preview-customtools"
+
+
+def get_executive_settings_payload() -> dict:
+    from src.executive.runtime_overrides import get_executive_model_override
+    return {
+        "model": get_executive_model_override() or EXECUTIVE_DEFAULT_MODEL,
+        "available_models": EXECUTIVE_FRONTIER_MODELS,
+    }
+
+
+def update_executive_settings_payload(model_name: str) -> dict:
+    from src.executive.runtime_overrides import set_executive_model_override
+    if model_name not in EXECUTIVE_FRONTIER_MODELS:
+        raise ValueError(f"Model '{model_name}' is not in the allowed frontier model list.")
+    set_executive_model_override(model_name)
+    return get_executive_settings_payload()
+
+
+async def run_agent_payload(
+    prompt: str,
+    model_name: str | None = None,
+    mode: str = "standard",
+    thinking_enabled: bool = False,
+    subagent_enabled: bool = False,
+) -> dict:
+    """Spawn a lead_agent run and return its result."""
+    from src.executive.orchestrator import run_lead_agent
+    return await run_lead_agent(
+        prompt=prompt,
+        model_name=model_name or None,
+        mode=mode,
+        thinking_enabled=thinking_enabled,
+        subagent_enabled=subagent_enabled,
+    )

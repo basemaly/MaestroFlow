@@ -1,6 +1,6 @@
 # DeerFlow - Unified Development Environment
 
-.PHONY: help config check install dev dev-daemon daemon-start daemon-stop daemon-status stop clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config check install dev dev-daemon daemon-start daemon-stop daemon-status stack-up stack-down stack-start stack-stop stack-restart stack-status stack-rebuild stop clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
 
 help:
 	@echo "DeerFlow Development Commands:"
@@ -13,6 +13,13 @@ help:
 	@echo "  make dev-daemon      - Start all services detached from the current shell"
 	@echo "  make daemon-stop     - Stop detached MaestroFlow services"
 	@echo "  make daemon-status   - Show detached MaestroFlow supervisor status"
+	@echo "  make stack-up        - Fast path: start the full local AI stack"
+	@echo "  make stack-down      - Stop the full local AI stack"
+	@echo "  make stack-rebuild   - Rebuild SurfSense, then start the full local AI stack"
+	@echo "  make stack-start     - Alias for stack-up"
+	@echo "  make stack-stop      - Alias for stack-down"
+	@echo "  make stack-restart   - Restart the full local AI stack"
+	@echo "  make stack-status    - Show status for the full local AI stack"
 	@echo "  make stop            - Stop all running services"
 	@echo "  make clean           - Clean up processes and temporary files"
 	@echo ""
@@ -165,6 +172,27 @@ daemon-stop:
 
 daemon-status:
 	@./scripts/daemon.sh status
+
+stack-up:
+	@./scripts/maestro_stack.sh up
+
+stack-down:
+	@./scripts/maestro_stack.sh down
+
+stack-rebuild:
+	@./scripts/maestro_stack.sh rebuild
+
+stack-start:
+	@./scripts/maestro_stack.sh up
+
+stack-stop:
+	@./scripts/maestro_stack.sh down
+
+stack-restart:
+	@./scripts/maestro_stack.sh restart
+
+stack-status:
+	@./scripts/maestro_stack.sh status
 
 # Stop all services
 stop:

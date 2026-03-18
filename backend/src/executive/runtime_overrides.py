@@ -8,6 +8,7 @@ from src.executive.storage import get_runtime_override, set_runtime_override
 DEFAULT_MODEL_KEY = "default_model"
 SUBAGENT_TIMEOUT_KEY = "subagent_timeout"
 SUBAGENT_CONCURRENCY_KEY = "subagent_concurrency"
+EXECUTIVE_MODEL_KEY = "executive_model"
 
 
 def get_default_model_override() -> str | None:
@@ -56,3 +57,15 @@ def get_subagent_concurrency_override() -> int | None:
 
 def set_subagent_concurrency_override(max_concurrent_subagents: int) -> None:
     set_runtime_override(SUBAGENT_CONCURRENCY_KEY, {"max_concurrent_subagents": max_concurrent_subagents})
+
+
+def get_executive_model_override() -> str | None:
+    payload = get_runtime_override(EXECUTIVE_MODEL_KEY)
+    if not payload:
+        return None
+    model_name = payload.get("model_name")
+    return model_name if isinstance(model_name, str) and model_name.strip() else None
+
+
+def set_executive_model_override(model_name: str) -> None:
+    set_runtime_override(EXECUTIVE_MODEL_KEY, {"model_name": model_name})

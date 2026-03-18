@@ -80,6 +80,17 @@ export function rejectExecutiveApproval(approvalId: string): Promise<ExecutiveEx
   return api(`/api/executive/approvals/${approvalId}/reject`, { method: "POST" });
 }
 
+export function getExecutiveSettings(): Promise<{ model: string; available_models: string[] }> {
+  return api("/api/executive/settings");
+}
+
+export function updateExecutiveSettings(model: string): Promise<{ model: string; available_models: string[] }> {
+  return api("/api/executive/settings", {
+    method: "PUT",
+    body: JSON.stringify({ model }),
+  });
+}
+
 export function executiveChat(
   messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
   signal?: AbortSignal,

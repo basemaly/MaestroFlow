@@ -36,6 +36,6 @@ ALWAYS use this exact section structure:
 """,
     tools=None,
     disallowed_tools=["task", "ask_clarification", "present_files"],
-    model="inherit",
+    model="diverse",
     max_turns=40,
 )

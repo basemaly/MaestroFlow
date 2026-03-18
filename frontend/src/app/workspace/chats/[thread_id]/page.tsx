@@ -9,6 +9,7 @@ import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
+import { CalibreStatus } from "@/components/workspace/calibre-status";
 import {
   ChatBox,
   useSpecificChatMode,
@@ -21,6 +22,7 @@ import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
 import { PlanReviewCard } from "@/components/workspace/plan-review-card";
+import { SnippetShelf } from "@/components/workspace/snippet-shelf";
 import { SurfSenseActions } from "@/components/workspace/surfsense-actions";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
@@ -218,11 +220,10 @@ export default function ChatPage() {
             <div className="flex w-full items-center text-sm font-medium">
               <ThreadTitle threadId={threadId} thread={thread} />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <Button
                 size="sm"
-                variant={manualPlanReview ? "default" : "outline"}
-                className="rounded-full"
+                variant={manualPlanReview ? "default" : "ghost"}
                 onClick={() => {
                   if (!isFirstTurn) {
                     toast.error("Plan review can only be started before the first run in a thread.");
@@ -232,14 +233,16 @@ export default function ChatPage() {
                 }}
               >
                 <ClipboardCheckIcon className="size-4" />
-                {manualPlanReview ? "Plan Review Armed" : "Review Plan"}
+                {manualPlanReview ? "Armed" : "Review Plan"}
               </Button>
               <SurfSenseActions />
+              <CalibreStatus />
               <DocEditDialog
                 disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
                 mode={settings.context.mode}
               />
               <ArtifactTrigger />
+              <SnippetShelf />
             </div>
           </header>
           <main className="flex min-h-0 max-w-full grow flex-col">
@@ -347,27 +350,7 @@ export default function ChatPage() {
                   status={thread.isLoading ? "streaming" : "ready"}
                   context={settings.context}
                   disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
-                  extraHeader={
-                    isFirstTurn ? (
-                      <div className="translate-y-[-10px] rounded-full border border-sky-500/35 bg-sky-500/10 px-2 py-1 shadow-sm backdrop-blur">
-                        <div className="flex items-center gap-2">
-                          <span className="px-1 text-[11px] font-medium text-sky-800 dark:text-sky-200">
-                            {manualPlanReview
-                              ? "The next submit will open Plan Review before execution."
-                              : "Want to steer the approach first? Start Plan Review."}
-                          </span>
-                          <Button
-                            size="sm"
-                            variant={manualPlanReview ? "default" : "outline"}
-                            className="pointer-events-auto h-6 rounded-full px-2 text-[11px]"
-                            onClick={() => setManualPlanReview((current) => !current)}
-                          >
-                            {manualPlanReview ? "Cancel" : "Start"}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : undefined
-                  }
+                  extraHeader={undefined}
                   onContextChange={(context) => setSettings("context", context)}
                   onSubmit={handleSubmit}
                   onStop={handleStop}

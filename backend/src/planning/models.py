@@ -26,6 +26,26 @@ PlanningSuggestionKind = Literal[
 ]
 
 
+class PromptAudit(BaseModel):
+    """LLM-generated analysis of the original prompt."""
+
+    issues: list[str] = Field(default_factory=list)
+    optimized_prompt: str
+    rationale: str
+
+
+class PlanRecommendations(BaseModel):
+    """LLM-generated recommendations for tools, model, and execution settings."""
+
+    model_name: str | None = None
+    mode: str | None = None
+    thinking_enabled: bool = False
+    reasoning_effort: str | None = None
+    tools: list[str] = Field(default_factory=list)
+    subagent_count: int = 0
+    rationale: str = ""
+
+
 class PlanStep(BaseModel):
     step_id: str
     title: str
@@ -33,6 +53,9 @@ class PlanStep(BaseModel):
     enabled: bool = True
     kind: str = "analysis"
     notes: str | None = None
+    details: str | None = None
+    sources: list[str] = Field(default_factory=list)
+    expected_output: str | None = None
     estimated_cost: Literal["low", "medium", "high"] = "medium"
     estimated_latency: Literal["fast", "moderate", "slow"] = "moderate"
 
@@ -44,6 +67,8 @@ class PlanDraft(BaseModel):
     estimated_cost: Literal["low", "medium", "high"] = "medium"
     estimated_latency: Literal["fast", "moderate", "slow"] = "moderate"
     review_required: bool = False
+    prompt_audit: PromptAudit | None = None
+    recommendations: PlanRecommendations | None = None
 
 
 class ClarificationQuestion(BaseModel):

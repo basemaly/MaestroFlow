@@ -7,9 +7,16 @@ from collections.abc import Iterable
 
 from src.config.app_config import get_app_config
 
-# No models are considered rate-limited for concurrency purposes.
-# Claude's API handles 3 concurrent requests without issue; LiteLLM manages retries.
-RATE_LIMITED_MODEL_PREFIXES: tuple[()] = ()
+# Models with these prefixes are flagged for rate-limit protection.
+# They have lower concurrent request quotas and should fall back to lightweight models
+# when multiple subagents run in parallel.
+RATE_LIMITED_MODEL_PREFIXES: tuple[str, ...] = (
+    "claude-opus",  # Anthropic's flagship models with lower concurrency quotas
+    "gpt-5",        # OpenAI's most expensive tier
+    "o3",           # Reasoning models with strict rate limits
+    "gemini-2-5-pro",  # Gemini's flagship model
+    "gemini-3.1-pro",  # Gemini Pro family
+)
 
 LIGHTWEIGHT_FALLBACK_MODELS = (
     "gpt-5-2-mini",

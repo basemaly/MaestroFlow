@@ -298,27 +298,27 @@ export function SurfSenseActions() {
   const trimmedProjectKey = projectKey.trim();
 
   return (
-    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-background/70 p-1 shadow-sm backdrop-blur-sm">
+    <div className="flex items-center gap-1">
       <Button
         size="sm"
-        variant="outline"
-        className="rounded-full border-2 px-4 shadow-none"
+        variant="ghost"
+        className="h-8 px-2 text-muted-foreground"
+        title="Open SurfSense"
         asChild
       >
         <a href={surfSenseBaseUrl} target="_blank" rel="noreferrer">
           <WavesIcon className="size-4" />
-          Open SurfSense
+          <span className="hidden sm:inline">SurfSense</span>
         </a>
       </Button>
       {!mounted ? (
         <Button
           size="sm"
-          variant="outline"
-          className="rounded-full border-2 px-4 shadow-none"
+          variant="ghost"
+          className="h-8 px-2 text-muted-foreground"
           disabled
         >
           <SearchIcon className="size-4" />
-          Search SurfSense Documents
         </Button>
       ) : (
       <Dialog
@@ -335,9 +335,8 @@ export function SurfSenseActions() {
         }}
       >
         <DialogTrigger asChild>
-          <Button size="sm" variant="outline" className="rounded-full border-2 px-4 shadow-none">
+          <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground" title="Search SurfSense Documents">
             <SearchIcon className="size-4" />
-            Search SurfSense Documents
           </Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-3xl">
@@ -537,4 +536,5 @@ export function SurfSenseActions() {
       )}
     </div>
   );
+
 }
