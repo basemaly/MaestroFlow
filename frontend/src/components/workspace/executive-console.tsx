@@ -28,9 +28,11 @@ import {
   getExecutiveApprovals,
   getExecutiveAudit,
   getExecutiveRegistry,
+  getExecutiveSettings,
   getExecutiveStatus,
   previewExecutiveAction,
   rejectExecutiveApproval,
+  updateExecutiveSettings,
 } from "@/core/executive/api";
 import type { ExecutiveActionDefinition, ExecutiveRiskLevel, ExecutiveState } from "@/core/executive/types";
 import { cn } from "@/lib/utils";
@@ -128,6 +130,21 @@ export function ExecutiveConsole() {
     queryKey: ["executive", "audit"],
     queryFn: getExecutiveAudit,
     refetchInterval: 10_000,
+  });
+  const settingsQuery = useQuery({
+    queryKey: ["executive", "settings"],
+    queryFn: getExecutiveSettings,
+    staleTime: 60_000,
+  });
+  const settingsMutation = useMutation({
+    mutationFn: (model: string) => updateExecutiveSettings(model),
+    onSuccess: (data) => {
+      void queryClient.setQueryData(["executive", "settings"], data);
+      toast.success(`Executive model set to ${data.model}`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : String(error));
+    },
   });
 
   const actions = useMemo(() => registryQuery.data?.actions ?? [], [registryQuery.data?.actions]);
@@ -570,13 +587,30 @@ export function ExecutiveConsole() {
       <div className="flex min-h-0 flex-col gap-6">
         <Card className="border-border/60 py-4">
           <CardHeader className="px-4">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <BotIcon className="size-4" />
-              Executive Chat
-            </CardTitle>
-            <CardDescription>
-              Ask what is broken, what workflow to use, or what action should happen next.
-            </CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <BotIcon className="size-4" />
+                  Executive Chat
+                </CardTitle>
+                <CardDescription>
+                  Ask what is broken, what workflow to use, or what action should happen next.
+                </CardDescription>
+              </div>
+              <select
+                className="border-input h-8 shrink-0 rounded-md border bg-transparent px-2 text-xs"
+                value={settingsQuery.data?.model ?? ""}
+                disabled={settingsMutation.isPending || settingsQuery.isLoading}
+                onChange={(event) => settingsMutation.mutate(event.target.value)}
+                title="Executive Agent model"
+              >
+                {(settingsQuery.data?.available_models ?? []).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3 px-4">
             <div className="max-h-[22rem] space-y-3 overflow-y-auto rounded-xl border bg-muted/20 p-3">

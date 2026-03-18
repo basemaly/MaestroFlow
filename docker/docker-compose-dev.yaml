@@ -33,7 +33,7 @@ services:
       start_period: 5s
     networks:
       - deer-flow-dev
-    restart: unless-stopped
+    restart: ${DOCKER_RESTART_POLICY:-no}
 
   langgraph-redis:
     image: redis:7-alpine
@@ -41,7 +41,7 @@ services:
     command: redis-server --save "" --appendonly no
     networks:
       - deer-flow-dev
-    restart: unless-stopped
+    restart: ${DOCKER_RESTART_POLICY:-no}
 
   # ── Sandbox Provisioner ────────────────────────────────────────────────
   # Manages per-sandbox Pod + Service lifecycle in the host Kubernetes
@@ -76,7 +76,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - deer-flow-dev
-    restart: unless-stopped
+    restart: ${DOCKER_RESTART_POLICY:-no}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 10s
@@ -104,7 +104,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - deer-flow-dev
-    restart: unless-stopped
+    restart: ${DOCKER_RESTART_POLICY:-no}
 
   # Frontend - Next.js Development Server
   frontend:
@@ -130,7 +130,7 @@ services:
       - ../frontend/.env
     networks:
       - deer-flow-dev
-    restart: unless-stopped
+    restart: ${DOCKER_RESTART_POLICY:-no}
 
   # Backend - Gateway API
   gateway:
@@ -165,7 +165,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - deer-flow-dev
-    restart: unless-stopped
+    restart: ${DOCKER_RESTART_POLICY:-no}
 
   # Backend - LangGraph Server
   langgraph:
@@ -202,7 +202,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - deer-flow-dev
-    restart: unless-stopped
+    restart: ${DOCKER_RESTART_POLICY:-no}
 
 volumes:
   langgraph-postgres-data: {}

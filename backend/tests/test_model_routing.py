@@ -202,11 +202,18 @@ def _reset_diverse_index():
     routing_module._diverse_index = 0
 
 
-def test_claude_no_longer_rate_limited():
-    """RATE_LIMITED_MODEL_PREFIXES is empty — Claude is not capped to 1 subagent."""
+def test_rate_limited_models_are_opus_and_flagship():
+    """Expensive flagship models are rate-limited to trigger fallback to lightweight models."""
+    # Flagship/expensive models are rate-limited (lower concurrency quotas)
+    assert is_rate_limited_model("claude-opus-4-6")
+    assert is_rate_limited_model("claude-opus")
+    assert is_rate_limited_model("gpt-5")
+    assert is_rate_limited_model("o3")
+    assert is_rate_limited_model("gemini-2-5-pro")
+    # Standard models are not rate-limited
     assert not is_rate_limited_model("claude-sonnet-4-6")
     assert not is_rate_limited_model("claude-haiku-4-5")
-    assert not is_rate_limited_model("claude-opus-4-6")
+    assert not is_rate_limited_model("gpt-4-1-mini")
 
 
 def test_detect_model_family_claude():

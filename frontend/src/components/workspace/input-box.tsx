@@ -8,6 +8,7 @@ import {
   GlobeIcon,
   GraduationCapIcon,
   LayersIcon,
+  LibraryIcon,
   LightbulbIcon,
   PaperclipIcon,
   PlusIcon,
@@ -209,6 +210,43 @@ function ResearchToolsMenu({
             );
           })}
         </DropdownMenuGroup>
+      </PromptInputActionMenuContent>
+    </PromptInputActionMenu>
+  );
+}
+
+function KnowledgeSourceMenu({
+  value,
+  onChange,
+}: {
+  value: "auto" | "calibre-library";
+  onChange: (value: "auto" | "calibre-library") => void;
+}) {
+  return (
+    <PromptInputActionMenu>
+      <Tooltip
+        content={
+          value === "calibre-library"
+            ? "Scoped to Calibre Library"
+            : "Choose a knowledge source"
+        }
+      >
+        <PromptInputActionMenuTrigger className="gap-1! px-2!">
+          <LibraryIcon className="size-3 text-muted-foreground/70" />
+          <span className="text-xs">
+            {value === "calibre-library" ? "Calibre" : "Auto"}
+          </span>
+        </PromptInputActionMenuTrigger>
+      </Tooltip>
+      <PromptInputActionMenuContent className="w-56">
+        <PromptInputActionMenuItem onSelect={() => onChange("auto")}>
+          Auto knowledge source
+        </PromptInputActionMenuItem>
+        <PromptInputActionMenuItem
+          onSelect={() => onChange("calibre-library")}
+        >
+          Calibre Library
+        </PromptInputActionMenuItem>
       </PromptInputActionMenuContent>
     </PromptInputActionMenu>
   );
@@ -756,11 +794,11 @@ export function InputBox({
             <PromptInputActionMenu>
               <PromptInputActionMenuTrigger className="gap-1! px-2!">
                 <div className="text-xs font-normal">
-                  {t.inputBox.reasoningEffort}:
-                  {context.reasoning_effort === "minimal" && " " + t.inputBox.reasoningEffortMinimal}
-                  {context.reasoning_effort === "low" && " " + t.inputBox.reasoningEffortLow}
-                  {context.reasoning_effort === "medium" && " " + t.inputBox.reasoningEffortMedium}
-                  {context.reasoning_effort === "high" && " " + t.inputBox.reasoningEffortHigh}
+                  {t.inputBox.reasoningEffort}:{" "}
+                  {context.reasoning_effort === "minimal" ? t.inputBox.reasoningEffortMinimal
+                    : context.reasoning_effort === "low" ? t.inputBox.reasoningEffortLow
+                    : context.reasoning_effort === "high" ? t.inputBox.reasoningEffortHigh
+                    : t.inputBox.reasoningEffortMedium}
                 </div>
               </PromptInputActionMenuTrigger>
               <PromptInputActionMenuContent className="w-70">
@@ -865,6 +903,18 @@ export function InputBox({
           <ResearchToolsMenu
             activeGroups={(context.research_tools as string[] | undefined) ?? []}
             onToggle={handleResearchToolToggle}
+          />
+          <KnowledgeSourceMenu
+            value={
+              (context.knowledge_source as "auto" | "calibre-library" | undefined) ??
+              "auto"
+            }
+            onChange={(knowledge_source) =>
+              onContextChange?.({
+                ...context,
+                knowledge_source,
+              })
+            }
           />
         </PromptInputTools>
         <PromptInputTools className={context.mode === "ultra" ? undefined : "hidden"}>

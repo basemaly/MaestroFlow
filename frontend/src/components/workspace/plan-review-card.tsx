@@ -1,6 +1,15 @@
 "use client";
 
-import { ClipboardCheckIcon, Edit3Icon, HelpCircleIcon, SparklesIcon } from "lucide-react";
+import {
+  BotIcon,
+  ClipboardCheckIcon,
+  CpuIcon,
+  Edit3Icon,
+  HelpCircleIcon,
+  LayersIcon,
+  SparklesIcon,
+  WrenchIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +27,12 @@ function badgeTone(severity: "low" | "medium" | "high") {
   if (severity === "high") return "border-red-500/40 bg-red-500/10 text-red-800 dark:text-red-200";
   if (severity === "medium") return "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200";
   return "border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-200";
+}
+
+function costBadge(level: string) {
+  if (level === "high") return "text-red-600 dark:text-red-400";
+  if (level === "medium") return "text-amber-600 dark:text-amber-400";
+  return "text-emerald-600 dark:text-emerald-400";
 }
 
 export function PlanReviewCard({
@@ -79,8 +94,12 @@ export function PlanReviewCard({
     }
   };
 
+  const audit = review.plan.prompt_audit;
+  const rec = review.plan.recommendations;
+
   return (
     <div className="mx-auto mt-3 mb-3 w-full max-w-(--container-width-md) rounded-2xl border border-border/70 bg-background/92 shadow-sm backdrop-blur">
+      {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-border/60 px-4 py-4">
         <div>
           <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
@@ -89,7 +108,10 @@ export function PlanReviewCard({
           </div>
           <div className="text-muted-foreground mt-1 text-sm">{review.plan.summary}</div>
           <div className="text-muted-foreground mt-1 text-xs">
-            {review.complexity.replaceAll("_", " ")} · {review.plan.estimated_cost} cost · {review.plan.estimated_latency} latency
+            {review.complexity.replaceAll("_", " ")} ·{" "}
+            <span className={costBadge(review.plan.estimated_cost)}>{review.plan.estimated_cost} cost</span>
+            {" · "}
+            {review.plan.estimated_latency} latency
           </div>
         </div>
         <div className="text-muted-foreground text-xs">
@@ -97,12 +119,106 @@ export function PlanReviewCard({
         </div>
       </div>
 
+      {/* Prompt audit — shown when LLM found issues or suggested a better prompt */}
+      {audit && (
+        <div className="border-b border-border/60 px-4 py-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+            <SparklesIcon className="size-3.5" />
+            Prompt Audit
+          </div>
+          {audit.issues.length > 0 && (
+            <ul className="text-muted-foreground mb-2 space-y-0.5 text-xs">
+              {audit.issues.map((issue, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <span className="mt-0.5 text-amber-500">·</span>
+                  {issue}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs">
+            <div className="text-muted-foreground mb-1 font-medium">Suggested prompt</div>
+            <div className="text-foreground/90 leading-relaxed">{audit.optimized_prompt}</div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2 text-xs"
+            disabled={busy}
+            onClick={() => {
+              setGoalReframe(audit.optimized_prompt);
+              onRevise({ goal_reframe: audit.optimized_prompt });
+            }}
+          >
+            Use this prompt
+          </Button>
+        </div>
+      )}
+
+      {/* Recommendations — shown when LLM produced tool/model/mode suggestions */}
+      {rec && (rec.mode || rec.model_name || rec.thinking_enabled || rec.tools.length > 0 || rec.subagent_count > 0) && (
+        <div className="border-b border-border/60 px-4 py-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/60">
+            <CpuIcon className="size-3.5" />
+            Recommendations
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {rec.mode && (
+              <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/60 px-2.5 py-1 text-xs">
+                <LayersIcon className="size-3 text-sky-500" />
+                <span className="text-muted-foreground">mode:</span>
+                <span className="font-medium">{rec.mode}</span>
+              </div>
+            )}
+            {rec.model_name && (
+              <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/60 px-2.5 py-1 text-xs">
+                <BotIcon className="size-3 text-violet-500" />
+                <span className="text-muted-foreground">model:</span>
+                <span className="font-medium">{rec.model_name}</span>
+              </div>
+            )}
+            {rec.thinking_enabled && (
+              <div className="flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/8 px-2.5 py-1 text-xs text-violet-700 dark:text-violet-300">
+                <CpuIcon className="size-3" />
+                extended thinking
+              </div>
+            )}
+            {rec.reasoning_effort && (
+              <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/60 px-2.5 py-1 text-xs">
+                <span className="text-muted-foreground">reasoning:</span>
+                <span className="font-medium">{rec.reasoning_effort}</span>
+              </div>
+            )}
+            {rec.subagent_count > 0 && (
+              <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/60 px-2.5 py-1 text-xs">
+                <LayersIcon className="size-3 text-emerald-500" />
+                <span className="font-medium">{rec.subagent_count}</span>
+                <span className="text-muted-foreground">sub-agent{rec.subagent_count > 1 ? "s" : ""}</span>
+              </div>
+            )}
+            {rec.tools.map((tool) => (
+              <div
+                key={tool}
+                className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/60 px-2.5 py-1 text-xs"
+              >
+                <WrenchIcon className="size-3 text-orange-500" />
+                {tool}
+              </div>
+            ))}
+          </div>
+          {rec.rationale && (
+            <p className="text-muted-foreground mt-2 text-xs leading-relaxed">{rec.rationale}</p>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-4 px-4 py-4 lg:grid-cols-[1.2fr_0.8fr]">
+        {/* Left: plan steps + reframe */}
         <section className="space-y-3">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
               <Edit3Icon className="size-4" />
-              Draft Plan
+              Execution Plan
             </div>
             <div className="space-y-2">
               {steps.map((step, index) => (
@@ -125,6 +241,27 @@ export function PlanReviewCard({
                         onChange={(event) => updateStep(step.step_id, { title: event.target.value })}
                         className="bg-background"
                       />
+                      {step.details && (
+                        <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">{step.details}</p>
+                      )}
+                      {step.sources.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {step.sources.map((src, si) => (
+                            <span
+                              key={si}
+                              className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/70 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                            >
+                              <WrenchIcon className="size-2.5" />
+                              {src}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {step.expected_output && (
+                        <p className="text-muted-foreground mt-1.5 text-[11px]">
+                          <span className="font-medium">Output:</span> {step.expected_output}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -151,12 +288,13 @@ export function PlanReviewCard({
           </div>
         </section>
 
+        {/* Right: suggestions, questions, approve */}
         <section className="space-y-3">
           {review.suggestions.length > 0 && (
             <div className="rounded-xl border border-border/70 bg-background/55 px-3 py-3">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                 <SparklesIcon className="size-4" />
-                Executive Suggestions
+                Steering Options
               </div>
               <div className="space-y-2">
                 {review.suggestions.map((suggestion) => (
@@ -182,7 +320,7 @@ export function PlanReviewCard({
                 disabled={busy || selectedSuggestionIds.length === 0}
                 onClick={() => onApplySuggestions(selectedSuggestionIds)}
               >
-                Apply Executive Suggestions
+                Apply Selected
               </Button>
             </div>
           )}
@@ -220,7 +358,7 @@ export function PlanReviewCard({
           <div className="rounded-xl border border-border/70 bg-background/55 px-3 py-3">
             <div className="text-sm font-medium">Execution</div>
             <div className="text-muted-foreground mt-1 text-xs">
-              Approve the reviewed plan, or bypass it and run the original request directly.
+              Approve the plan and steering options, or run the original request directly.
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button size="sm" disabled={busy} onClick={onApprove}>

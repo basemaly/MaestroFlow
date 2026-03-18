@@ -9,6 +9,7 @@ from src.executive.service import (
     execute_action_payload,
     get_advisory_payload,
     get_component_payload,
+    get_executive_settings_payload,
     get_registry_payload,
     get_status_payload,
     list_actions_payload,
@@ -16,6 +17,7 @@ from src.executive.service import (
     list_audit_payload,
     preview_action_payload,
     reject_approval_payload,
+    update_executive_settings_payload,
 )
 
 router = APIRouter(prefix="/api/executive", tags=["executive"])
@@ -100,6 +102,23 @@ async def executive_audit(limit: int = 100) -> dict:
 @router.get("/advisory")
 async def executive_advisory() -> dict:
     return {"rules": await get_advisory_payload()}
+
+
+@router.get("/settings")
+def executive_get_settings() -> dict:
+    return get_executive_settings_payload()
+
+
+class ExecutiveSettingsUpdateRequest(BaseModel):
+    model: str
+
+
+@router.put("/settings")
+def executive_update_settings(request: ExecutiveSettingsUpdateRequest) -> dict:
+    try:
+        return update_executive_settings_payload(request.model)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/chat")

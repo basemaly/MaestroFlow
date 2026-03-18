@@ -12,6 +12,22 @@ export type PlanningReviewStatus =
   | "executing_unreviewed_plan"
   | "completed";
 
+export type PromptAudit = {
+  issues: string[];
+  optimized_prompt: string;
+  rationale: string;
+};
+
+export type PlanRecommendations = {
+  model_name?: string | null;
+  mode?: string | null;
+  thinking_enabled: boolean;
+  reasoning_effort?: string | null;
+  tools: string[];
+  subagent_count: number;
+  rationale: string;
+};
+
 export type PlanStep = {
   step_id: string;
   title: string;
@@ -19,6 +35,9 @@ export type PlanStep = {
   enabled: boolean;
   kind: string;
   notes?: string | null;
+  details?: string | null;
+  sources: string[];
+  expected_output?: string | null;
   estimated_cost: "low" | "medium" | "high";
   estimated_latency: "fast" | "moderate" | "slow";
 };
@@ -30,6 +49,8 @@ export type PlanDraft = {
   estimated_cost: "low" | "medium" | "high";
   estimated_latency: "fast" | "moderate" | "slow";
   review_required: boolean;
+  prompt_audit?: PromptAudit | null;
+  recommendations?: PlanRecommendations | null;
 };
 
 export type ClarificationQuestion = {

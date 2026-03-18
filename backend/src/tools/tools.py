@@ -5,7 +5,13 @@ from langchain.tools import BaseTool
 
 from src.config import get_app_config, is_langfuse_enabled
 from src.reflection import resolve_variable
-from src.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
+from src.tools.builtins import (
+    ask_clarification_tool,
+    calibre_library_search,
+    present_file_tool,
+    task_tool,
+    view_image_tool,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +49,7 @@ def _wrap_tool_with_tracing(t: BaseTool) -> BaseTool:
 BUILTIN_TOOLS = [
     present_file_tool,
     ask_clarification_tool,
+    calibre_library_search,
 ]
 
 SUBAGENT_TOOLS = [

@@ -21,6 +21,7 @@ from src.models import create_chat_model
 from src.models.routing import is_rate_limited_model, resolve_diverse_subagent_model, resolve_lightweight_fallback_model
 from src.observability import get_current_observation_id, make_trace_id, observe_span
 from src.subagents.config import SubagentConfig
+from src.subagents.monitoring import log_metrics_summary, record_subagent_completion, record_subagent_start
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +70,14 @@ class SubagentResult:
 _background_tasks: dict[str, SubagentResult] = {}
 _background_tasks_lock = threading.Lock()
 
-# Thread pool for background task scheduling and orchestration
-_scheduler_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="subagent-scheduler-")
+# Thread pool for background task scheduling and orchestration.
+# Increased from 3 to 6 workers to support more concurrent task dispatch without blocking.
+_scheduler_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="subagent-scheduler-")
 
-# Thread pool for actual subagent execution (with timeout support)
-# Larger pool to avoid blocking when scheduler submits execution tasks
-_execution_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="subagent-exec-")
+# Thread pool for actual subagent execution (with timeout support).
+# Increased from 3 to 8 workers to reduce queueing and support more concurrent executions.
+# Each worker has its own event loop (asyncio.run), allowing true parallelism for I/O-bound subagent tasks.
+_execution_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="subagent-exec-")
 
 
 def _filter_tools(
@@ -374,6 +377,14 @@ class SubagentExecutor:
         Returns:
             SubagentResult with the execution result.
         """
+        # Record metrics for performance monitoring
+        exec_start = datetime.now()
+        metric = record_subagent_start(
+            task_id=result_holder.task_id if result_holder else str(uuid.uuid4())[:8],
+            model_name=self.model_name or "inherit",
+            queue_wait_seconds=0.0,
+        )
+
         # Run the async execution in a new event loop
         # This is necessary because:
         # 1. We may have async-only tools (like MCP tools)
@@ -384,9 +395,12 @@ class SubagentExecutor:
         # an async context where an event loop already exists). Subagent execution
         # errors are handled within _aexecute() and returned as FAILED status.
         try:
-            return asyncio.run(self._aexecute(task, result_holder))
+            result = asyncio.run(self._aexecute(task, result_holder))
+            record_subagent_completion(metric, status=result.status.value)
+            return result
         except Exception as e:
             logger.exception(f"[trace={self.trace_id}] Subagent {self.config.name} execution failed")
+            record_subagent_completion(metric, status="failed")
             # Create a result with error if we don't have one
             if result_holder is not None:
                 result = result_holder
@@ -466,7 +480,7 @@ class SubagentExecutor:
         return task_id
 
 
-MAX_CONCURRENT_SUBAGENTS = 3
+MAX_CONCURRENT_SUBAGENTS = 6
 
 
 def get_background_task_result(task_id: str) -> SubagentResult | None:
@@ -527,3 +541,12 @@ def cleanup_background_task(task_id: str) -> None:
                 task_id,
                 result.status.value if hasattr(result.status, "value") else result.status,
             )
+
+
+# Metrics integration: Periodic logging of subagent performance
+# This helps detect bottlenecks like thread pool saturation or model rate limiting.
+# Call log_metrics_summary() from your monitoring/observability layer to enable.
+#
+# Example: Add to a periodic task or middleware that runs every 5 minutes:
+#   from src.subagents.monitoring import log_metrics_summary
+#   log_metrics_summary()

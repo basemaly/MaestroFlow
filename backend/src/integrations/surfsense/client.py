@@ -2,11 +2,45 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from .config import SurfSenseConfig, get_surfsense_config
+
+logger = logging.getLogger(__name__)
+
+# Global persistent client for connection pooling across all SurfSense requests.
+# Uses limits(max_connections=100, max_keepalive_connections=50) for reasonable defaults.
+_http_client: httpx.AsyncClient | None = None
+
+
+async def _get_http_client(transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
+    """Get or create a shared HTTP client with connection pooling."""
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        return _http_client
+    config = get_surfsense_config()
+    limits = httpx.Limits(max_connections=100, max_keepalive_connections=50)
+    _http_client = httpx.AsyncClient(
+        base_url=config.api_base_url,
+        headers=config.auth_headers,
+        timeout=config.timeout_seconds,
+        limits=limits,
+        transport=transport,
+    )
+    logger.debug("Created persistent SurfSense HTTP client with pooling")
+    return _http_client
+
+
+async def close_http_client() -> None:
+    """Close the persistent HTTP client (call at app shutdown)."""
+    global _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
+        logger.debug("Closed persistent SurfSense HTTP client")
 
 
 class SurfSenseClient:
@@ -18,19 +52,41 @@ class SurfSenseClient:
     ) -> None:
         self.config = config or get_surfsense_config()
         self._transport = transport
+        self._client: httpx.AsyncClient | None = None
 
     async def _request(self, method: str, path: str, **kwargs) -> Any:
+        """Make a request using the shared persistent client for connection pooling."""
         headers = dict(self.config.auth_headers)
         headers.update(kwargs.pop("headers", {}))
-        async with httpx.AsyncClient(
-            base_url=self.config.api_base_url,
-            headers=headers,
-            timeout=self.config.timeout_seconds,
-            transport=self._transport,
-        ) as client:
-            response = await client.request(method, path, **kwargs)
-            response.raise_for_status()
-            return response.json()
+
+        # For testing: use test transport; for production: use shared pooled client
+        if self._transport is not None:
+            async with httpx.AsyncClient(
+                base_url=self.config.api_base_url,
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+                transport=self._transport,
+            ) as client:
+                response = await client.request(method, path, **kwargs)
+                response.raise_for_status()
+                return response.json()
+
+        # Use shared persistent client for production
+        client = await _get_http_client()
+        # Update headers if they differ from the default
+        if headers != dict(self.config.auth_headers):
+            async with httpx.AsyncClient(
+                base_url=self.config.api_base_url,
+                headers=headers,
+                timeout=self.config.timeout_seconds,
+            ) as temp_client:
+                response = await temp_client.request(method, path, **kwargs)
+                response.raise_for_status()
+                return response.json()
+
+        response = await client.request(method, path, **kwargs)
+        response.raise_for_status()
+        return response.json()
 
     async def list_search_spaces(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/searchspaces")

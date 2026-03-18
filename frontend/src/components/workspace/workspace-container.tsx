@@ -16,6 +16,7 @@ import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
 
 import { GithubIcon } from "./github-icon";
+import { SnippetShelf } from "./snippet-shelf";
 import { Tooltip } from "./tooltip";
 
 export function WorkspaceContainer({
@@ -90,7 +91,8 @@ export function WorkspaceHeader({
           </BreadcrumbList>
         </Breadcrumb>
       </div>
-      <div className="pr-4">
+      <div className="flex items-center gap-2 pr-4">
+        <SnippetShelf />
         <Tooltip content={t.workspace.githubTooltip}>
           <a
             href="https://github.com/basemaly/MaestroFlow"

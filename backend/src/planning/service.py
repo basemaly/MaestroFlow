@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel
+from pydantic import Field as PydanticField
 
 from src.agents.decomposer import complexity_score
 from src.executive.service import get_advisory_payload, get_status_payload
@@ -18,13 +22,27 @@ from src.planning.models import (
     FirstTurnReviewResponse,
     PlanApprovalResult,
     PlanDraft,
+    PlanRecommendations,
     PlanRevisionRequest,
     PlanReviewRecord,
     PlanStep,
     PlanningComplexity,
+    PromptAudit,
 )
 from src.planning.storage import get_plan_review, save_plan_review
 
+logger = logging.getLogger(__name__)
+
+# Module-level reference so tests can monkeypatch it
+try:
+    from src.models.factory import create_chat_model
+except ImportError:  # pragma: no cover
+    create_chat_model = None  # type: ignore[assignment]
+
+
+# ---------------------------------------------------------------------------
+# Heuristic markers (kept for fallback path and fast-path classification)
+# ---------------------------------------------------------------------------
 
 _AMBIGUITY_MARKERS = (
     "help me",
@@ -40,6 +58,323 @@ _RESEARCH_MARKERS = ("research", "analyze", "analysis", "report", "investigate",
 _DOC_EDIT_MARKERS = ("rewrite", "edit", "polish", "revise", "improve this", "draft")
 _INTERNAL_KNOWLEDGE_MARKERS = ("our", "internal", "previous", "past report", "surfsense", "knowledge base")
 
+
+# ---------------------------------------------------------------------------
+# LLM-based planner — structured output schema (internal use only)
+# ---------------------------------------------------------------------------
+
+class _LLMPlanStepSchema(BaseModel):
+    title: str = PydanticField(description="Concise step title")
+    kind: str = PydanticField(
+        default="analysis",
+        description="Step type: research, synthesis, analysis, execution, verification, planning, workflow, review",
+    )
+    details: str = PydanticField(
+        default="",
+        description="Specific description: which tools/sources this step uses and how",
+    )
+    sources: list[str] = PydanticField(
+        default_factory=list,
+        description="Specific tools or sources (e.g. 'tavily web search', 'surfsense internal docs', 'bash')",
+    )
+    expected_output: str = PydanticField(default="", description="What this step produces")
+    estimated_cost: Literal["low", "medium", "high"] = "medium"
+    estimated_latency: Literal["fast", "moderate", "slow"] = "moderate"
+
+
+class _LLMClarificationQuestion(BaseModel):
+    question_id: str = PydanticField(default="", description="Leave blank — will be generated")
+    question: str = PydanticField(description="The clarification question to ask the user")
+    rationale: str = PydanticField(description="Why this clarification is needed before proceeding")
+    kind: Literal["scope", "audience", "constraints", "format", "priority"] = "scope"
+    options: list[str] = PydanticField(default_factory=list, description="Optional preset answers")
+
+
+class _LLMPlannerSchema(BaseModel):
+    """Structured output schema for the planning LLM call."""
+
+    # Prompt audit
+    prompt_issues: list[str] = PydanticField(
+        default_factory=list,
+        description="Issues with the original prompt. Empty list if the prompt is already clear and specific.",
+    )
+    optimized_prompt: str = PydanticField(
+        default="",
+        description="Improved prompt. Set IDENTICAL to input if no improvement is needed.",
+    )
+    prompt_rationale: str = PydanticField(
+        default="",
+        description="Explanation of prompt changes. Empty string if no changes were made.",
+    )
+
+    # Recommendations
+    recommended_model: str | None = PydanticField(
+        default=None,
+        description="Model name from the available models list, or null if the default is appropriate",
+    )
+    recommended_mode: Literal["standard", "pro", "ultra"] | None = PydanticField(
+        default=None,
+        description="Execution mode recommendation. null means keep current mode.",
+    )
+    thinking_enabled: bool = PydanticField(
+        default=False,
+        description="Whether extended thinking/reasoning should be enabled for this task",
+    )
+    reasoning_effort: Literal["low", "medium", "high"] | None = PydanticField(
+        default=None,
+        description="Reasoning effort level for models that support it",
+    )
+    recommended_tools: list[str] = PydanticField(
+        default_factory=list,
+        description="Specific tool names this task needs (e.g. 'tavily_search', 'bash', 'surfsense')",
+    )
+    recommended_subagents: int = PydanticField(
+        default=0,
+        description="Number of parallel sub-agents to spawn (0 = none needed, 1-3 for parallel workstreams)",
+    )
+    recommendation_rationale: str = PydanticField(
+        default="",
+        description="Brief explanation of why these tool/model/mode recommendations were made",
+    )
+
+    # Plan
+    steps: list[_LLMPlanStepSchema] = PydanticField(
+        default_factory=list,
+        description="Concrete execution steps (2-4). Each step names the specific tools/sources it uses.",
+    )
+    clarification_questions: list[_LLMClarificationQuestion] = PydanticField(
+        default_factory=list,
+        description="Critical questions to ask before planning — only if key information is truly missing",
+    )
+    complexity: Literal["simple", "complex", "high_ambiguity", "high_cost"] = PydanticField(
+        default="simple",
+        description="Task complexity: simple (clear single-step), complex (multi-step), high_ambiguity (unclear intent), high_cost (expensive ops)",
+    )
+    review_required: bool = PydanticField(
+        default=False,
+        description="True only for genuinely complex, multi-deliverable, high-cost, or ambiguous tasks. False for simple questions and single-step tasks.",
+    )
+    summary: str = PydanticField(default="", description="One sentence describing the full planned approach")
+    rationale: str = PydanticField(default="", description="Brief explanation of why this plan was chosen")
+    estimated_cost: Literal["low", "medium", "high"] = PydanticField(default="medium", description="Overall cost estimate")
+    estimated_latency: Literal["fast", "moderate", "slow"] = PydanticField(default="moderate", description="Overall latency estimate")
+
+
+# ---------------------------------------------------------------------------
+# LLM planner helpers
+# ---------------------------------------------------------------------------
+
+def _get_available_model_names() -> list[str]:
+    try:
+        from src.config import get_app_config
+        return [m.name for m in get_app_config().models]
+    except Exception:
+        return []
+
+
+def _get_status_notes(status: dict[str, Any]) -> str:
+    degraded = [c for c in status.get("components", []) if c.get("state") in {"degraded", "unavailable", "misconfigured"}]
+    if not degraded:
+        return "All systems healthy."
+    return "Degraded services: " + ", ".join(c.get("label", c.get("component_id", "?")) for c in degraded)
+
+
+def _llm_result_to_plan_output(
+    result: _LLMPlannerSchema,
+    original_prompt: str,
+    advisory: list[dict[str, Any]],
+) -> tuple[PlanDraft, PlanningComplexity, list[ClarificationQuestion], list[ExecutiveSuggestion]]:
+    # Prompt audit — only if the LLM actually found issues or suggested a real change
+    has_audit = bool(result.prompt_issues) or (
+        result.optimized_prompt.strip() and result.optimized_prompt.strip() != original_prompt.strip()
+    )
+    prompt_audit = (
+        PromptAudit(
+            issues=result.prompt_issues,
+            optimized_prompt=result.optimized_prompt or original_prompt,
+            rationale=result.prompt_rationale or "Prompt can be tightened for better results.",
+        )
+        if has_audit
+        else None
+    )
+
+    recommendations = PlanRecommendations(
+        model_name=result.recommended_model,
+        mode=result.recommended_mode,
+        thinking_enabled=result.thinking_enabled,
+        reasoning_effort=result.reasoning_effort,
+        tools=result.recommended_tools,
+        subagent_count=result.recommended_subagents,
+        rationale=result.recommendation_rationale,
+    )
+
+    steps = [
+        PlanStep(
+            step_id=f"step-{uuid.uuid4().hex[:8]}",
+            title=s.title,
+            kind=s.kind,
+            details=s.details or None,
+            sources=s.sources,
+            expected_output=s.expected_output or None,
+            estimated_cost=s.estimated_cost,
+            estimated_latency=s.estimated_latency,
+        )
+        for s in result.steps
+    ]
+    if not steps:
+        steps = [
+            PlanStep(
+                step_id=f"step-{uuid.uuid4().hex[:8]}",
+                title="Execute the request",
+                kind="execution",
+                estimated_cost=result.estimated_cost,
+                estimated_latency=result.estimated_latency,
+            )
+        ]
+
+    plan = PlanDraft(
+        summary=result.summary or "LLM-generated plan.",
+        rationale=result.rationale or "",
+        steps=steps,
+        estimated_cost=result.estimated_cost,
+        estimated_latency=result.estimated_latency,
+        review_required=result.review_required,
+        prompt_audit=prompt_audit,
+        recommendations=recommendations,
+    )
+
+    # Clarification questions from LLM
+    questions = [
+        ClarificationQuestion(
+            question_id=q.question_id or f"q-{uuid.uuid4().hex[:8]}",
+            question=q.question,
+            rationale=q.rationale,
+            kind=q.kind,
+            options=q.options,
+        )
+        for q in result.clarification_questions
+    ]
+
+    # Suggestions derived from LLM recommendations
+    suggestions: list[ExecutiveSuggestion] = []
+
+    if prompt_audit and prompt_audit.optimized_prompt != original_prompt:
+        suggestions.append(
+            ExecutiveSuggestion(
+                suggestion_id=f"suggest-{uuid.uuid4().hex[:8]}",
+                kind="reframe_prompt",
+                severity="low",
+                title="Use the AI-optimized prompt",
+                summary=prompt_audit.rationale,
+                rationale=prompt_audit.rationale,
+                prompt_patch=prompt_audit.optimized_prompt,
+            )
+        )
+
+    if recommendations.mode and recommendations.mode not in {"standard", ""}:
+        context_patch: dict[str, Any] = {"mode": recommendations.mode}
+        if recommendations.reasoning_effort:
+            context_patch["reasoning_effort"] = recommendations.reasoning_effort
+        suggestions.append(
+            ExecutiveSuggestion(
+                suggestion_id=f"suggest-{uuid.uuid4().hex[:8]}",
+                kind="switch_workflow",
+                severity="medium",
+                title=f"Switch to {recommendations.mode.title()} mode",
+                summary=recommendations.rationale or f"This task is a good fit for {recommendations.mode} mode.",
+                rationale=recommendations.rationale,
+                context_patch=context_patch,
+            )
+        )
+
+    if recommendations.thinking_enabled:
+        suggestions.append(
+            ExecutiveSuggestion(
+                suggestion_id=f"suggest-{uuid.uuid4().hex[:8]}",
+                kind="adjust_depth",
+                severity="low",
+                title="Enable extended thinking",
+                summary="This task benefits from deeper multi-step reasoning.",
+                rationale=recommendations.rationale,
+                context_patch={"thinking_enabled": True},
+            )
+        )
+
+    if any("clarif" in (rule.get("rule_id") or "") for rule in advisory):
+        suggestions.append(
+            ExecutiveSuggestion(
+                suggestion_id=f"suggest-{uuid.uuid4().hex[:8]}",
+                kind="ask_clarification",
+                severity="medium",
+                title="Ask clarifying questions before execution",
+                summary="The system advisory flags missing constraints or ambiguous intent.",
+                rationale="A small clarification pass usually reduces rework on multi-step tasks.",
+            )
+        )
+
+    complexity: PlanningComplexity = result.complexity  # type: ignore[assignment]
+    return plan, complexity, questions, suggestions
+
+
+async def _build_plan_with_llm(
+    prompt: str,
+    context: dict[str, Any],
+    status: dict[str, Any],
+    advisory: list[dict[str, Any]],
+) -> tuple[PlanDraft, PlanningComplexity, list[ClarificationQuestion], list[ExecutiveSuggestion]]:
+    """Call the LLM to produce a structured plan. Falls back to heuristics on any failure."""
+    try:
+        if create_chat_model is None:
+            raise RuntimeError("create_chat_model not available")
+        model = create_chat_model()
+        planner = model.with_structured_output(_LLMPlannerSchema)
+        model_names = _get_available_model_names()
+        status_notes = _get_status_notes(status)
+        current_mode = context.get("mode", "standard")
+
+        system_prompt = (
+            "You are the planning agent for an AI super-agent system.\n\n"
+            f"Available models: {', '.join(model_names) if model_names else 'default'}\n"
+            f"Current session mode: {current_mode}\n"
+            "Available tools: web search (tavily), web fetch (jina/firecrawl), bash execution, "
+            "file read/write/str_replace, image search, sub-agent delegation (for parallel workstreams), "
+            "SurfSense internal knowledge retrieval\n"
+            f"System status: {status_notes}\n\n"
+            "Given a user query, produce a structured execution plan that a Pro/Ultra agent would follow.\n\n"
+            "1. AUDIT the prompt — identify vagueness, missing scope, or ambiguous output format. "
+            "Set optimized_prompt identical to the input if it is already clear and specific.\n"
+            "2. RECOMMEND — which specific tools, model, mode (standard/pro/ultra), reasoning depth, "
+            "and number of parallel sub-agents best fit this query. Explain why.\n"
+            "3. PLAN — draft 2-4 concrete steps. Each step must name the specific tools or sources it "
+            "consults and what it produces. Avoid generic steps like 'Plan → Execute → Verify'. "
+            "Instead, be specific: 'Search for X using tavily (3-5 sources), cross-reference with "
+            "internal SurfSense docs', 'Synthesize findings into a structured markdown report with "
+            "sections: executive summary, key findings, recommendations'.\n"
+            "4. ASSESS — set review_required=True only for genuinely complex, multi-deliverable, "
+            "high-cost, or ambiguous tasks. Simple conversational questions and single-step tasks "
+            "should be review_required=False.\n\n"
+            "Keep clarification_questions empty unless truly critical information is missing. "
+            "Prefer making reasonable assumptions and noting them in the plan."
+        )
+
+        result: _LLMPlannerSchema = await planner.ainvoke([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ])
+        return _llm_result_to_plan_output(result, prompt, advisory)
+
+    except Exception as exc:
+        logger.warning("LLM planner failed (%s) — using heuristic fallback", exc)
+        complexity, review_required = _classify_prompt(prompt, context)
+        plan = _build_heuristic_plan(prompt, complexity, review_required)
+        questions = _build_questions(prompt, complexity)
+        suggestions = _build_suggestions(prompt, context, status, advisory)
+        return plan, complexity, questions, suggestions
+
+
+# ---------------------------------------------------------------------------
+# Heuristic helpers (fallback path + trivially-simple fast path)
+# ---------------------------------------------------------------------------
 
 def _classify_prompt(prompt: str, context: dict[str, Any]) -> tuple[PlanningComplexity, bool]:
     text = prompt.lower()
@@ -66,7 +401,7 @@ def _estimate_cost(prompt: str, complexity: PlanningComplexity) -> tuple[str, st
     return "medium", "moderate"
 
 
-def _build_plan(prompt: str, complexity: PlanningComplexity, review_required: bool) -> PlanDraft:
+def _build_heuristic_plan(prompt: str, complexity: PlanningComplexity, review_required: bool) -> PlanDraft:
     cost, latency = _estimate_cost(prompt, complexity)
     guidance = get_managed_prompt(
         "planning-review.summary",
@@ -283,21 +618,44 @@ def _build_suggestions(
     return suggestions[:5]
 
 
+# ---------------------------------------------------------------------------
+# Public service functions
+# ---------------------------------------------------------------------------
+
 async def first_turn_review(request: FirstTurnReviewRequest) -> FirstTurnReviewResponse:
-    complexity, review_required = _classify_prompt(request.prompt, request.context)
-    review_required = review_required or request.force_review
     trace_id = make_trace_id(seed=f"planning-{request.thread_id}")
     with observe_span(
         "planning.first_turn_review",
         trace_id=trace_id,
         input={"thread_id": request.thread_id, "prompt": request.prompt, "context": request.context},
-        metadata={"agent_name": request.agent_name, "complexity": complexity},
+        metadata={"agent_name": request.agent_name},
     ):
         status = await get_status_payload()
         advisory = await get_advisory_payload()
-        plan = _build_plan(request.prompt, complexity, review_required)
-        questions = _build_questions(request.prompt, complexity)
-        suggestions = _build_suggestions(request.prompt, request.context, status, advisory)
+
+        # Trivially simple fast path: skip LLM planner entirely for short, clear queries
+        word_count = len(request.prompt.split())
+        is_trivially_simple = (
+            word_count < 10
+            and complexity_score(request.prompt) == 0
+            and not request.force_review
+        )
+
+        if is_trivially_simple:
+            plan = _build_heuristic_plan(request.prompt, "simple", False)
+            complexity: PlanningComplexity = "simple"
+            questions: list = []
+            suggestions: list = []
+        else:
+            plan, complexity, questions, suggestions = await _build_plan_with_llm(
+                request.prompt, request.context, status, advisory
+            )
+
+        # force_review always overrides the LLM's own review_required decision
+        review_required = plan.review_required or request.force_review
+        if review_required != plan.review_required:
+            plan = plan.model_copy(update={"review_required": review_required})
+
         record = PlanReviewRecord(
             thread_id=request.thread_id,
             original_prompt=request.prompt,
@@ -343,7 +701,10 @@ def revise_plan(request: PlanRevisionRequest) -> FirstTurnReviewResponse:
             complexity, review_required = _classify_prompt(review.current_prompt, {})
             review.complexity = complexity
             review.review_required = review_required or review.review_required
-            review.plan = _build_plan(review.current_prompt, review.complexity, review.review_required)
+            new_plan = _build_heuristic_plan(review.current_prompt, review.complexity, review.review_required)
+            # Preserve any LLM-generated recommendations from the original plan
+            new_plan = new_plan.model_copy(update={"recommendations": review.plan.recommendations})
+            review.plan = new_plan
         if request.edited_steps:
             review.plan.steps = request.edited_steps
         review.updated_at = datetime.now(UTC)
