@@ -154,6 +154,7 @@ services:
     working_dir: /app
     environment:
       - CI=true
+      - MAESTROFLOW_RUNTIME_PROFILE=${MAESTROFLOW_RUNTIME_PROFILE:-full}
       - LITELLM_PROXY_BASE_URL=http://host.docker.internal:4000/v1
       - LANGGRAPH_BASE_URL=http://langgraph:8000
       - GATEWAY_BASE_URL=http://gateway:8001

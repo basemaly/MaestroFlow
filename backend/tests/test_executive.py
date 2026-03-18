@@ -137,3 +137,27 @@ def test_collect_system_status_marks_disabled_component(monkeypatch):
     assert litellm.state == "disabled"
     assert status.summary["disabled"] >= 1
     assert not any(rule.component_id == "litellm" for rule in rules)
+
+
+def test_collect_system_status_marks_profile_disabled_component(monkeypatch):
+    async def fake_external():
+        return {
+            "services": [
+                {"service": "litellm", "label": "LiteLLM", "configured": True, "available": True, "required": True, "url": "http://127.0.0.1:4000", "message": None},
+                {"service": "langgraph", "label": "LangGraph", "configured": True, "available": True, "required": True, "url": "http://127.0.0.1:2024", "message": None},
+                {"service": "langfuse", "label": "Langfuse", "configured": True, "available": False, "required": False, "url": "http://127.0.0.1:3000", "message": "offline"},
+                {"service": "surfsense", "label": "SurfSense", "configured": True, "available": False, "required": False, "url": "http://127.0.0.1:3004", "message": "offline"},
+            ],
+            "degraded": False,
+            "warnings": [],
+        }
+
+    monkeypatch.setenv("MAESTROFLOW_RUNTIME_PROFILE", "core")
+    monkeypatch.delenv("EXECUTIVE_DISABLED_COMPONENTS", raising=False)
+    monkeypatch.setattr("src.executive.status.get_external_services_status", fake_external)
+    status = asyncio.run(collect_system_status())
+
+    by_component = {item.component_id: item for item in status.components}
+    assert by_component["surfsense"].state == "disabled"
+    assert by_component["langfuse"].state == "disabled"
+    assert status.summary["disabled"] >= 2

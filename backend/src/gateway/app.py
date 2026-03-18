@@ -6,6 +6,10 @@ from fastapi import FastAPI
 
 from src.config.app_config import get_app_config
 from src.gateway.config import get_gateway_config
+from src.gateway.lifecycle import (
+    start_gateway_runtime_services,
+    stop_gateway_runtime_services,
+)
 from src.gateway.routers import (
     agents,
     artifacts,
@@ -56,53 +60,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 2. Gateway and LangGraph Server are separate processes with independent caches
     # MCP tools are lazily initialized in LangGraph Server when first needed
 
-    # Start IM channel service if any channels are configured
-    try:
-        from src.channels.service import start_channel_service
-
-        channel_service = await start_channel_service()
-        logger.info("Channel service started: %s", channel_service.get_status())
-    except Exception:
-        logger.exception("No IM channels configured or channel service failed to start")
-
-    # Start agent scheduler
-    try:
-        from src.agents.scheduler.service import start_scheduler
-
-        await start_scheduler()
-    except Exception:
-        logger.exception("Failed to start agent scheduler")
-
-    try:
-        from src.langgraph.catalog_sync import start_catalog_reconciler
-
-        await start_catalog_reconciler()
-    except Exception:
-        logger.exception("Failed to start LangGraph catalog reconciler")
+    await start_gateway_runtime_services()
 
     yield
 
-    # Stop channel service on shutdown
-    try:
-        from src.channels.service import stop_channel_service
-
-        await stop_channel_service()
-    except Exception:
-        logger.exception("Failed to stop channel service")
-
-    # Stop agent scheduler
-    try:
-        from src.agents.scheduler.service import stop_scheduler
-
-        await stop_scheduler()
-    except Exception:
-        logger.exception("Failed to stop agent scheduler")
-    try:
-        from src.langgraph.catalog_sync import stop_catalog_reconciler
-
-        await stop_catalog_reconciler()
-    except Exception:
-        logger.exception("Failed to stop LangGraph catalog reconciler")
+    await stop_gateway_runtime_services()
     logger.info("Shutting down API Gateway")
 
 

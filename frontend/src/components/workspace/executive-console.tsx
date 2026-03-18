@@ -89,6 +89,16 @@ function formatTimestamp(ts: string): string {
   }
 }
 
+function formatActionLabel(actionId: string, actions: ExecutiveActionDefinition[]): string {
+  const match = actions.find((item) => item.action_id === actionId);
+  if (match?.label) return match.label;
+  return actionId
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
 function defaultInputForAction(action?: ExecutiveActionDefinition): string {
@@ -409,7 +419,7 @@ export function ExecutiveConsole() {
                             setActionInput(defaultInputForAction(next));
                           }}
                         >
-                          {actionId}
+                          {formatActionLabel(actionId, actions)}
                         </Button>
                       </Tooltip>
                     ))}

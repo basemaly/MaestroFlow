@@ -22,10 +22,20 @@ from src.mcp.cache import get_cached_mcp_tools
 
 LOG_ROOT = Path(__file__).parents[3] / "logs"
 
+PROFILE_DISABLED_COMPONENTS: dict[str, set[str]] = {
+    "full": set(),
+    "core": {"surfsense", "langfuse"},
+    "knowledge": {"langfuse"},
+    "observability": {"surfsense"},
+    "minimal": {"surfsense", "langfuse", "channels"},
+}
+
 
 def _disabled_components() -> set[str]:
     raw = os.environ.get("EXECUTIVE_DISABLED_COMPONENTS", "")
-    return {item.strip() for item in raw.split(",") if item.strip()}
+    manual = {item.strip() for item in raw.split(",") if item.strip()}
+    profile = os.environ.get("MAESTROFLOW_RUNTIME_PROFILE", "full").strip().lower() or "full"
+    return manual | PROFILE_DISABLED_COMPONENTS.get(profile, set())
 
 
 def _is_component_disabled(component_id: str) -> bool:
