@@ -49,12 +49,12 @@ export function ExecutiveDrawerTrigger({
     <Button
       size="sm"
       variant="ghost"
-      className="gap-1.5 border border-amber-500/25 bg-amber-500/10 text-amber-700 hover:bg-amber-500/18 hover:text-amber-800 dark:text-amber-200 dark:hover:text-amber-100"
+      className="h-9 w-9 border border-amber-500/25 bg-amber-500/10 px-0 text-amber-700 hover:bg-amber-500/18 hover:text-amber-800 dark:text-amber-200 dark:hover:text-amber-100"
       onClick={() => setOpen(true)}
       title="Executive Agent"
+      aria-label="Executive Agent"
     >
-      <ExecutiveIcon className="size-4" />
-      <span className="hidden sm:inline">Executive</span>
+      <ExecutiveIcon className="text-lg" />
     </Button>
   );
 

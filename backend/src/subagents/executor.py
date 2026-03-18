@@ -4,8 +4,6 @@ import asyncio
 import logging
 import threading
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -371,8 +369,9 @@ class SubagentExecutor:
     def execute(self, task: str, result_holder: SubagentResult | None = None) -> SubagentResult:
         """Execute a task synchronously (wrapper around async execution).
 
-        This method runs the async execution in a new event loop, allowing
-        asynchronous tools (like MCP tools) to be used within the thread pool.
+        This method submits async execution to the dedicated background loop,
+        allowing async-only tools (like MCP tools) to run behind a shared
+        concurrency limit from synchronous call sites.
 
         Args:
             task: The task description for the subagent.
@@ -392,7 +391,7 @@ class SubagentExecutor:
         # Run the async execution in the background event loop using the global semaphore
         # This is necessary because:
         # 1. We may have async-only tools (like MCP tools)
-        # 2. We're running inside a ThreadPoolExecutor which doesn't have an event loop
+        # 2. Callers may be synchronous and still need async-only tools
         #
         # Note: _aexecute() catches all exceptions internally, so this outer
         # try-except only handles asyncio.run() failures (e.g., if called from

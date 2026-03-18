@@ -114,6 +114,7 @@ export interface Translations {
     docEdits: string;
     newDocEdit: string;
     documents: string;
+    autoresearch: string;
     executive: string;
   };
 
@@ -151,6 +152,7 @@ export interface Translations {
     agents: string;
     documents: string;
     docEdits: string;
+    autoresearch: string;
     executive: string;
   };
 

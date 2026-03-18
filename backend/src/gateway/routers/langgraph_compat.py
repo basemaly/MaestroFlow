@@ -383,13 +383,17 @@ async def update_thread_state(thread_id: str, request: Request) -> Any:
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     client = LangGraphCompatClient()
     result = await client.proxy_request("POST", f"/threads/{thread_id}/state", json_body=payload)
-    
+
     _invalidate_thread_snapshot(thread_id)
     if "values" in payload:
         try:
             get_thread_catalog_store().update_thread_state(thread_id, payload["values"])
         except Exception as exc:
             await record_sync_failure(exc)
+    try:
+        await _refresh_thread_from_native(client, thread_id)
+    except Exception as exc:
+        await record_sync_failure(exc)
 
     return result
 
@@ -398,13 +402,17 @@ async def patch_thread_state(thread_id: str, request: Request) -> Any:
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     client = LangGraphCompatClient()
     result = await client.proxy_request("PATCH", f"/threads/{thread_id}/state", json_body=payload)
-    
+
     _invalidate_thread_snapshot(thread_id)
     if "values" in payload:
         try:
             get_thread_catalog_store().update_thread_state(thread_id, payload["values"])
         except Exception as exc:
             await record_sync_failure(exc)
+    try:
+        await _refresh_thread_from_native(client, thread_id)
+    except Exception as exc:
+        await record_sync_failure(exc)
 
     return result
 

@@ -133,6 +133,7 @@ function nameOfSegment(
   if (segment === "agents") return t.breadcrumb.agents;
   if (segment === "docs") return t.breadcrumb.documents;
   if (segment === "doc-edits") return t.breadcrumb.docEdits;
+  if (segment === "autoresearch") return t.breadcrumb.autoresearch;
   if (segment === "executive") return t.breadcrumb.executive;
   return segment[0]?.toUpperCase() + segment.slice(1);
 }

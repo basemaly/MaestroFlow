@@ -1,9 +1,17 @@
 "use client";
 
-import { WaypointsIcon } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
 export function ExecutiveIcon({ className }: { className?: string }) {
-  return <WaypointsIcon className={cn("text-amber-500", className)} />;
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-flex select-none items-center justify-center font-serif leading-none text-amber-500",
+        className,
+      )}
+    >
+      𝄞
+    </span>
+  );
 }
