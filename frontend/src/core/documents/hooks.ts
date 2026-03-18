@@ -7,11 +7,14 @@ import {
   transformDocumentSelection,
   updateDocument,
 } from "./api";
+import type { DocumentsListResponse } from "./types";
 
-export function useDocuments() {
+export function useDocuments(initialData?: DocumentsListResponse) {
   return useQuery({
     queryKey: ["documents"],
     queryFn: listDocuments,
+    initialData,
+    initialDataUpdatedAt: initialData ? Date.now() : undefined,
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,

@@ -7,12 +7,14 @@ import {
   listAgents,
   updateAgent,
 } from "./api";
-import type { CreateAgentRequest, UpdateAgentRequest } from "./types";
+import type { Agent, CreateAgentRequest, UpdateAgentRequest } from "./types";
 
-export function useAgents() {
+export function useAgents(initialData?: Agent[]) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["agents"],
     queryFn: () => listAgents(),
+    initialData,
+    initialDataUpdatedAt: initialData ? Date.now() : undefined,
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,
