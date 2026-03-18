@@ -1,8 +1,10 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { BookOpenTextIcon, BotIcon, FilePenLineIcon, MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 
 import {
   SidebarGroup,
@@ -13,6 +15,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExecutiveIcon } from "@/components/workspace/executive-icon";
+import { listAgents } from "@/core/agents";
+import { listDocuments } from "@/core/documents/api";
 import { useI18n } from "@/core/i18n/hooks";
 
 function NavItem({
@@ -53,6 +57,20 @@ export function WorkspaceNavChatList() {
   const { t } = useI18n();
   const pathname = usePathname();
   const { open: isSidebarOpen } = useSidebar();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    void queryClient.prefetchQuery({
+      queryKey: ["agents"],
+      queryFn: listAgents,
+      staleTime: 60_000,
+    });
+    void queryClient.prefetchQuery({
+      queryKey: ["documents"],
+      queryFn: listDocuments,
+      staleTime: 60_000,
+    });
+  }, [queryClient]);
 
   return (
     <SidebarGroup className="pt-1">
