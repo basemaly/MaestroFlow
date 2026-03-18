@@ -14,6 +14,7 @@ from src.gateway.routers import (
     doc_editing,
     executive,
     health,
+    langgraph_compat,
     mcp,
     memory,
     models,
@@ -111,6 +112,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
         openapi_url="/openapi.json",
         openapi_tags=[
             {
+                "name": "langgraph",
+                "description": "Compatibility shims for LangGraph thread state/history endpoints",
+            },
+            {
                 "name": "calibre",
                 "description": "Calibre library retrieval and sync surfaced through SurfSense",
             },
@@ -185,6 +190,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # MCP API is mounted at /api/mcp
     app.include_router(mcp.router)
+
+    # LangGraph compatibility API is mounted at /api/langgraph
+    app.include_router(langgraph_compat.router)
 
     # Memory API is mounted at /api/memory
     app.include_router(memory.router)

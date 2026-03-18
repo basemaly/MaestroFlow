@@ -143,7 +143,9 @@ services:
     volumes:
       - ../backend/src:/app/backend/src
       - ../backend/.env:/app/backend/.env
+      - ../backend/.langgraph_api:/app/backend/.langgraph_api
       - ../config.yaml:/app/config.yaml
+      - ../extensions_config.json:/app/extensions_config.json:ro
       - ../skills:/app/skills
       - ../logs:/app/logs
       - ../backend/.deer-flow:/app/backend/.deer-flow
@@ -158,6 +160,7 @@ services:
       - SURFSENSE_BASE_URL=http://host.docker.internal:8002
       - LANGFUSE_HOST=http://host.docker.internal:3000
       - LANGGRAPH_CHECKPOINTER_URL=postgresql://postgres:postgres@langgraph-postgres:5432/maestroflow_langgraph_v2
+      - DEER_FLOW_EXTENSIONS_CONFIG_PATH=/app/extensions_config.json
     env_file:
       - ../.env
     extra_hosts:
@@ -173,7 +176,7 @@ services:
       context: ../
       dockerfile: backend/Dockerfile
     container_name: deer-flow-langgraph
-    command: sh -c "cd backend && BG_JOB_ISOLATED_LOOPS=true uv run langgraph dev --host 0.0.0.0 --port 8000 --no-browser --allow-blocking --no-reload --n-jobs-per-worker 20 > /app/logs/langgraph.log 2>&1"
+    command: sh -c "cd backend && uv run langgraph dev --host 0.0.0.0 --port 8000 --no-browser --allow-blocking --no-reload --n-jobs-per-worker ${LANGGRAPH_N_JOBS_PER_WORKER:-8} > /app/logs/langgraph.log 2>&1"
     ports:
       - "127.0.0.1:2024:8000"
     depends_on:
@@ -185,6 +188,10 @@ services:
       - SURFSENSE_BASE_URL=http://host.docker.internal:8002
       - LANGFUSE_HOST=http://host.docker.internal:3000
       - LANGGRAPH_CHECKPOINTER_URL=postgresql://postgres:postgres@langgraph-postgres:5432/maestroflow_langgraph_v2
+      - LANGGRAPH_RUNTIME_EDITION=inmem
+      - REDIS_URI=redis://langgraph-redis:6379/0
+      - BG_JOB_ISOLATED_LOOPS=true
+      - N_JOBS_PER_WORKER=${LANGGRAPH_N_JOBS_PER_WORKER:-8}
       - DEER_FLOW_CONFIG_PATH=/app/config.yaml
       - DEER_FLOW_EXTENSIONS_CONFIG_PATH=/app/extensions_config.json
     env_file:
@@ -192,6 +199,7 @@ services:
     volumes:
       - ../backend/src:/app/backend/src
       - ../backend/.env:/app/backend/.env
+      - ../backend/.langgraph_api:/app/backend/.langgraph_api
       - ../config.yaml:/app/config.yaml:ro
       - ../extensions_config.json:/app/extensions_config.json:ro
       - ../skills:/app/skills:ro
