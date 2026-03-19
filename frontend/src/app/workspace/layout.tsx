@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Toaster } from "sonner";
 
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { WorkspaceContextPacksProvider } from "@/components/workspace/context-packs-context";
 import { WorkspaceBackground } from "@/components/workspace/workspace-background";
 import { WorkspaceSidebar } from "@/components/workspace/workspace-sidebar";
 import { getLocalSettings, useLocalSettings } from "@/core/settings";
@@ -32,17 +33,19 @@ export default function WorkspaceLayout({
   );
   return (
     <QueryClientProvider client={queryClient}>
-      <SidebarProvider
-        className="h-screen"
-        open={open}
-        onOpenChange={handleOpenChange}
-      >
-        <WorkspaceSidebar />
-        <SidebarInset className="relative isolate min-w-0 overflow-hidden">
-          <WorkspaceBackground />
-          {children}
-        </SidebarInset>
-      </SidebarProvider>
+      <WorkspaceContextPacksProvider>
+        <SidebarProvider
+          className="h-screen"
+          open={open}
+          onOpenChange={handleOpenChange}
+        >
+          <WorkspaceSidebar />
+          <SidebarInset className="relative isolate min-w-0 overflow-hidden">
+            <WorkspaceBackground />
+            {children}
+          </SidebarInset>
+        </SidebarProvider>
+      </WorkspaceContextPacksProvider>
       <Toaster position="top-center" />
     </QueryClientProvider>
   );

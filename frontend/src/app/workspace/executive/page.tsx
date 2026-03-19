@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { dynamic } from "next/dynamic";
+import { useEffect, useState } from "react";
 
-import { ExecutiveConsole } from "@/components/workspace/executive-console";
 import { ExternalServiceBanner } from "@/components/workspace/external-service-banner";
+import { MusicalClefLoader } from "@/components/workspace/musical-loader";
+import { ExecutiveSidecarPanel } from "@/components/workspace/sidecar-panels";
 import {
   WorkspaceBody,
   WorkspaceContainer,
@@ -11,11 +13,19 @@ import {
 } from "@/components/workspace/workspace-container";
 import { useI18n } from "@/core/i18n/hooks";
 
+// Lazy load the heavy Executive Console component
+const ExecutiveConsole = dynamic(() => import("@/components/workspace/executive-console").then((mod) => ({ default: mod.ExecutiveConsole })), {
+  loading: () => <MusicalClefLoader />,
+  ssr: false,
+});
+
 export default function ExecutivePage() {
   const { t } = useI18n();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     document.title = `Executive - ${t.pages.appName}`;
+    setMounted(true);
   }, [t.pages.appName]);
 
   return (
@@ -35,7 +45,10 @@ export default function ExecutivePage() {
               </div>
             </div>
           </div>
-          <ExecutiveConsole />
+          <div className="border-b border-border/70 px-6 py-6">
+            <ExecutiveSidecarPanel />
+          </div>
+          {mounted && <ExecutiveConsole />}
         </div>
       </WorkspaceBody>
     </WorkspaceContainer>

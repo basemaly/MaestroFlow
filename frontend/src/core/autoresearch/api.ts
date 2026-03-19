@@ -1,3 +1,5 @@
+import type { BrowserRuntimeChoice } from "@/core/browser-runtime";
+
 import type {
   AutoresearchExperimentDetail,
   AutoresearchRegistryPayload,
@@ -82,6 +84,7 @@ export function createWorkflowRouteExperiment(input: {
   template_id: string;
   title?: string;
   max_mutations?: number;
+  browser_runtime?: BrowserRuntimeChoice;
 }): Promise<AutoresearchExperimentDetail> {
   return api("/api/autoresearch/experiments/workflow-route", {
     method: "POST",

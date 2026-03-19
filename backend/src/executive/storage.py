@@ -9,7 +9,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from src.executive.models import ExecutiveActionPreview, ExecutiveApprovalRequest, ExecutiveAuditEntry
+from src.executive.models import (
+    ExecutiveActionPreview,
+    ExecutiveApprovalRequest,
+    ExecutiveAuditEntry,
+    ExecutiveBlueprint,
+    ExecutiveBlueprintRun,
+    ExecutiveHeartbeat,
+)
 
 REPO_ROOT = Path(__file__).parents[3]
 DEFAULT_DB_PATH = REPO_ROOT / ".deer-flow" / "executive.db"
@@ -77,6 +84,48 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             key TEXT PRIMARY KEY,
             value_json TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS executive_blueprints (
+            blueprint_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            steps_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            metadata_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS executive_blueprint_runs (
+            run_id TEXT PRIMARY KEY,
+            blueprint_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            current_step_index INTEGER NOT NULL,
+            started_at TEXT NOT NULL,
+            last_heartbeat_at TEXT,
+            lease_expires_at TEXT,
+            finished_at TEXT,
+            result_json TEXT NOT NULL,
+            metadata_json TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS executive_heartbeats (
+            heartbeat_id TEXT PRIMARY KEY,
+            scope_type TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            lease_expires_at TEXT,
+            payload_json TEXT NOT NULL
         )
         """
     )
@@ -260,3 +309,201 @@ def get_runtime_override(key: str) -> dict[str, Any] | None:
             (key,),
         ).fetchone()
     return json.loads(row[0]) if row else None
+
+
+def upsert_blueprint(blueprint: ExecutiveBlueprint) -> ExecutiveBlueprint:
+    with _db_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO executive_blueprints
+            (blueprint_id, name, description, steps_json, status, metadata_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                blueprint.blueprint_id,
+                blueprint.name,
+                blueprint.description,
+                json.dumps([step.model_dump(mode="json") for step in blueprint.steps]),
+                blueprint.status,
+                json.dumps(blueprint.metadata),
+                blueprint.created_at.isoformat(),
+                blueprint.updated_at.isoformat(),
+            ),
+        )
+    return blueprint
+
+
+def _row_to_blueprint(row: sqlite3.Row) -> ExecutiveBlueprint:
+    return ExecutiveBlueprint(
+        blueprint_id=row["blueprint_id"],
+        name=row["name"],
+        description=row["description"],
+        steps=[step if isinstance(step, dict) else dict(step) for step in json.loads(row["steps_json"])],
+        status=row["status"],
+        metadata=json.loads(row["metadata_json"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def list_blueprints(limit: int = 50) -> list[ExecutiveBlueprint]:
+    with _db_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT blueprint_id, name, description, steps_json, status, metadata_json, created_at, updated_at
+            FROM executive_blueprints
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [_row_to_blueprint(row) for row in rows]
+
+
+def get_blueprint(blueprint_id: str) -> ExecutiveBlueprint | None:
+    with _db_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT blueprint_id, name, description, steps_json, status, metadata_json, created_at, updated_at
+            FROM executive_blueprints
+            WHERE blueprint_id = ?
+            """,
+            (blueprint_id,),
+        ).fetchone()
+    return _row_to_blueprint(row) if row else None
+
+
+def upsert_blueprint_run(run: ExecutiveBlueprintRun) -> ExecutiveBlueprintRun:
+    with _db_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO executive_blueprint_runs
+            (run_id, blueprint_id, status, current_step_index, started_at, last_heartbeat_at, lease_expires_at, finished_at, result_json, metadata_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run.run_id,
+                run.blueprint_id,
+                run.status,
+                run.current_step_index,
+                run.started_at.isoformat(),
+                run.last_heartbeat_at.isoformat() if run.last_heartbeat_at else None,
+                run.lease_expires_at.isoformat() if run.lease_expires_at else None,
+                run.finished_at.isoformat() if run.finished_at else None,
+                json.dumps(run.result),
+                json.dumps(run.metadata),
+            ),
+        )
+    return run
+
+
+def _row_to_blueprint_run(row: sqlite3.Row) -> ExecutiveBlueprintRun:
+    return ExecutiveBlueprintRun(
+        run_id=row["run_id"],
+        blueprint_id=row["blueprint_id"],
+        status=row["status"],
+        current_step_index=row["current_step_index"],
+        started_at=datetime.fromisoformat(row["started_at"]),
+        last_heartbeat_at=datetime.fromisoformat(row["last_heartbeat_at"]) if row["last_heartbeat_at"] else None,
+        lease_expires_at=datetime.fromisoformat(row["lease_expires_at"]) if row["lease_expires_at"] else None,
+        finished_at=datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None,
+        result=json.loads(row["result_json"]),
+        metadata=json.loads(row["metadata_json"]),
+    )
+
+
+def list_blueprint_runs(blueprint_id: str, limit: int = 50) -> list[ExecutiveBlueprintRun]:
+    with _db_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT run_id, blueprint_id, status, current_step_index, started_at, last_heartbeat_at, lease_expires_at, finished_at, result_json, metadata_json
+            FROM executive_blueprint_runs
+            WHERE blueprint_id = ?
+            ORDER BY started_at DESC
+            LIMIT ?
+            """,
+            (blueprint_id, limit),
+        ).fetchall()
+    return [_row_to_blueprint_run(row) for row in rows]
+
+
+def get_blueprint_run(run_id: str) -> ExecutiveBlueprintRun | None:
+    with _db_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT run_id, blueprint_id, status, current_step_index, started_at, last_heartbeat_at, lease_expires_at, finished_at, result_json, metadata_json
+            FROM executive_blueprint_runs
+            WHERE run_id = ?
+            """,
+            (run_id,),
+        ).fetchone()
+    return _row_to_blueprint_run(row) if row else None
+
+
+def record_blueprint_heartbeat(
+    *,
+    scope_type: str,
+    scope_id: str,
+    payload: dict[str, Any] | None = None,
+    lease_seconds: int = 3600,
+) -> ExecutiveHeartbeat:
+    heartbeat = ExecutiveHeartbeat(
+        heartbeat_id=str(uuid.uuid4()),
+        scope_type=scope_type,
+        scope_id=scope_id,
+        lease_expires_at=datetime.now(UTC) + timedelta(seconds=lease_seconds),
+        payload=payload or {},
+    )
+    with _db_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO executive_heartbeats
+            (heartbeat_id, scope_type, scope_id, timestamp, lease_expires_at, payload_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                heartbeat.heartbeat_id,
+                heartbeat.scope_type,
+                heartbeat.scope_id,
+                heartbeat.timestamp.isoformat(),
+                heartbeat.lease_expires_at.isoformat() if heartbeat.lease_expires_at else None,
+                json.dumps(heartbeat.payload),
+            ),
+        )
+    return heartbeat
+
+
+def list_heartbeats(limit: int = 50, *, scope_type: str | None = None, scope_id: str | None = None) -> list[ExecutiveHeartbeat]:
+    clauses = []
+    values: list[Any] = []
+    if scope_type is not None:
+        clauses.append("scope_type = ?")
+        values.append(scope_type)
+    if scope_id is not None:
+        clauses.append("scope_id = ?")
+        values.append(scope_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with _db_conn() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT heartbeat_id, scope_type, scope_id, timestamp, lease_expires_at, payload_json
+            FROM executive_heartbeats
+            {where}
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (*values, limit),
+        ).fetchall()
+    heartbeats: list[ExecutiveHeartbeat] = []
+    for row in rows:
+        heartbeats.append(
+            ExecutiveHeartbeat(
+                heartbeat_id=row["heartbeat_id"],
+                scope_type=row["scope_type"],
+                scope_id=row["scope_id"],
+                timestamp=datetime.fromisoformat(row["timestamp"]),
+                lease_expires_at=datetime.fromisoformat(row["lease_expires_at"]) if row["lease_expires_at"] else None,
+                payload=json.loads(row["payload_json"]),
+            )
+        )
+    return heartbeats

@@ -136,11 +136,14 @@ def test_ui_design_experiment_generates_candidates_and_screenshot(monkeypatch, t
 def test_workflow_route_experiment_generates_scored_candidates(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
 
-    result = create_workflow_route_experiment(template_id="research_report", max_mutations=3)
+    result = create_workflow_route_experiment(template_id="research_report", max_mutations=3, browser_runtime="lightpanda")
 
     assert result["experiment"]["domain"] == "workflow_route"
     assert result["experiment"]["role"] == "research_report"
     assert len(result["candidates"]) == 4
+    assert result["experiment"]["metadata"]["browser_runtime"] == "lightpanda"
+    assert "state_snapshot_ids" in result["experiment"]["metadata"]
+    assert "state_diff" in result["experiment"]["metadata"]
     baseline = result["candidates"][0]
     mutation = result["candidates"][1]
     assert baseline["source"] == "champion"

@@ -11,7 +11,11 @@ from urllib.parse import urlunsplit
 import httpx
 
 from src.config import get_langfuse_config
+from src.integrations.activepieces import get_activepieces_config
+from src.integrations.browser_runtime import get_browser_runtime_config
+from src.integrations.openviking import get_openviking_config
 from src.integrations.surfsense import get_surfsense_config
+from src.integrations.stateweave import get_stateweave_config
 
 DEFAULT_LANGGRAPH_URL = os.getenv("LANGGRAPH_BASE_URL", "http://127.0.0.1:2024")
 
@@ -88,6 +92,10 @@ def _litellm_headers() -> dict[str, str] | None:
 
 
 async def get_external_services_status() -> dict[str, Any]:
+    openviking_config = get_openviking_config()
+    activepieces_config = get_activepieces_config()
+    browser_runtime_config = get_browser_runtime_config()
+    stateweave_config = get_stateweave_config()
     surfsense_config = get_surfsense_config()
     langfuse_config = get_langfuse_config()
 
@@ -174,6 +182,79 @@ async def get_external_services_status() -> dict[str, Any]:
             "url": langgraph_base_url,
             "message": None if langgraph_available else f"LangGraph is unreachable: {langgraph_error}",
         }
+    )
+
+    openviking_configured = openviking_config.is_configured
+    openviking_available, openviking_error, openviking_origin = (
+        await _probe_service(_normalize_origin(openviking_config.base_url), "/api/openviking/config")
+        if openviking_configured and openviking_config.base_url
+        else (False, None, openviking_config.base_url)
+    )
+    statuses.insert(
+        0,
+        {
+            "service": "openviking",
+            "label": "OpenViking",
+            "configured": openviking_configured,
+            "available": openviking_available if openviking_configured else False,
+            "required": False,
+            "url": openviking_origin or openviking_config.base_url,
+            "message": (
+                None
+                if openviking_configured and openviking_available
+                else ("OpenViking is not configured." if not openviking_configured else f"OpenViking is unreachable: {openviking_error}")
+            ),
+        }
+    )
+
+    activepieces_configured = activepieces_config.is_configured
+    activepieces_available, activepieces_error, activepieces_origin = (
+        await _probe_service(_normalize_origin(activepieces_config.base_url), "/api/activepieces/config")
+        if activepieces_configured and activepieces_config.base_url
+        else (False, None, activepieces_config.base_url)
+    )
+    statuses.insert(
+        1,
+        {
+            "service": "activepieces",
+            "label": "Activepieces",
+            "configured": activepieces_configured,
+            "available": activepieces_available if activepieces_configured else False,
+            "required": False,
+            "url": activepieces_origin or activepieces_config.base_url,
+            "message": (
+                None
+                if activepieces_configured and activepieces_available
+                else ("Activepieces is not configured." if not activepieces_configured else f"Activepieces is unreachable: {activepieces_error}")
+            ),
+        }
+    )
+
+    browser_runtime_available = browser_runtime_config.is_configured
+    statuses.insert(
+        2,
+        {
+            "service": "browser_runtime",
+            "label": "Browser Runtime",
+            "configured": browser_runtime_config.is_configured,
+            "available": browser_runtime_available,
+            "required": False,
+            "url": browser_runtime_config.lightpanda_base_url or "local",
+            "message": None if browser_runtime_available else "Browser runtime is not configured.",
+        },
+    )
+
+    statuses.insert(
+        3,
+        {
+            "service": "stateweave",
+            "label": "StateWeave",
+            "configured": stateweave_config.is_configured,
+            "available": True,
+            "required": False,
+            "url": stateweave_config.base_url or "local",
+            "message": None,
+        },
     )
 
     degraded = any(item["required"] and not item["available"] for item in statuses)

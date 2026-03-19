@@ -6,8 +6,8 @@ from typing import Any
 
 import httpx
 
-from src.channels.service import get_channel_service
 from src.autoresearch.service import list_experiment_summaries
+from src.channels.service import get_channel_service
 from src.config import get_app_config, get_extensions_config
 from src.doc_editing.run_tracker import list_runs
 from src.executive.models import ExecutiveDependency, ExecutiveStatusSnapshot, ExecutiveSystemStatus
@@ -17,7 +17,14 @@ from src.executive.runtime_overrides import (
     get_subagent_concurrency_override,
     get_subagent_timeout_override,
 )
+from src.executive.storage import list_blueprint_runs, list_blueprints, list_heartbeats
 from src.gateway.services.external_services import get_external_services_status
+from src.integrations.activepieces import list_approved_flows
+from src.integrations.activepieces.storage import list_flow_executions
+from src.integrations.browser_runtime import get_browser_runtime_config, list_jobs as list_browser_jobs, select_browser_runtime
+from src.integrations.openviking import get_attached_packs, get_openviking_config, list_packs
+from src.integrations.stateweave import get_stateweave_config
+from src.integrations.stateweave.storage import list_snapshots as list_state_snapshots
 from src.langgraph.catalog_sync import get_catalog_sync_status
 from src.mcp.cache import get_cached_mcp_tools
 
@@ -182,6 +189,76 @@ async def collect_component_status(component_id: str) -> ExecutiveStatusSnapshot
             recommended_actions=["set_default_model", "collect_component_diagnostics"],
         )
 
+    if component_id == "openviking":
+        item = external.get(component_id)
+        packs = list_packs()
+        attachments = get_attached_packs()
+        configured = bool(item["configured"]) if item else False
+        available = bool(item["available"]) if item else True
+        state = "healthy" if available else ("misconfigured" if not configured else "unavailable")
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state=state,
+            summary=f"{len(packs)} context packs, {len(attachments)} attachments tracked.",
+            details={"packs": packs[:5], "attachments": attachments[:5], "configured": configured, "available": available},
+            metrics={"packs": len(packs), "attachments": len(attachments)},
+            recommended_actions=["sync_openviking_context_packs", "attach_openviking_context_pack", "collect_component_diagnostics"],
+        )
+
+    if component_id == "activepieces":
+        item = external.get(component_id)
+        flows = list_approved_flows()
+        executions = list_flow_executions(limit=25)
+        configured = bool(item["configured"]) if item else False
+        available = bool(item["available"]) if item else True
+        state = "healthy" if available else ("misconfigured" if not configured else "unavailable")
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state=state,
+            summary=f"{len(flows)} approved flows, {len(executions)} recent executions.",
+            details={"flows": flows[:5], "executions": executions[:5], "configured": configured, "available": available},
+            metrics={"flows": len(flows), "executions": len(executions)},
+            recommended_actions=["sync_activepieces_flows", "trigger_activepieces_flow", "collect_component_diagnostics"],
+        )
+
+    if component_id == "browser_runtime":
+        item = external.get(component_id)
+        config = get_browser_runtime_config()
+        jobs = list_browser_jobs(limit=25)
+        selection = select_browser_runtime(prefer_lightpanda=config.enable_lightpanda, allow_fallback=True)
+        available = bool(item["available"]) if item else config.is_configured
+        state = "healthy" if available else "unavailable"
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state=state,
+            summary=f"Browser runtime ready: {selection.runtime}. {len(jobs)} recent jobs tracked.",
+            details={
+                "jobs": jobs[:5],
+                "default_runtime": config.default_runtime,
+                "lightpanda_base_url": config.lightpanda_base_url,
+                "selection": {"runtime": selection.runtime, "fallback_from": selection.fallback_from},
+            },
+            metrics={"jobs": len(jobs), "lightpanda_enabled": int(config.enable_lightpanda)},
+            recommended_actions=["select_browser_runtime", "create_browser_job", "collect_component_diagnostics"],
+        )
+
+    if component_id == "stateweave":
+        config = get_stateweave_config()
+        snapshots = list_state_snapshots(limit=25)
+        state = "healthy" if config.is_configured else "misconfigured"
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state=state,
+            summary=f"{len(snapshots)} snapshots tracked for workflow and executive state.",
+            details={"snapshots": snapshots[:5], "db_path": config.db_path},
+            metrics={"snapshots": len(snapshots)},
+            recommended_actions=["create_state_snapshot", "diff_state_snapshots", "export_state_snapshot"],
+        )
+
     if component_id == "subagents":
         from src.subagents.registry import list_subagents
 
@@ -278,6 +355,76 @@ async def collect_component_status(component_id: str) -> ExecutiveStatusSnapshot
                 "rollback_autoresearch_prompt",
                 "stop_autoresearch_experiment",
             ],
+        )
+
+    if component_id == "openviking":
+        config = get_openviking_config()
+        recent_usage = list_recent_pack_usage(limit=10)
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state="healthy" if config.enabled else "disabled",
+            summary=f"{len(recent_usage)} recent context-pack events recorded.",
+            details={"configured": config.is_configured, "recent_usage": recent_usage[:5]},
+            metrics={"recent_pack_events": len(recent_usage)},
+            recommended_actions=["sync_context_packs"],
+        )
+
+    if component_id == "activepieces":
+        config = get_activepieces_config()
+        flows = approved_flows()
+        runs = list_activepieces_runs(limit=10)
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state="healthy" if config.enabled else "disabled",
+            summary=f"{len(flows)} approved flows, {len(runs)} recent runs.",
+            details={"configured": config.is_configured, "recent_runs": runs[:5]},
+            metrics={"flow_count": len(flows), "recent_runs": len(runs)},
+            recommended_actions=["run_approved_flow"],
+        )
+
+    if component_id == "browser_runtime":
+        config = get_browser_runtime_config()
+        jobs = list_browser_jobs(limit=10)
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state="healthy" if config.enabled else "disabled",
+            summary=f"{len(jobs)} browser jobs recorded. Default runtime: {config.default_runtime}.",
+            details={"lightpanda_available": config.lightpanda_available, "recent_jobs": jobs[:5]},
+            metrics={"job_count": len(jobs), "lightpanda_available": int(config.lightpanda_available)},
+            recommended_actions=["create_browser_job"],
+        )
+
+    if component_id == "stateweave":
+        config = get_stateweave_config()
+        snapshots = list_snapshots(limit=10)
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state="healthy" if config.enabled else "disabled",
+            summary=f"{len(snapshots)} state snapshots stored.",
+            details={"configured": config.is_configured, "recent_snapshots": snapshots[:5]},
+            metrics={"snapshot_count": len(snapshots)},
+            recommended_actions=["create_state_snapshot"],
+        )
+
+    if component_id == "executive":
+        blueprints = list_blueprints(limit=50)
+        heartbeats = list_heartbeats(limit=50)
+        run_total = sum(len(list_blueprint_runs(blueprint.blueprint_id, limit=10)) for blueprint in blueprints[:10])
+        return ExecutiveStatusSnapshot(
+            component_id=component_id,
+            label=component.label,
+            state="healthy",
+            summary=f"{len(blueprints)} blueprints tracked, {len(heartbeats)} recent heartbeats.",
+            details={
+                "blueprints": [item.model_dump(mode="json") for item in blueprints[:5]],
+                "heartbeats": [item.model_dump(mode="json") for item in heartbeats[:5]],
+            },
+            metrics={"blueprints": len(blueprints), "heartbeats": len(heartbeats), "runs": run_total},
+            recommended_actions=["register_blueprint", "record_heartbeat", "collect_component_diagnostics"],
         )
 
     return ExecutiveStatusSnapshot(

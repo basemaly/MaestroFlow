@@ -1,8 +1,10 @@
 import { ArrowRightIcon, BotIcon, FlaskConicalIcon } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AutoresearchPageClient } from "@/components/workspace/autoresearch/autoresearch-page-client";
+import { MusicalClefLoader } from "@/components/workspace/musical-loader";
 import type { AutoresearchRegistryPayload, ExperimentSummary } from "@/core/autoresearch/types";
 import { getServerAppOrigin } from "@/core/server/app-origin";
 
@@ -72,7 +74,9 @@ export default async function AutoresearchPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        <AutoresearchPageClient registry={initialData.registry} experiments={initialData.experiments} />
+        <Suspense fallback={<MusicalClefLoader />}>
+          <AutoresearchPageClient registry={initialData.registry} experiments={initialData.experiments} />
+        </Suspense>
       </div>
     </div>
   );

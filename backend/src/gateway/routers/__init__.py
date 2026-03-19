@@ -1,10 +1,12 @@
-from . import agents, artifacts, autoresearch, calibre, channels, doc_editing, documents, executive, health, mcp, memory, models, pinboard, planning, quality, skills, suggestions, surfsense, uploads
+from . import activepieces, agents, artifacts, autoresearch, browser_runtime, calibre, channels, doc_editing, documents, executive, health, mcp, memory, models, openviking, pinboard, planning, quality, skills, state, suggestions, surfsense, uploads
 
 __all__ = [
+    "activepieces",
     "calibre",
     "agents",
     "artifacts",
     "autoresearch",
+    "browser_runtime",
     "channels",
     "doc_editing",
     "documents",
@@ -13,10 +15,12 @@ __all__ = [
     "mcp",
     "memory",
     "models",
+    "openviking",
     "pinboard",
     "planning",
     "quality",
     "skills",
+    "state",
     "suggestions",
     "surfsense",
     "uploads",

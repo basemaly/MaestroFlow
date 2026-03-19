@@ -41,6 +41,8 @@ from src.autoresearch.workflow_routes import (
     summarize_candidate_metadata,
     workflow_summary_text,
 )
+from src.integrations.stateweave import create_state_snapshot, diff_state_snapshots
+from src.integrations.stateweave import create_state_snapshot, diff_snapshots
 
 def list_experiment_summaries(limit: int = 50) -> list[ExperimentSummary]:
     """List all experiment summaries with candidate counts and top scores.
@@ -561,6 +563,7 @@ def create_workflow_route_experiment(
     template_id: str,
     title: str | None = None,
     max_mutations: int = 3,
+    browser_runtime: str = "playwright",
 ) -> dict:
     """Create a workflow route optimization experiment.
 
@@ -599,11 +602,12 @@ def create_workflow_route_experiment(
             "max_mutations": max_mutations,
             "bandit_ready": False,
             "live_routing_enabled": False,
+            "browser_runtime": browser_runtime,
         },
     )
     create_experiment(experiment)
 
-    baseline_run = execute_workflow_definition(baseline_workflow)
+    baseline_run = execute_workflow_definition(baseline_workflow, browser_runtime=browser_runtime)
     baseline_score = score_workflow_candidate(baseline=baseline_run, candidate=baseline_run)
     baseline_candidate = CandidateRecord(
         candidate_id=new_candidate_id(),
@@ -640,11 +644,24 @@ def create_workflow_route_experiment(
     )
     save_candidate(baseline_candidate)
     experiment.candidate_ids.append(baseline_candidate.candidate_id)
+    baseline_snapshot = create_state_snapshot(
+        state_type="workflow_route_experiment",
+        label="baseline",
+        payload={
+            "experiment_id": experiment.experiment_id,
+            "workflow": baseline_workflow.model_dump(mode="json"),
+            "run": baseline_run.model_dump(mode="json"),
+            "candidate": baseline_candidate.model_dump(mode="json"),
+        },
+        metadata={"browser_runtime": browser_runtime},
+    )
+    experiment.metadata["state_snapshot_ids"] = {"baseline": baseline_snapshot["snapshot_id"], "candidates": {}}
 
     best_candidate_score = baseline_candidate.score.composite if baseline_candidate.score else 0.0
+    best_snapshot_id = baseline_snapshot["snapshot_id"]
     for iteration in range(1, max_mutations + 1):
         mutated_workflow, mutations = mutate_workflow_definition(baseline_workflow, iteration)
-        candidate_run = execute_workflow_definition(mutated_workflow)
+        candidate_run = execute_workflow_definition(mutated_workflow, browser_runtime=browser_runtime)
         candidate_score = score_workflow_candidate(baseline=baseline_run, candidate=candidate_run)
         candidate = CandidateRecord(
             candidate_id=new_candidate_id(),
@@ -682,14 +699,43 @@ def create_workflow_route_experiment(
         )
         save_candidate(candidate)
         experiment.candidate_ids.append(candidate.candidate_id)
+        candidate_snapshot = create_state_snapshot(
+            state_type="workflow_route_experiment",
+            label=f"candidate-{iteration}",
+            payload={
+                "experiment_id": experiment.experiment_id,
+                "workflow": mutated_workflow.model_dump(mode="json"),
+                "run": candidate_run.model_dump(mode="json"),
+                "candidate": candidate.model_dump(mode="json"),
+            },
+            metadata={"browser_runtime": browser_runtime, "iteration": iteration, "candidate_id": candidate.candidate_id},
+        )
+        experiment.metadata.setdefault("state_snapshot_ids", {"baseline": baseline_snapshot["snapshot_id"], "candidates": {}})
+        experiment.metadata["state_snapshot_ids"].setdefault("candidates", {})[candidate.candidate_id] = candidate_snapshot["snapshot_id"]
+        try:
+            experiment.metadata.setdefault("state_diff_ids", {})[candidate.candidate_id] = diff_state_snapshots(
+                baseline_snapshot["snapshot_id"],
+                candidate_snapshot["snapshot_id"],
+            )["diff_id"]
+        except ValueError:
+            pass
         if candidate.score and candidate.score.composite > best_candidate_score:
             best_candidate_score = candidate.score.composite
             experiment.metadata["best_candidate_id"] = candidate.candidate_id
+            best_snapshot_id = candidate_snapshot["snapshot_id"]
 
     experiment.status = "evaluated"
     if best_candidate_score > (baseline_candidate.score.composite if baseline_candidate.score else 0.0) + 0.03:
         experiment.status = "awaiting_approval"
         experiment.promotion_status = "awaiting_approval"
+    if experiment.metadata.get("state_snapshot_ids"):
+        try:
+            experiment.metadata["state_diff"] = diff_state_snapshots(
+                baseline_snapshot["snapshot_id"],
+                best_snapshot_id,
+            )
+        except ValueError:
+            experiment.metadata["state_diff"] = None
     experiment.updated_at = datetime.now(UTC)
     update_experiment(experiment)
     return get_experiment_detail(experiment.experiment_id)

@@ -6,9 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 import { ArtifactTrigger } from "./artifacts";
+import { CalibreActions } from "./calibre-actions";
 import { CalibreStatus } from "./calibre-status";
 import { AgentPresetMenu, KnowledgeSourceMenu, type KnowledgeSourceValue } from "./context-controls";
+import { WorkspaceContextPackChips } from "./context-packs-context";
 import { DocEditDialog } from "./doc-edit-dialog";
+import { OpenVikingActions } from "./openviking-actions";
 import { PinboardActions } from "./pinboard-actions";
 import { SnippetShelf } from "./snippet-shelf";
 import { SurfSenseActions } from "./surfsense-actions";
@@ -54,7 +57,9 @@ export function ContextDock({
             onChange={onAgentPresetChange}
             compact
           />
+          <OpenVikingActions />
           <PinboardActions />
+          <CalibreActions />
           <SurfSenseActions />
           <CalibreStatus />
           {includeRevisionLab ? (
@@ -79,6 +84,9 @@ export function ContextDock({
             {presetSummary}
           </Badge>
         </div>
+      </div>
+      <div className="mt-2">
+        <WorkspaceContextPackChips />
       </div>
     </div>
   );

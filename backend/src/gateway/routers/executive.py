@@ -4,6 +4,16 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.executive.agent import run_executive_chat
+from src.executive.blueprints import (
+    create_blueprint,
+    get_blueprint,
+    get_blueprint_run,
+    list_blueprint_runs,
+    list_blueprints,
+    resume_blueprint_run,
+    start_blueprint_run,
+    touch_blueprint_run,
+)
 from src.executive.project_models import (
     ApproveCheckpointRequest,
     CreateProjectRequest,
@@ -36,9 +46,14 @@ from src.executive.service import (
     list_actions_payload,
     list_approvals_payload,
     list_audit_payload,
+    list_blueprint_runs_payload,
+    list_blueprints_payload,
+    list_heartbeats_payload,
     preview_action_payload,
     reject_approval_payload,
     run_agent_payload,
+    record_heartbeat_payload,
+    register_blueprint_payload,
     update_executive_settings_payload,
 )
 
@@ -77,6 +92,28 @@ class ExecutiveRollbackPromptRequest(BaseModel):
 
 class ExecutiveStopExperimentRequest(BaseModel):
     reason: str | None = None
+
+
+class ExecutiveBlueprintModel(BaseModel):
+    blueprint_id: str
+    name: str
+    description: str = ""
+    steps: list[dict] = Field(default_factory=list)
+    status: str = "active"
+    metadata: dict = Field(default_factory=dict)
+
+
+class ExecutiveHeartbeatRequest(BaseModel):
+    scope_type: str = Field(min_length=1)
+    scope_id: str = Field(min_length=1)
+    payload: dict = Field(default_factory=dict)
+    lease_seconds: int = Field(default=3600, ge=60, le=86400)
+
+
+class CreateBlueprintRequest(BaseModel):
+    title: str = Field(min_length=1)
+    description: str = ""
+    steps: list[dict] = Field(default_factory=list)
 
 
 @router.get("/registry")
@@ -234,6 +271,84 @@ async def executive_stop_autoresearch_experiment(experiment_id: str, request: Ex
         return stop_autoresearch_experiment_payload(experiment_id, reason=request.reason)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/blueprints")
+async def executive_blueprints(limit: int = 50) -> dict:
+    return {"blueprints": list_blueprints_payload(limit=limit)}
+
+
+@router.post("/blueprints")
+async def executive_register_blueprint(request: ExecutiveBlueprintModel) -> dict:
+    try:
+        return register_blueprint_payload(request.model_dump(mode="json"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/blueprints/{blueprint_id}/runs")
+async def executive_blueprint_runs(blueprint_id: str, limit: int = 50) -> dict:
+    return {"runs": list_blueprint_runs_payload(blueprint_id, limit=limit)}
+
+
+@router.get("/heartbeats")
+async def executive_heartbeats(limit: int = 50, scope_type: str | None = None, scope_id: str | None = None) -> dict:
+    return {"heartbeats": list_heartbeats_payload(limit=limit, scope_type=scope_type, scope_id=scope_id)}
+
+
+@router.post("/heartbeats")
+async def executive_record_heartbeat(request: ExecutiveHeartbeatRequest) -> dict:
+    try:
+        return record_heartbeat_payload(
+            request.scope_type,
+            request.scope_id,
+            payload=request.payload,
+            lease_seconds=request.lease_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/blueprints")
+async def executive_blueprints() -> dict:
+    return {"blueprints": [item.model_dump(mode="json") for item in list_blueprints()]}
+
+
+@router.post("/blueprints")
+async def executive_create_blueprint(request: CreateBlueprintRequest) -> dict:
+    blueprint = create_blueprint(request.title, request.description, request.steps)
+    return {"blueprint": blueprint.model_dump(mode="json")}
+
+
+@router.get("/blueprints/{blueprint_id}")
+async def executive_get_blueprint(blueprint_id: str) -> dict:
+    blueprint = get_blueprint(blueprint_id)
+    if blueprint is None:
+        raise HTTPException(status_code=404, detail=f"Unknown blueprint '{blueprint_id}'.")
+    return {"blueprint": blueprint.model_dump(mode="json")}
+
+
+@router.get("/blueprint-runs")
+async def executive_blueprint_runs() -> dict:
+    return {"runs": [item.model_dump(mode="json") for item in list_blueprint_runs()]}
+
+
+@router.post("/blueprints/{blueprint_id}/runs")
+async def executive_start_blueprint_run(blueprint_id: str) -> dict:
+    run = await start_blueprint_run(blueprint_id)
+    return {"run": run.model_dump(mode="json")}
+
+
+@router.post("/blueprint-runs/{run_id}/resume")
+async def executive_resume_blueprint_run(run_id: str) -> dict:
+    run = await resume_blueprint_run(run_id)
+    return {"run": run.model_dump(mode="json")}
+
+
+@router.post("/blueprint-runs/{run_id}/heartbeat")
+async def executive_touch_blueprint_run(run_id: str) -> dict:
+    run = touch_blueprint_run(run_id)
+    return {"run": run.model_dump(mode="json")}
 
 
 # ---------------------------------------------------------------------------

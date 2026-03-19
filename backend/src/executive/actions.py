@@ -16,7 +16,7 @@ from src.autoresearch.service import approve_experiment, reject_experiment, roll
 from src.config import get_app_config
 from src.config.extensions_config import ExtensionsConfig, reload_extensions_config
 from src.doc_editing.run_tracker import ensure_run_dir, get_run
-from src.executive.models import ExecutiveActionPreview, ExecutiveAuditEntry, ExecutiveExecutionResult
+from src.executive.models import ExecutiveActionPreview, ExecutiveAuditEntry, ExecutiveBlueprint, ExecutiveExecutionResult
 from src.executive.registry import ACTION_DEFINITIONS, get_component_registry
 from src.executive.runtime_overrides import (
     set_default_model_override,
@@ -24,7 +24,11 @@ from src.executive.runtime_overrides import (
     set_subagent_timeout_override,
 )
 from src.executive.status import collect_component_status, get_component_log_path
-from src.executive.storage import append_audit_entry, create_approval, get_approval, update_approval_status
+from src.executive.storage import append_audit_entry, create_approval, get_approval, record_blueprint_heartbeat, update_approval_status, upsert_blueprint
+from src.integrations.activepieces.service import register_approved_flows, trigger_approved_flow
+from src.integrations.browser_runtime.service import BrowserJobRequest, create_browser_job, select_browser_runtime
+from src.integrations.openviking.service import attach_context_pack, sync_context_packs
+from src.integrations.stateweave.service import create_state_snapshot, diff_state_snapshots, export_state_snapshot
 from src.mcp.cache import reset_mcp_tools_cache
 
 ROOT = Path("/Volumes/BA/DEV")
@@ -162,6 +166,100 @@ async def _execute_now(preview: ExecutiveActionPreview, input_payload: dict[str,
             raise ValueError("Channel service is not running.")
         success = await service.restart_channel(channel_name)
         return {"channel_name": channel_name, "restarted": success}
+
+    if action_id == "sync_openviking_context_packs":
+        packs = input_payload.get("packs") or []
+        if not isinstance(packs, list):
+            raise ValueError("packs must be a list.")
+        return {"items": await sync_context_packs([item for item in packs if isinstance(item, dict)])}
+
+    if action_id == "attach_openviking_context_pack":
+        pack_id = str(input_payload.get("pack_id") or "").strip()
+        context_key = str(input_payload.get("context_key") or "").strip()
+        if not pack_id or not context_key:
+            raise ValueError("pack_id and context_key are required.")
+        return {
+            "attachment": attach_context_pack(
+                pack_id,
+                context_key=context_key,
+                project_key=str(input_payload.get("project_key") or "").strip() or None,
+                metadata=input_payload.get("metadata") if isinstance(input_payload.get("metadata"), dict) else {},
+            )
+        }
+
+    if action_id == "sync_activepieces_flows":
+        flows = input_payload.get("flows") or []
+        if not isinstance(flows, list):
+            raise ValueError("flows must be a list.")
+        return {"items": await register_approved_flows([item for item in flows if isinstance(item, dict)])}
+
+    if action_id == "trigger_activepieces_flow":
+        flow_id = str(input_payload.get("flow_id") or "").strip()
+        if not flow_id:
+            raise ValueError("flow_id is required.")
+        payload = input_payload.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object.")
+        return await trigger_approved_flow(flow_id, payload, requested_by=str(input_payload.get("requested_by") or "executive"))
+
+    if action_id == "select_browser_runtime":
+        selection = select_browser_runtime(
+            prefer_lightpanda=bool(input_payload.get("prefer_lightpanda", False)),
+            allow_fallback=bool(input_payload.get("allow_fallback", True)),
+        )
+        return {"runtime": selection.runtime, "fallback_from": selection.fallback_from, "available": selection.available}
+
+    if action_id == "create_browser_job":
+        job_request = BrowserJobRequest.model_validate(input_payload)
+        return await create_browser_job(job_request)
+
+    if action_id == "create_state_snapshot":
+        state_type = str(input_payload.get("state_type") or input_payload.get("target_kind") or "").strip()
+        label = str(input_payload.get("label") or "").strip()
+        payload = input_payload.get("payload")
+        metadata = input_payload.get("metadata") if isinstance(input_payload.get("metadata"), dict) else {}
+        if not state_type or not label or not isinstance(payload, dict):
+            raise ValueError("state_type, label, and payload are required.")
+        return create_state_snapshot(state_type=state_type, label=label, payload=payload, metadata=metadata)
+
+    if action_id == "diff_state_snapshots":
+        from_snapshot_id = str(input_payload.get("from_snapshot_id") or "").strip()
+        to_snapshot_id = str(input_payload.get("to_snapshot_id") or "").strip()
+        if not from_snapshot_id or not to_snapshot_id:
+            raise ValueError("from_snapshot_id and to_snapshot_id are required.")
+        return diff_state_snapshots(from_snapshot_id, to_snapshot_id)
+
+    if action_id == "export_state_snapshot":
+        snapshot_id = str(input_payload.get("snapshot_id") or "").strip()
+        if not snapshot_id:
+            raise ValueError("snapshot_id is required.")
+        return {"snapshot_id": snapshot_id, "payload": export_state_snapshot(snapshot_id)}
+
+    if action_id == "register_blueprint":
+        blueprint_payload = input_payload.get("blueprint")
+        if not isinstance(blueprint_payload, dict):
+            blueprint_payload = input_payload
+        blueprint = ExecutiveBlueprint.model_validate(blueprint_payload)
+        return {"blueprint": upsert_blueprint(blueprint).model_dump(mode="json")}
+
+    if action_id == "record_heartbeat":
+        scope_type = str(input_payload.get("scope_type") or "").strip()
+        scope_id = str(input_payload.get("scope_id") or "").strip()
+        if not scope_type or not scope_id:
+            raise ValueError("scope_type and scope_id are required.")
+        heartbeat = record_blueprint_heartbeat(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            payload=input_payload.get("payload") if isinstance(input_payload.get("payload"), dict) else {},
+            lease_seconds=int(input_payload.get("lease_seconds") or 3600),
+        )
+        return {"heartbeat": heartbeat.model_dump(mode="json")}
+
+    if action_id == "run_approved_flow":
+        flow_id = str(input_payload.get("flow_id") or "").strip()
+        if not flow_id:
+            raise ValueError("flow_id is required.")
+        return await trigger_approved_flow(flow_id, dict(input_payload.get("input") or {}), requested_by="executive")
 
     if action_id == "update_subagent_timeout":
         timeout_seconds = int(input_payload.get("timeout_seconds"))

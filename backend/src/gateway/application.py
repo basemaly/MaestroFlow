@@ -5,9 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.gateway.config import get_gateway_config
 from src.gateway.routers import (
+    activepieces,
     agents,
     artifacts,
     autoresearch,
+    browser_runtime,
     calibre,
     channels,
     doc_editing,
@@ -18,9 +20,11 @@ from src.gateway.routers import (
     mcp,
     memory,
     models,
+    openviking,
     pinboard,
     planning,
     quality,
+    state,
     skills,
     suggestions,
     surfsense,
@@ -29,6 +33,22 @@ from src.gateway.routers import (
 
 
 OPENAPI_TAGS = [
+    {
+        "name": "openviking",
+        "description": "Context pack registry and hydration sidecar",
+    },
+    {
+        "name": "activepieces",
+        "description": "Approved automation flows and inbound webhook bridge",
+    },
+    {
+        "name": "browser-runtime",
+        "description": "Playwright and Lightpanda browser runtime abstraction",
+    },
+    {
+        "name": "stateweave",
+        "description": "State snapshots, diffs, and export helpers",
+    },
     {
         "name": "autoresearch",
         "description": "Autoresearch experiment registry, prompt labs, and promotion workflow",
@@ -157,6 +177,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
     app.include_router(skills.router)
     app.include_router(artifacts.router)
     app.include_router(autoresearch.router)
+    app.include_router(openviking.router)
+    app.include_router(activepieces.router)
+    app.include_router(browser_runtime.router)
+    app.include_router(state.router)
     app.include_router(calibre.router)
     app.include_router(uploads.router)
     app.include_router(agents.router)

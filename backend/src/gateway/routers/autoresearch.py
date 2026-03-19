@@ -62,6 +62,7 @@ class CreateWorkflowRouteExperimentRequest(BaseModel):
     template_id: str = Field(min_length=1)
     title: str | None = None
     max_mutations: int = Field(default=3, ge=1, le=5)
+    browser_runtime: str = "playwright"
 
 
 @router.get("/registry")
@@ -110,6 +111,7 @@ async def create_autoresearch_workflow_route_experiment(request: CreateWorkflowR
             template_id=request.template_id,
             title=request.title,
             max_mutations=request.max_mutations,
+            browser_runtime=request.browser_runtime,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Cannot create workflow route experiment: {exc}") from exc

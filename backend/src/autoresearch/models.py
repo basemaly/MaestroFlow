@@ -37,6 +37,13 @@ class WorkflowRouteExperimentMetadata(ExperimentMetadata):
 
     score_breakdown: dict[str, float]
     baseline_comparison: dict[str, float]
+    browser_runtime: str | None
+    runtime_fallback_from: str | None
+    state_snapshot_ids: dict[str, str]
+    state_diff_ids: dict[str, str]
+    browser_runtime: str
+    state_snapshot_ids: list[str]
+    state_diff: dict[str, Any]
 
 
 ExperimentDomain = Literal["subagent_prompt", "workflow_route", "ui_design"]

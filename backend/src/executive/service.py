@@ -11,10 +11,10 @@ from src.autoresearch.service import (
 )
 from src.executive.actions import confirm_approval, execute_action, preview_action, reject_approval
 from src.executive.advisory import build_advisory
-from src.executive.models import ExecutiveActionDefinition
+from src.executive.models import ExecutiveActionDefinition, ExecutiveBlueprint
 from src.executive.registry import get_component_registry, list_action_definitions
 from src.executive.status import collect_component_status, collect_system_status
-from src.executive.storage import list_approvals, list_audit_entries
+from src.executive.storage import list_approvals, list_audit_entries, list_blueprints, list_blueprint_runs, list_heartbeats, record_blueprint_heartbeat, upsert_blueprint
 
 
 def get_registry_payload() -> dict:
@@ -232,3 +232,25 @@ async def run_agent_payload(
         subagent_enabled=subagent_enabled,
         agent_name=agent_name,
     )
+
+
+def list_blueprints_payload(limit: int = 50) -> list[dict]:
+    return [item.model_dump(mode="json") for item in list_blueprints(limit=limit)]
+
+
+def list_blueprint_runs_payload(blueprint_id: str, limit: int = 50) -> list[dict]:
+    return [item.model_dump(mode="json") for item in list_blueprint_runs(blueprint_id, limit=limit)]
+
+
+def register_blueprint_payload(blueprint: dict) -> dict:
+    model = ExecutiveBlueprint.model_validate(blueprint)
+    return {"blueprint": upsert_blueprint(model).model_dump(mode="json")}
+
+
+def record_heartbeat_payload(scope_type: str, scope_id: str, payload: dict | None = None, lease_seconds: int = 3600) -> dict:
+    heartbeat = record_blueprint_heartbeat(scope_type=scope_type, scope_id=scope_id, payload=payload or {}, lease_seconds=lease_seconds)
+    return {"heartbeat": heartbeat.model_dump(mode="json")}
+
+
+def list_heartbeats_payload(limit: int = 50, scope_type: str | None = None, scope_id: str | None = None) -> list[dict]:
+    return [item.model_dump(mode="json") for item in list_heartbeats(limit=limit, scope_type=scope_type, scope_id=scope_id)]

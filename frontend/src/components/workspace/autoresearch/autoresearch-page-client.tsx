@@ -26,6 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { StateSnapshotDiffPanel } from "@/components/workspace/sidecar-panels";
 import {
   approveAutoresearchExperiment,
   createPromptExperiment,
@@ -41,6 +42,7 @@ import type {
   ExperimentSummary,
   WorkflowTemplateSummary,
 } from "@/core/autoresearch/types";
+import type { BrowserRuntimeChoice } from "@/core/browser-runtime";
 
 const STATUS_STYLES: Record<string, string> = {
   running: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
@@ -155,6 +157,7 @@ export function AutoresearchPageClient({
     registry.workflow_templates?.[0]?.template_id ?? "research_report",
   );
   const [workflowMutationCount, setWorkflowMutationCount] = useState("3");
+  const [workflowBrowserRuntime, setWorkflowBrowserRuntime] = useState<BrowserRuntimeChoice>("auto");
   const [designPrompt, setDesignPrompt] = useState(
     "Refine this pricing card so the typography hierarchy, spacing rhythm, CTA emphasis, and visual polish feel intentional and premium.",
   );
@@ -220,6 +223,7 @@ export function AutoresearchPageClient({
           registry.workflow_templates?.find((template) => template.template_id === selectedWorkflowTemplateId)?.title ??
           "Workflow route optimization",
         max_mutations: Number.parseInt(workflowMutationCount, 10) || 3,
+        browser_runtime: workflowBrowserRuntime === "auto" ? undefined : workflowBrowserRuntime,
       }),
     onSuccess: (result) => {
       toast.success("Workflow optimization created");
@@ -409,6 +413,33 @@ export function AutoresearchPageClient({
                   inputMode="numeric"
                   placeholder="Mutations"
                 />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <div>
+                <label htmlFor="workflow-browser-runtime" className="text-muted-foreground text-[11px] uppercase tracking-wide">
+                  Browser runtime
+                </label>
+                <Select value={workflowBrowserRuntime} onValueChange={(value) => setWorkflowBrowserRuntime(value as BrowserRuntimeChoice)}>
+                  <SelectTrigger id="workflow-browser-runtime" className="mt-2 bg-background/70">
+                    <SelectValue placeholder="Select runtime" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    <SelectItem value="playwright">Playwright</SelectItem>
+                    <SelectItem value="lightpanda">Lightpanda</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
+                <div className="text-muted-foreground text-[11px] uppercase tracking-wide">Routing hint</div>
+                <div className="mt-1 text-sm font-medium">
+                  {workflowBrowserRuntime === "auto"
+                    ? "Use runtime policy"
+                    : workflowBrowserRuntime === "playwright"
+                      ? "Prefer Playwright"
+                      : "Prefer Lightpanda"}
+                </div>
               </div>
             </div>
             {selectedWorkflowTemplate ? (
@@ -816,6 +847,14 @@ export function AutoresearchPageClient({
                     </div>
                   </div>
                 </div>
+                {selectedExperiment.experiment.domain === "workflow_route" ? (
+                  <StateSnapshotDiffPanel
+                    title="Workflow route snapshots"
+                    description="Compare snapshots for this experiment's execution state."
+                    scope="workflow_route"
+                    referenceId={selectedExperiment.experiment.experiment_id}
+                  />
+                ) : null}
                 <div className="text-muted-foreground rounded-2xl border border-border/60 bg-background/60 p-4 text-sm">
                   Front-end flow: start and inspect here. Back-end flow: registry and scoring live in the Autoresearch service. Control-plane flow:
                   approvals and rollbacks stay in Executive.

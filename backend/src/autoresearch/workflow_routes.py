@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from src.integrations.browser_runtime.service import select_browser_runtime
+from src.integrations.stateweave import create_state_snapshot, diff_state_snapshots
 from src.models.routing import first_configured_model
 
 
@@ -39,6 +41,8 @@ class NodeTelemetry(BaseModel):
     title: str
     kind: str
     model: str
+    runtime: str | None = None
+    runtime_fallback_from: str | None = None
     started_at_ms: int
     finished_at_ms: int
     duration_ms: int
@@ -320,7 +324,7 @@ def _task_affinity(kind: str, model_name: str) -> float:
     return max(0.45, min(0.98, affinity))
 
 
-def execute_workflow_definition(workflow: WorkflowDefinition) -> WorkflowRunResult:
+def execute_workflow_definition(workflow: WorkflowDefinition, *, browser_runtime: str = "playwright") -> WorkflowRunResult:
     nodes_by_id = {node.node_id: node for node in workflow.nodes}
     if len(nodes_by_id) != len(workflow.nodes):
         raise ValueError("Workflow definition contains duplicate node ids.")
@@ -332,6 +336,15 @@ def execute_workflow_definition(workflow: WorkflowDefinition) -> WorkflowRunResu
     for node_id in execution_order:
         node = nodes_by_id[node_id]
         profile = _model_profile(node.model, task_kind=node.kind)
+        runtime = None
+        runtime_fallback_from = None
+        if node.model == "browser":
+            runtime_selection = select_browser_runtime(
+                prefer_lightpanda=browser_runtime == "lightpanda",
+                allow_fallback=True,
+            )
+            runtime = runtime_selection.runtime
+            runtime_fallback_from = runtime_selection.fallback_from
         input_tokens, output_tokens = _base_tokens(node.kind, node.workload)
         duration_ms = int(850 + ((input_tokens + output_tokens) * 0.9) * profile.speed_factor)
         started_at_ms = max((node_results[dep].finished_at_ms for dep in node.depends_on), default=0)
@@ -347,6 +360,8 @@ def execute_workflow_definition(workflow: WorkflowDefinition) -> WorkflowRunResu
             title=node.title,
             kind=node.kind,
             model=node.model,
+            runtime=runtime,
+            runtime_fallback_from=runtime_fallback_from,
             started_at_ms=started_at_ms,
             finished_at_ms=finished_at_ms,
             duration_ms=duration_ms,
