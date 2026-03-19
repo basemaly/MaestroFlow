@@ -14,6 +14,7 @@ import {
 import { useI18n } from "@/core/i18n/hooks";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
+import { ExecutiveIcon } from "./executive-icon";
 
 export function WorkspaceHeader({ className }: { className?: string }) {
   const { t } = useI18n();
@@ -26,7 +27,7 @@ export function WorkspaceHeader({ className }: { className?: string }) {
     <>
       <div
         className={cn(
-          "group/workspace-header flex h-12 flex-col justify-center",
+          "group/workspace-header flex h-12 flex-col justify-center transition-colors duration-200",
           className,
         )}
       >
@@ -34,21 +35,24 @@ export function WorkspaceHeader({ className }: { className?: string }) {
           <div className="group-has-data-[collapsible=icon]/sidebar-wrapper:-translate-y flex w-full cursor-pointer items-center justify-center">
             <Link
               href={homeHref}
-              className="block pt-1 font-serif font-semibold tracking-wide text-yellow-400 group-hover/workspace-header:hidden"
+              className="block pt-1 font-serif font-semibold tracking-wide text-yellow-400 transition-all duration-200 group-hover/workspace-header:hidden"
             >
               MF
             </Link>
-            <SidebarTrigger className="hidden pl-2 group-hover/workspace-header:block" />
+            <SidebarTrigger className="hidden transition-all duration-200 pl-2 group-hover/workspace-header:block" />
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-2">
-            <Link
-              href={homeHref}
-              className="ml-2 font-serif text-lg font-semibold tracking-wide text-yellow-400"
-            >
-              MaestroFlow
-            </Link>
-            <SidebarTrigger />
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ExecutiveIcon size="sm" className="hidden md:inline" />
+              <Link
+                href={homeHref}
+                className="ml-1 font-serif text-lg font-semibold tracking-wide text-yellow-400 transition-all duration-200 hover:text-amber-300"
+              >
+                MaestroFlow
+              </Link>
+            </div>
+            <SidebarTrigger className="transition-all duration-200" />
           </div>
         )}
       </div>

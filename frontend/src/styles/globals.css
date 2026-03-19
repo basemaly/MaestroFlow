@@ -300,6 +300,17 @@
     @apply bg-background text-foreground;
   }
 
+  /* Smooth transitions for better interactive flow */
+  button,
+  a,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    @apply transition-colors duration-150 ease-out;
+  }
+}
+
   .container-md {
     width: 100%;
     @media (width >= 40rem) {

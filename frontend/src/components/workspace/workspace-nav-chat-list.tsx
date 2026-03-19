@@ -27,6 +27,7 @@ function NavItem({
   isActive,
   isSidebarOpen,
   iconClassName,
+  isMusicalIcon = false,
 }: {
   href: string;
   icon: React.ElementType;
@@ -34,6 +35,7 @@ function NavItem({
   isActive: boolean;
   isSidebarOpen: boolean;
   iconClassName?: string;
+  isMusicalIcon?: boolean;
 }) {
   return (
     <SidebarMenuItem>
@@ -41,7 +43,11 @@ function NavItem({
         <TooltipTrigger asChild>
           <SidebarMenuButton isActive={isActive} asChild>
             <Link className="text-muted-foreground" href={href}>
-              <Icon className={iconClassName} />
+              {isMusicalIcon ? (
+                <Icon size="lg" className={iconClassName} />
+              ) : (
+                <Icon className={iconClassName} />
+              )}
               <span>{label}</span>
             </Link>
           </SidebarMenuButton>
@@ -88,6 +94,7 @@ export function WorkspaceNavChatList() {
           isActive={pathname.startsWith("/workspace/executive")}
           isSidebarOpen={isSidebarOpen}
           iconClassName="text-amber-500"
+          isMusicalIcon
         />
         <NavItem
           href="/workspace/chats"
