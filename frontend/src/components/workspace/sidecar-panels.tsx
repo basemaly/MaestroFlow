@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -62,18 +62,14 @@ function formatBrowserAction(action: BrowserJobAction): string {
 export function ExecutiveSidecarPanel() {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      {/* OpenVikingCard disabled: /api/openviking/config not implemented */}
-      {/* <OpenVikingCard /> */}
-      {/* ActivepiecesCard disabled: /api/activepieces endpoints not implemented */}
-      {/* <ActivepiecesCard /> */}
-      {/* BrowserRuntimeCard disabled: /api/browser-runtime/config not implemented */}
-      {/* <BrowserRuntimeCard /> */}
-      {/* StateSnapshotDiffPanel disabled: /api/state endpoints not implemented */}
-      {/* <StateSnapshotDiffPanel
+      <MemoizedOpenVikingCard />
+      <MemoizedActivepiecesCard />
+      <MemoizedBrowserRuntimeCard />
+      <MemoizedStateSnapshotDiffPanel
         title="StateWeave snapshots"
         description="Snapshot and compare long-running project or experiment state."
         scope="experiment"
-      /> */}
+      />
     </div>
   );
 }
@@ -586,3 +582,9 @@ export function StateSnapshotDiffPanel({
     </Card>
   );
 }
+
+// Memoized versions for optimal sidebar re-render performance
+const MemoizedOpenVikingCard = memo(OpenVikingCard);
+const MemoizedActivepiecesCard = memo(ActivepiecesCard);
+const MemoizedBrowserRuntimeCard = memo(BrowserRuntimeCard);
+const MemoizedStateSnapshotDiffPanel = memo(StateSnapshotDiffPanel);
