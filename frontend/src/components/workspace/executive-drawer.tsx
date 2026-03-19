@@ -135,8 +135,8 @@ function ExecutiveAgentLifecycle() {
   const projectsQuery = useQuery({
     queryKey: ["executive", "projects", "drawer"],
     queryFn: () => listProjects(),
-    staleTime: 15_000,
-    refetchInterval: 15_000,
+    staleTime: 45_000, // Reduced from 15s: projects list doesn't change frequently
+    refetchInterval: 45_000, // Reduced from 15s: same reason
   });
 
   const launchMutation = useMutation({

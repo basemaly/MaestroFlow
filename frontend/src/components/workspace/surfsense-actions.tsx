@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLinkIcon, Loader2Icon, SearchIcon, WavesIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -146,7 +146,7 @@ function describeSearchSpace(
   return searchSpaceNameById.get(id) ?? `Space ${id}`;
 }
 
-export function SurfSenseActions() {
+function SurfSenseActionsComponent() {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -536,5 +536,6 @@ export function SurfSenseActions() {
       )}
     </div>
   );
-
 }
+
+export const SurfSenseActions = memo(SurfSenseActionsComponent);

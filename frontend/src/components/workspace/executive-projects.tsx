@@ -120,9 +120,10 @@ function ProjectDetail({ projectId }: { projectId: string }) {
     queryFn: () => getProject(projectId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      if (status === "running") return 8_000;
-      if (status === "waiting_approval") return 15_000;
-      return 30_000;
+      // Reduced intervals: running 8s→15s, approval 15s→30s, other 30s→60s
+      if (status === "running") return 15_000; // More breathing room for running projects
+      if (status === "waiting_approval") return 30_000; // Approval status is important but not urgent
+      return 60_000; // Completed/idle projects checked less frequently
     },
   });
 
@@ -300,7 +301,7 @@ export function ExecutiveProjects() {
   const projectsQuery = useQuery({
     queryKey: ["executive", "projects"],
     queryFn: () => listProjects(),
-    refetchInterval: 15_000,
+    refetchInterval: 45_000, // Reduced from 15s: projects list is relatively static
   });
 
   const projects = projectsQuery.data?.projects ?? [];

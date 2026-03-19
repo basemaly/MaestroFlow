@@ -153,22 +153,22 @@ export function ExecutiveConsole() {
   const statusQuery = useQuery({
     queryKey: ["executive", "status"],
     queryFn: getExecutiveStatus,
-    refetchInterval: 20_000,
+    refetchInterval: 60_000, // Reduced from 20s: system status changes less frequently
   });
   const advisoryQuery = useQuery({
     queryKey: ["executive", "advisory"],
     queryFn: getExecutiveAdvisory,
-    refetchInterval: 20_000,
+    refetchInterval: 60_000, // Reduced from 20s: advice can be less frequent
   });
   const approvalsQuery = useQuery({
     queryKey: ["executive", "approvals"],
     queryFn: getExecutiveApprovals,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000, // Reduced from 10s: approvals need refresh but not too frequent
   });
   const auditQuery = useQuery({
     queryKey: ["executive", "audit"],
     queryFn: getExecutiveAudit,
-    refetchInterval: 10_000,
+    refetchInterval: 60_000, // Reduced from 10s: audit trail is read-only historical data
   });
   const settingsQuery = useQuery({
     queryKey: ["executive", "settings"],
