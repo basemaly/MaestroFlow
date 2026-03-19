@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -158,6 +158,7 @@ export function AutoresearchPageClient({
   );
   const [workflowMutationCount, setWorkflowMutationCount] = useState("3");
   const [workflowBrowserRuntime, setWorkflowBrowserRuntime] = useState<BrowserRuntimeChoice>("auto");
+  const [isMounted, setIsMounted] = useState(false);
   const [designPrompt, setDesignPrompt] = useState(
     "Refine this pricing card so the typography hierarchy, spacing rhythm, CTA emphasis, and visual polish feel intentional and premium.",
   );
@@ -174,6 +175,10 @@ export function AutoresearchPageClient({
   <button class="mt-6 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white">Start trial</button>
 </section>`,
   );
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const { data: registryData } = useAutoresearchRegistry(registry);
   const { data: experimentsData = [] } = useAutoresearchExperiments(experiments);
   const selectedExperimentId = searchParams.get("experiment") ?? experimentsData[0]?.experiment_id;
@@ -578,7 +583,11 @@ export function AutoresearchPageClient({
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {experimentsData.length === 0 ? (
+            {!isMounted ? (
+              <div className="text-muted-foreground rounded-2xl border border-dashed p-5 text-sm">
+                Loading experiments...
+              </div>
+            ) : experimentsData.length === 0 ? (
               <div className="text-muted-foreground rounded-2xl border border-dashed p-5 text-sm">
                 No experiments yet. Launch a bounded run from the left, then review the candidates here.
               </div>
