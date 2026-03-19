@@ -1,6 +1,6 @@
 "use client";
 
-import { dynamic } from "next/dynamic";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 
 import { ExternalServiceBanner } from "@/components/workspace/external-service-banner";
