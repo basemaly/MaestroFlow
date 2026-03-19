@@ -396,7 +396,6 @@
     background-clip: text;
     -webkit-text-fill-color: transparent;
   }
-}
 
 :root {
   --container-width-xs: calc(var(--spacing) * 72);
