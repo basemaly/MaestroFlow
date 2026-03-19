@@ -1,14 +1,14 @@
 "use client";
 
-import { useMemo, useRef, useState, useEffect } from "react";
-import { BookIcon, Loader2Icon, CheckIcon, XIcon } from "lucide-react";
+import { BookIcon, CheckIcon, Loader2Icon, XIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -16,14 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
 import {
+  extractBrowseMetadata,
   getCalibreStatus,
   queryCalibre,
-  extractBrowseMetadata,
 } from "@/core/calibre/api";
 import type {
-  CalibreBook,
   CalibreBrowseMetadata,
   CalibreBookSelection,
   CalibreQueryResponse,
@@ -93,7 +91,7 @@ export function CalibreActions() {
       }
     };
 
-    loadStatus();
+    void loadStatus();
 
     return () => {
       if (configAbortRef.current) configAbortRef.current.abort();
@@ -155,9 +153,7 @@ export function CalibreActions() {
     setLoadingResults(true);
 
     try {
-      const calibreIds = selectedBooks.map((b) => String(b.id));
-
-      // TODO: Call SurfSense ingest endpoint with calibreIds
+      // TODO: Call SurfSense ingest endpoint with selected book IDs
       // This would typically be: POST /api/surfsense/ingest with { calibre_ids: [...] }
       // For now, just show success toast
 
@@ -240,7 +236,7 @@ export function CalibreActions() {
             <div className="flex items-center gap-2 text-sm">
               <XIcon className="size-4 text-red-600" />
               <span className="text-muted-foreground">
-                {config?.error?.message || "Calibre not available"}
+                {config?.error?.message ?? "Calibre not available"}
               </span>
             </div>
           )}
@@ -255,7 +251,7 @@ export function CalibreActions() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSearch();
+                  if (e.key === "Enter") void handleSearch();
                 }}
                 disabled={loadingResults}
                 className="text-sm"

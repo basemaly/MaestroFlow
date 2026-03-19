@@ -1,8 +1,8 @@
 "use client";
 
+import { ArrowRightIcon, MessagesSquareIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRightIcon, MessagesSquareIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

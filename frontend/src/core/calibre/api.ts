@@ -1,4 +1,5 @@
 import { getBackendBaseURL } from "@/core/config";
+
 import type {
   CalibreBook,
   CalibreBrowseMetadata,
@@ -36,7 +37,7 @@ export async function queryCalibre(input: {
 }): Promise<CalibreQueryResponse> {
   const body: Record<string, unknown> = {
     query: input.query,
-    top_k: input.top_k || 8,
+    top_k: input.top_k ?? 8,
   };
 
   if (input.filters) {

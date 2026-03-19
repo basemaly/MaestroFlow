@@ -401,8 +401,12 @@ export default function AgentChatPage() {
                             if (ta) {
                               const newText = ta.value.replace(/@([A-Za-z0-9_-]*)$/, `@${a.name} `);
                               // Trigger a native input event so the controlled component updates
-                              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-                              nativeInputValueSetter?.call(ta, newText);
+                              // eslint-disable-next-line @typescript-eslint/unbound-method
+                              const setSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+                              if (setSetter) {
+                                // Using Reflect.apply to safely call the setter
+                                Reflect.apply(setSetter, ta, [newText]);
+                              }
                               ta.dispatchEvent(new Event("input", { bubbles: true }));
                             }
                             setMentionSearch(null);

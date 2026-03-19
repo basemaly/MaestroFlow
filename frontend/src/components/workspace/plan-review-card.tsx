@@ -156,7 +156,7 @@ export function PlanReviewCard({
       )}
 
       {/* Recommendations — shown when LLM produced tool/model/mode suggestions */}
-      {rec && (rec.mode || rec.model_name || rec.thinking_enabled || rec.tools.length > 0 || rec.subagent_count > 0) && (
+      {rec && (Boolean(rec.mode) || Boolean(rec.model_name) || rec.thinking_enabled || rec.tools.length > 0 || rec.subagent_count > 0) && (
         <div className="border-b border-border/60 px-4 py-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/60">
             <CpuIcon className="size-3.5" />
