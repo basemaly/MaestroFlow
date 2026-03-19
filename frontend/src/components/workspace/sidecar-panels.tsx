@@ -62,14 +62,18 @@ function formatBrowserAction(action: BrowserJobAction): string {
 export function ExecutiveSidecarPanel() {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <OpenVikingCard />
-      <ActivepiecesCard />
-      <BrowserRuntimeCard />
-      <StateSnapshotDiffPanel
+      {/* OpenVikingCard disabled: /api/openviking/config not implemented */}
+      {/* <OpenVikingCard /> */}
+      {/* ActivepiecesCard disabled: /api/activepieces endpoints not implemented */}
+      {/* <ActivepiecesCard /> */}
+      {/* BrowserRuntimeCard disabled: /api/browser-runtime/config not implemented */}
+      {/* <BrowserRuntimeCard /> */}
+      {/* StateSnapshotDiffPanel disabled: /api/state endpoints not implemented */}
+      {/* <StateSnapshotDiffPanel
         title="StateWeave snapshots"
         description="Snapshot and compare long-running project or experiment state."
         scope="experiment"
-      />
+      /> */}
     </div>
   );
 }
