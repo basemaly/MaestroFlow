@@ -44,7 +44,7 @@ export function RecentWritingActivityList() {
   const activities: WritingActivityItem[] = [
     ...(documentsData?.documents ?? []).map((document) => ({
       key: `document-${document.doc_id}`,
-      href: `/workspace/docs/${document.doc_id}`,
+      href: `/workspace/composer/${document.doc_id}`,
       title: document.title,
       meta: `${document.status} · ${formatTimeAgo(document.updated_at)}`,
       updatedAt: document.updated_at,

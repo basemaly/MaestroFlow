@@ -86,7 +86,7 @@ export function RecentActivityList() {
     for (const document of documentsData?.documents ?? []) {
       items.push({
         key: `document-${document.doc_id}`,
-        href: `/workspace/docs/${document.doc_id}`,
+        href: `/workspace/composer/${document.doc_id}`,
         title: document.title,
         meta: `${document.status} · ${formatTimeAgo(document.updated_at)}`,
         updatedAt: document.updated_at,

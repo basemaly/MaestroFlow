@@ -354,7 +354,7 @@ export function DocEditStudio({
       toast.success(
         nextRun.status === "awaiting_selection"
           ? "Parallel edits are ready for review"
-          : "Document edit run completed",
+          : "Revision run completed",
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -412,7 +412,7 @@ export function DocEditStudio({
         source_run_id: run?.run_id,
         source_version_id: version?.version_id ?? versionId,
       });
-      void router.push(`/workspace/docs/${documentRecord.doc_id}`);
+      void router.push(`/workspace/composer/${documentRecord.doc_id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
@@ -426,7 +426,7 @@ export function DocEditStudio({
         <div className="space-y-5">
           <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-4">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-medium">Document</div>
+              <div className="text-sm font-medium">Source Draft</div>
               <Button
                 size="sm"
                 variant="outline"
@@ -829,7 +829,7 @@ export function DocEditStudio({
                   disabled={createDocument.isPending}
                 >
                   <ArrowUpRightIcon className="mr-1.5 size-4" />
-                  Open in Block Editor
+                  Open in Composer
                 </Button>
               )}
             </div>
@@ -849,20 +849,20 @@ export function DocEditStudio({
               <div className="grid gap-4 lg:grid-cols-2">
                 <Card className="gap-3 py-4">
                   <CardHeader className="px-4">
-                    <CardTitle className="text-base">Original</CardTitle>
+                    <CardTitle className="text-base">Source Draft</CardTitle>
                   </CardHeader>
                   <CardContent className="px-4">
                     <div className="bg-muted/30 max-h-80 overflow-auto rounded-lg border p-4 text-sm leading-6 whitespace-pre-wrap">
                       {document.length > 0
                         ? document
-                        : (run?.document ?? "No original document available.")}
+                        : (run?.document ?? "No original draft available.")}
                     </div>
                   </CardContent>
                 </Card>
                 <Card className="gap-3 py-4">
                   <CardHeader className="px-4">
                     <CardTitle className="text-base">
-                      {comparedVersion ? formatSkillLabel(comparedVersion.skill_name) : "Compared Version"}
+                      {comparedVersion ? formatSkillLabel(comparedVersion.skill_name) : "Compared Draft"}
                       {comparedVersion?.model_name ? ` · ${comparedVersion.model_name}` : ""}
                     </CardTitle>
                   </CardHeader>

@@ -172,6 +172,27 @@ Prerequisite: complete the "Configuration" steps above first (`make config` and 
 
 5. **Access**: http://localhost:2027
 
+#### Local Port Policy
+
+For local development, use the same ports every time instead of guessing:
+
+| Surface | Canonical URL | Notes |
+|---|---|---|
+| Public app | `http://localhost:2027` | Primary entrypoint through nginx |
+| Frontend (direct) | `http://127.0.0.1:3010` | Next.js dev server behind nginx |
+| Gateway (direct) | `http://127.0.0.1:8001` | FastAPI gateway for custom APIs |
+| LangGraph (direct) | `http://127.0.0.1:2024` | Runtime/thread service |
+| Langfuse | `http://127.0.0.1:3000` | Reserved companion service; do not assume this is MaestroFlow |
+
+Use `make doctor` to verify that the current listeners and frontend URL wiring match this policy before debugging route or Playwright issues.
+
+Detached runtime modes:
+
+- `make dev-daemon` starts the Docker-backed detached workspace stack and keeps `2027` as the public entrypoint.
+- `make local-daemon-start` starts the split-port local dev stack in the background while still using Docker only for LangGraph/Postgres/Redis.
+- `make daemon-status` checks the Docker-backed detached stack.
+- `make local-daemon-status` checks the split-port detached stack.
+
 ### Advanced
 #### Sandbox Mode
 

@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ArrowRightIcon, MessagesSquareIcon, PlusIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -33,8 +35,27 @@ export default function ChatsPage() {
     <WorkspaceContainer>
       <WorkspaceHeader></WorkspaceHeader>
       <WorkspaceBody>
-        <div className="flex size-full flex-col">
-          <header className="flex shrink-0 items-center justify-center pt-8">
+        <div className="flex size-full flex-col bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.06),transparent_24%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.05),transparent_22%)]">
+          <header className="mx-auto flex w-full max-w-(--container-width-md) shrink-0 flex-col gap-4 px-4 pt-8">
+            <div className="rounded-3xl border border-border/70 bg-background/85 p-5 shadow-sm backdrop-blur">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                    Chat Desk
+                  </div>
+                  <div className="text-2xl font-semibold tracking-tight">{t.pages.chats}</div>
+                  <div className="max-w-2xl text-sm text-muted-foreground">
+                    Return to active threads, search old conversations, or open a fresh one when you need a clean line of work.
+                  </div>
+                </div>
+                <Button asChild>
+                  <Link href="/workspace/chats/new">
+                    <PlusIcon className="size-4" />
+                    New chat
+                  </Link>
+                </Button>
+              </div>
+            </div>
             <Input
               type="search"
               className="h-12 w-full max-w-(--container-width-md) text-xl"
@@ -47,12 +68,32 @@ export default function ChatsPage() {
           <main className="min-h-0 flex-1">
             <ScrollArea className="size-full py-4">
               <div className="mx-auto flex size-full max-w-(--container-width-md) flex-col">
-                {filteredThreads?.map((thread) => (
+                {!threads?.length ? (
+                  <div className="rounded-3xl border border-dashed border-border/80 bg-background/70 px-6 py-10 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted/60">
+                      <MessagesSquareIcon className="size-7 text-muted-foreground" />
+                    </div>
+                    <div className="mt-4 text-base font-medium">No chats yet</div>
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      Start a fresh conversation, then come back here when you want to revisit the thread.
+                    </div>
+                    <Button asChild className="mt-4">
+                      <Link href="/workspace/chats/new">
+                        Open a fresh chat
+                        <ArrowRightIcon className="size-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                ) : filteredThreads?.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-border/80 bg-background/70 px-6 py-10 text-center text-sm text-muted-foreground">
+                    No chats match that search yet.
+                  </div>
+                ) : filteredThreads?.map((thread) => (
                   <Link
                     key={thread.thread_id}
                     href={pathOfThread(thread.thread_id)}
                   >
-                    <div className="flex flex-col gap-2 border-b p-4">
+                    <div className="flex flex-col gap-2 border-b border-border/70 p-4 transition-colors hover:bg-accent/20">
                       <div>
                         <div>{titleOfThread(thread)}</div>
                       </div>

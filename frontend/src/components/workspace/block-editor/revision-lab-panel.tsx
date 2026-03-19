@@ -113,6 +113,7 @@ export function RevisionLabPanel({
     run && run.versions.length > 0
       ? (run.versions[Number(activeVersionTab)] ?? run.versions[0] ?? null)
       : null;
+  const versions = run?.versions ?? [];
 
   function handleAccept() {
     if (!selectedVersion?.output) return;
@@ -121,9 +122,9 @@ export function RevisionLabPanel({
   }
 
   return (
-    <div className="flex h-full flex-col border-l bg-background">
+    <div className="flex h-full flex-col border-l border-border/70 bg-background">
       {/* Header */}
-      <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/70 px-4">
         <div className="flex items-center gap-2">
           <FilePenLineIcon className="size-4 text-muted-foreground" />
           <span className="text-sm font-semibold">Revision Lab</span>
@@ -144,7 +145,7 @@ export function RevisionLabPanel({
       </div>
 
       {/* Config strip */}
-      <div className="shrink-0 space-y-3 border-b px-4 py-3">
+      <div className="shrink-0 space-y-3 border-b border-border/70 px-4 py-3">
         {/* Skills toggles */}
         <div className="flex flex-wrap gap-1.5">
           {SKILLS.map((skill) => (
@@ -207,7 +208,7 @@ export function RevisionLabPanel({
             ) : (
               <PlayIcon className="size-3" />
             )}
-            Run
+            Generate takes
           </Button>
         </div>
       </div>
@@ -215,33 +216,38 @@ export function RevisionLabPanel({
       {/* Results area */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!isRunning && !run && (
-          <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-            Configure skills above and click Run
+          <div className="flex h-full items-center justify-center p-6">
+            <div className="max-w-sm rounded-2xl border border-dashed border-border/80 bg-muted/20 px-5 py-6 text-center">
+              <div className="text-sm font-medium">Send this passage through Revision Lab</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                Pick editorial voices, choose a workflow, then compare alternate takes side by side.
+              </div>
+            </div>
           </div>
         )}
 
         {isRunning && (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2Icon className="size-4 animate-spin" />
-            Generating versions...
+            Generating alternate takes...
           </div>
         )}
 
-        {!isRunning && run && run.versions.length === 0 && (
+        {!isRunning && run?.versions.length === 0 && (
           <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
             No versions were returned.
           </div>
         )}
 
-        {!isRunning && run && run.versions.length > 0 && (
+        {!isRunning && (run?.versions.length ?? 0) > 0 && (
           <Tabs
             value={activeVersionTab}
             onValueChange={setActiveVersionTab}
             className="flex h-full flex-col"
           >
-            <div className="shrink-0 overflow-x-auto border-b">
+            <div className="shrink-0 overflow-x-auto border-b border-border/70">
               <TabsList className="h-9 rounded-none border-0 bg-transparent p-0">
-                {run.versions.map((v, i) => (
+                {versions.map((v, i) => (
                   <TabsTrigger
                     key={v.version_id ?? i}
                     value={String(i)}
@@ -267,7 +273,7 @@ export function RevisionLabPanel({
               </TabsList>
             </div>
 
-            {run.versions.map((v, i) => (
+            {versions.map((v, i) => (
               <TabsContent
                 key={v.version_id ?? i}
                 value={String(i)}
@@ -329,13 +335,13 @@ export function RevisionLabPanel({
       </div>
 
       {/* Footer */}
-      <div className="flex h-16 shrink-0 items-center border-t px-4">
+      <div className="flex h-16 shrink-0 items-center border-t border-border/70 px-4">
         <Button
           className="w-full"
           disabled={!selectedVersion?.output}
           onClick={handleAccept}
         >
-          Accept into editor →
+          {isSelection ? "Accept into Composer selection" : "Accept into Composer draft"} →
         </Button>
       </div>
     </div>

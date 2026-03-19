@@ -36,7 +36,7 @@ export default function DocEditsPage() {
         <ExternalServiceBanner />
         <div className="grid size-full min-h-0 grid-cols-1 gap-6 p-6 xl:grid-cols-[20rem_minmax(0,1fr)]">
           <div className="min-h-0">
-            <Card className="h-full py-4">
+            <Card className="h-full border-border/70 bg-background/90 py-4 shadow-sm">
               <CardHeader className="px-4">
                 <div className="space-y-3">
                   <div className="space-y-1">
@@ -45,15 +45,18 @@ export default function DocEditsPage() {
                       {t.sidebar.docEdits}
                     </CardTitle>
                     <div className="text-muted-foreground text-sm">
-                      Use this for heavier compare-and-choose sessions. For normal drafting, stay in Documents and open Revision Lab only when needed.
+                      Use this for heavier compare-and-choose sessions. For normal drafting, stay in Composer and open Revision Lab only when needed.
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      Start from a source draft, generate competing versions, then route the winner back into Composer.
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{runs.length} runs</Badge>
                     <Button asChild size="sm" variant="outline">
-                      <Link href="/workspace/docs">
+                      <Link href="/workspace/composer">
                         <BookOpenTextIcon className="size-4" />
-                        Back to Documents
+                        Return to Composer
                       </Link>
                     </Button>
                   </div>
@@ -72,17 +75,17 @@ export default function DocEditsPage() {
                 )}
                 {!isLoading && isError && (
                   <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-                    Could not load recent doc edit runs.
+                    Could not load recent revision runs.
                   </div>
                 )}
                 {!isLoading && !isError && runs.length === 0 && (
                   <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-                    No doc edit runs yet.
+                    No revision runs yet. Start one from Composer or paste a source draft here.
                   </div>
                 )}
                 {!isLoading && !isError && runs.map((run) => (
                   <Link key={run.run_id} href={`/workspace/doc-edits/${run.run_id}`}>
-                    <div className="rounded-xl border p-3 text-sm transition-colors hover:bg-accent/40">
+                    <div className="rounded-xl border border-border/70 bg-background/70 p-3 text-sm transition-colors hover:bg-accent/30">
                       <div className="flex items-start justify-between gap-3">
                         <div className="font-medium">{run.title ?? run.run_id}</div>
                         <ArrowRightIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />

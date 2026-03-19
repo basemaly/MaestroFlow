@@ -132,6 +132,7 @@ function nameOfSegment(
   if (segment === "chats") return t.breadcrumb.chats;
   if (segment === "agents") return t.breadcrumb.agents;
   if (segment === "docs") return t.breadcrumb.documents;
+  if (segment === "composer") return t.breadcrumb.documents;
   if (segment === "doc-edits") return t.breadcrumb.docEdits;
   if (segment === "autoresearch") return t.breadcrumb.autoresearch;
   if (segment === "executive") return t.breadcrumb.executive;

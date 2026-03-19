@@ -359,7 +359,7 @@ export function AutoresearchPageClient({
                     disabled={createMutation.isPending}
                   >
                     <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
-                    Start
+                    Launch run
                   </Button>
                 </div>
               </div>
@@ -434,7 +434,7 @@ export function AutoresearchPageClient({
               disabled={createWorkflowMutation.isPending || !selectedWorkflowTemplateId}
             >
               <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
-              Start workflow optimization
+              Launch workflow probe
             </Button>
           </CardContent>
         </Card>
@@ -492,7 +492,7 @@ export function AutoresearchPageClient({
               disabled={createDesignMutation.isPending || !designPrompt.trim() || !designCode.trim()}
             >
               <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
-              Start design optimization
+              Launch design probe
             </Button>
           </CardContent>
         </Card>
@@ -549,7 +549,7 @@ export function AutoresearchPageClient({
           <CardContent className="space-y-3">
             {experimentsData.length === 0 ? (
               <div className="text-muted-foreground rounded-2xl border border-dashed p-5 text-sm">
-                No experiments yet. Start one explicitly from the left.
+                No experiments yet. Launch a bounded run from the left, then review the candidates here.
               </div>
             ) : (
               experimentsData.map((experiment) => (

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from src.gateway.config import get_gateway_config
 from src.gateway.routers import (
     agents,
     artifacts,
@@ -16,6 +18,7 @@ from src.gateway.routers import (
     mcp,
     memory,
     models,
+    pinboard,
     planning,
     quality,
     skills,
@@ -75,6 +78,10 @@ OPENAPI_TAGS = [
         "description": "Manage IM channel integrations (Feishu, Slack, Telegram)",
     },
     {
+        "name": "pinboard",
+        "description": "Pinboard bookmark search and SurfSense import integration",
+    },
+    {
         "name": "planning",
         "description": "Plan review, Executive first-turn steering, and clarification flows for complex tasks",
     },
@@ -107,6 +114,8 @@ OPENAPI_TAGS = [
 
 def configure_gateway_app(app: FastAPI) -> FastAPI:
     """Attach gateway metadata, routers, and the root health route."""
+    gateway_config = get_gateway_config()
+
     app.title = "DeerFlow API Gateway"
     app.description = """
 ## DeerFlow API Gateway
@@ -133,6 +142,14 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
     app.openapi_url = "/openapi.json"
     app.openapi_tags = OPENAPI_TAGS
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=gateway_config.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(models.router)
     app.include_router(mcp.router)
     app.include_router(langgraph_compat.router)
@@ -149,6 +166,7 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
     app.include_router(doc_editing.router)
     app.include_router(documents.router)
     app.include_router(surfsense.router)
+    app.include_router(pinboard.router)
     app.include_router(executive.router)
     app.include_router(planning.router)
     app.include_router(health.router)

@@ -542,11 +542,15 @@ function PasteSection({ onAdd }: { onAdd: (b: Omit<CollageBlock, "id" | "addedAt
 
 function MaterialBoard({ onAdd }: { onAdd: (b: Omit<CollageBlock, "id" | "addedAt">) => void }) {
   return (
-    <div className="flex h-full flex-col border-r">
-      <div className="shrink-0 border-b px-3 py-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Material
-        </span>
+    <div className="flex h-full flex-col rounded-l-3xl border-r border-border/70 bg-background/92 shadow-sm">
+      <div className="shrink-0 border-b border-border/70 px-3 py-3">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+          Material Drawer
+        </div>
+        <div className="mt-1 text-sm font-medium">Fragments and source pulls</div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          Gather notes, quotes, excerpts, and search hits before arranging them.
+        </div>
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-3 p-3">
@@ -566,6 +570,7 @@ function BlockCard({
   block,
   isSelected,
   isDragTarget,
+  isDragging,
   onSelect,
   onRemove,
   onDragStart,
@@ -575,6 +580,7 @@ function BlockCard({
   block: CollageBlock;
   isSelected: boolean;
   isDragTarget: boolean;
+  isDragging: boolean;
   onSelect: () => void;
   onRemove: () => void;
   onDragStart: (id: string) => void;
@@ -591,10 +597,11 @@ function BlockCard({
       onDrop={(e) => { e.preventDefault(); onDrop(block.id); }}
       onClick={onSelect}
       className={cn(
-        "rounded-lg border border-l-2 bg-card p-3 text-xs cursor-pointer select-none transition-all",
+        "cursor-pointer select-none rounded-2xl border border-l-2 border-border/70 bg-background/92 p-3 text-xs shadow-sm transition-all",
         SOURCE_BORDER[block.source],
-        isSelected && "ring-2 ring-primary/50 bg-primary/5",
-        isDragTarget && "ring-2 ring-primary/50 bg-primary/5",
+        isDragging && "opacity-55",
+        isSelected && "ring-2 ring-primary/50 bg-primary/5 shadow-md",
+        isDragTarget && "ring-2 ring-primary/50 bg-primary/5 shadow-md",
       )}
     >
       <div className="flex items-start gap-2">
@@ -666,35 +673,45 @@ function AssemblyCanvas({
   }
 
   return (
-    <div className="flex h-full flex-col border-r">
-      <div className="shrink-0 flex items-center justify-between gap-2 border-b px-3 py-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="truncate text-sm font-medium">{initialTitle}</span>
-          {blocks.length > 0 && (
-            <Badge variant="secondary" className="h-4 px-1 text-[10px] shrink-0">
-              {blocks.length}
-            </Badge>
-          )}
+    <div className="flex h-full flex-col border-r border-border/70 bg-[radial-gradient(circle_at_top,rgba(217,119,6,0.08),transparent_28%)]">
+      <div className="shrink-0 border-b border-border/70 px-3 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="truncate text-sm font-medium">{initialTitle}</span>
+            {blocks.length > 0 && (
+              <Badge variant="secondary" className="h-4 px-1 text-[10px] shrink-0">
+                {blocks.length}
+              </Badge>
+            )}
+          </div>
+          <Button
+            size="sm"
+            className="h-8 shrink-0 gap-1 rounded-xl px-3 text-xs"
+            disabled={blocks.length === 0 || synthesizing}
+            onClick={onSynthesize}
+          >
+            {synthesizing ? (
+              <Loader2Icon className="size-3 animate-spin" />
+            ) : (
+              <SparklesIcon className="size-3" />
+            )}
+            Stitch draft
+          </Button>
         </div>
-        <Button
-          size="sm"
-          className="h-7 shrink-0 gap-1 text-xs"
-          disabled={blocks.length === 0 || synthesizing}
-          onClick={onSynthesize}
-        >
-          {synthesizing ? (
-            <Loader2Icon className="size-3 animate-spin" />
-          ) : (
-            <SparklesIcon className="size-3" />
-          )}
-          Synthesize
-        </Button>
+        <div className="mt-2 text-xs text-muted-foreground">
+          Arrange blocks in rough sequence, then stitch them into a working draft.
+        </div>
+        {blocks.length > 1 ? (
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            Drag fragments by the grip to reorder the collage.
+          </div>
+        ) : null}
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-2 p-3">
           {blocks.length === 0 ? (
-            <div className="rounded-lg border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
-              Add material from the left panel, paste notes, or drop content here.
+            <div className="rounded-2xl border border-dashed border-border/80 bg-background/60 px-4 py-8 text-center text-xs text-muted-foreground">
+              Pull fragments from the drawer, paste loose notes, then stack them here in working order.
             </div>
           ) : (
             blocks.map((block) => (
@@ -703,6 +720,7 @@ function AssemblyCanvas({
                 block={block}
                 isSelected={selectedBlockId === block.id}
                 isDragTarget={dragOverId === block.id}
+                isDragging={draggingId === block.id}
                 onSelect={() => onSelectBlock(block.id)}
                 onRemove={() => onRemoveBlock(block.id)}
                 onDragStart={(id) => setDraggingId(id)}
@@ -748,7 +766,7 @@ function Inspector({
     try {
       await updateDocument.mutateAsync({ content_markdown: newContent });
       onSwitchToEditor();
-      toast.success("Inserted into editor");
+      toast.success("Dropped into Composer");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to insert");
     }
@@ -766,11 +784,12 @@ function Inspector({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b px-3 py-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="flex h-full flex-col rounded-r-3xl bg-background/92 shadow-sm">
+      <div className="shrink-0 border-b border-border/70 px-3 py-3">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
           Inspector
-        </span>
+        </div>
+        <div className="mt-1 text-sm font-medium">Selected fragment and desk stats</div>
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-4 p-3">
@@ -785,7 +804,7 @@ function Inspector({
                   {selectedBlock.content.trim().split(/\s+/).filter(Boolean).length} words
                 </div>
               </div>
-              <ScrollArea className="max-h-48 rounded border bg-muted/30">
+              <ScrollArea className="max-h-48 rounded-2xl border border-border/70 bg-muted/20">
                 <pre className="whitespace-pre-wrap p-2 text-xs">{selectedBlock.content}</pre>
               </ScrollArea>
               <Button
@@ -798,7 +817,7 @@ function Inspector({
                 {updateDocument.isPending ? (
                   <Loader2Icon className="size-3 animate-spin" />
                 ) : null}
-                Insert into editor
+                Append to Composer draft
               </Button>
               <Button
                 size="sm"
@@ -807,16 +826,21 @@ function Inspector({
                 onClick={() => onRemoveBlock(selectedBlock.id)}
               >
                 <XIcon className="size-3" />
-                Remove from canvas
+                Remove from collage
               </Button>
               <div className="h-px bg-border" />
+            </div>
+          )}
+          {!selectedBlock && (
+            <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
+              Select a fragment in the collage to inspect it, drop it into Composer, or remove it from the stack.
             </div>
           )}
 
           {/* Canvas stats */}
           <div className="space-y-2">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Canvas
+              Collage
             </div>
             <div className="space-y-1 text-xs text-muted-foreground">
               <div>{blocks.length} block{blocks.length !== 1 ? "s" : ""}</div>
@@ -852,7 +876,7 @@ function Inspector({
               className="w-full h-7 text-xs"
               onClick={onSwitchToEditor}
             >
-              Switch to Editor
+              Return to Composer draft
             </Button>
             <Button
               size="sm"
@@ -862,7 +886,7 @@ function Inspector({
               onClick={handleExportMarkdown}
             >
               <DownloadIcon className="size-3" />
-              Export all as Markdown
+              Export collage as Markdown
             </Button>
           </div>
         </div>
@@ -893,6 +917,7 @@ export function CollageWorkspace({ document, onSwitchToEditor }: CollageWorkspac
       addedAt: Date.now(),
     };
     setBlocks((prev) => [...prev, block]);
+    setSelectedBlockId(block.id);
   }
 
   function removeBlock(id: string) {
@@ -927,13 +952,13 @@ export function CollageWorkspace({ document, onSwitchToEditor }: CollageWorkspac
           "Synthesize these source blocks into a single coherent, well-structured document. Preserve the key ideas from each source. Remove redundancy.",
       });
       await updateDocument.mutateAsync({ content_markdown: result.transformed_markdown });
-      toast.success(`Synthesized with ${result.model_name}`);
+      toast.success(`Draft stitched with ${result.model_name}`);
       onSwitchToEditor();
     } catch {
       // Fallback: join blocks and switch
       try {
         await updateDocument.mutateAsync({ content_markdown: combined });
-        toast.success("Blocks joined and saved");
+        toast.success("Fragments joined into a draft");
         onSwitchToEditor();
       } catch (err2) {
         toast.error(err2 instanceof Error ? err2.message : "Synthesize failed");
@@ -944,7 +969,7 @@ export function CollageWorkspace({ document, onSwitchToEditor }: CollageWorkspac
   }
 
   return (
-    <div className="grid size-full min-h-0 grid-cols-[280px_minmax(0,1fr)_280px]">
+    <div className="grid size-full min-h-0 gap-0 overflow-hidden rounded-3xl border border-border/70 bg-background/70 grid-cols-[280px_minmax(0,1fr)_280px] shadow-sm">
       <MaterialBoard onAdd={addBlock} />
       <AssemblyCanvas
         docTitle={document.title}

@@ -8,6 +8,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_DIR="$REPO_ROOT/.run"
 SUPERVISOR_LOG="$REPO_ROOT/logs/supervisor.log"
+export DEER_FLOW_ROOT="${DEER_FLOW_ROOT:-$REPO_ROOT}"
 DOCKER_COMPOSE_CMD=(docker compose -p deer-flow-dev -f "$REPO_ROOT/docker/docker-compose-dev.yaml")
 
 mkdir -p "$PID_DIR" "$REPO_ROOT/logs"
@@ -29,6 +30,9 @@ start_daemon() {
     echo "MaestroFlow detached stack is already running."
     exit 0
   fi
+
+  # The split-port local detached stack owns the same public port; tear it down first.
+  "$REPO_ROOT/scripts/local-daemon.sh" stop >/dev/null 2>&1 || true
 
   cd "$REPO_ROOT"
   export DEER_FLOW_ROOT="${DEER_FLOW_ROOT:-$REPO_ROOT}"

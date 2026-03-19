@@ -62,6 +62,19 @@ detect_sandbox_mode() {
     fi
 }
 
+prewarm_routes() {
+    local base_url="http://127.0.0.1:2027"
+    local routes=(
+        "/workspace/chats"
+        "/workspace/composer"
+    )
+
+    echo -e "${BLUE}Prewarming frontend routes...${NC}"
+    for route in "${routes[@]}"; do
+        curl -fsS --max-time 45 "${base_url}${route}" >/dev/null 2>&1 || true
+    done
+}
+
 # Cleanup function for Ctrl+C
 cleanup() {
     echo ""
@@ -140,6 +153,7 @@ start() {
     
     echo "Building and starting containers..."
     cd "$DOCKER_DIR" && $COMPOSE_CMD up --build -d --remove-orphans $services
+    prewarm_routes
     echo ""
     echo "=========================================="
     echo "  DeerFlow Docker is starting!"

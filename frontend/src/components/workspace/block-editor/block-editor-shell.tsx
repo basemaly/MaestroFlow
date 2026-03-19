@@ -104,7 +104,7 @@ function VersionCard({
           className="mt-1 h-6 px-2 text-xs"
           onClick={() => onInsert(version.output!)}
         >
-          Insert at cursor
+          Insert into draft
         </Button>
       )}
     </div>
@@ -115,12 +115,12 @@ function VersionCard({
 function HistoryPanel({ onInsert }: { onInsert: (text: string) => void }) {
   const { data, isLoading } = useDocEditRuns();
   if (isLoading) {
-    return <div className="text-muted-foreground text-xs py-2">Loading history...</div>;
+    return <div className="text-muted-foreground py-2 text-xs">Loading revision history...</div>;
   }
   if (!data?.runs?.length) {
     return (
       <div className="text-muted-foreground text-xs">
-        No doc-edit runs yet. Use <em>Compare Draft</em> to generate versions.
+        No revision sessions yet. Use <em>Revision Lab</em> to generate versions.
       </div>
     );
   }
@@ -192,9 +192,9 @@ function HistoryRunStub({
       </button>
       {expanded && (
         <div className="border-t px-3 pb-3 pt-2 space-y-2">
-          {loading && <div className="text-muted-foreground">Loading versions...</div>}
+          {loading && <div className="text-muted-foreground">Loading run variants...</div>}
           {!loading && displayRun.versions.length === 0 && (
-            <div className="text-muted-foreground">No versions available.</div>
+            <div className="text-muted-foreground">No variants available for this run.</div>
           )}
           {displayRun.versions.map((v, i) => (
             <VersionCard key={v.version_id ?? i} version={v} onInsert={onInsert} />
@@ -203,7 +203,7 @@ function HistoryRunStub({
             href={`/workspace/doc-edits/${run.run_id}`}
             className="inline-flex items-center gap-1 text-primary hover:underline"
           >
-            Open in Revision Lab
+            Open full run in Revision Lab
             <ArrowUpRightIcon className="size-3" />
           </Link>
         </div>
@@ -264,6 +264,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
     () => snapshots.find((snapshot) => snapshot.snapshot_id === selectedSnapshotId) ?? snapshots[0] ?? null,
     [selectedSnapshotId, snapshots],
   );
+  const selectionPreview = editorRef.current?.getSelectionMarkdown().trim() ?? "";
 
   useEffect(() => {
     if (!readyRef.current) {
@@ -278,7 +279,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
       setSaveState("saving");
       updateDocument
         .mutateAsync({
-          title: title.trim() || "Untitled document",
+          title: title.trim() || "Untitled piece",
           content_markdown: markdown,
           editor_json: editorJson,
           writing_memory: writingMemory,
@@ -329,14 +330,14 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
     try {
       setSaveState("saving");
       await updateDocument.mutateAsync({
-        title: title.trim() || "Untitled document",
+        title: title.trim() || "Untitled piece",
         content_markdown: markdown,
         editor_json: editorJson,
         writing_memory: writingMemory,
         status: "active",
       });
       setSaveState("saved");
-      toast.success("Document saved");
+      toast.success("Piece saved");
     } catch (error) {
       setSaveState("dirty");
       toast.error(error instanceof Error ? error.message : String(error));
@@ -385,7 +386,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
     const url = URL.createObjectURL(blob);
     const anchor = window.document.createElement("a");
     anchor.href = url;
-    anchor.download = `${title.trim() || "document"}.md`;
+    anchor.download = `${title.trim() || "untitled-piece"}.md`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -418,7 +419,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
       });
       setQuickActionName("");
       setQuickActionInstruction("");
-      toast.success("Saved quick action");
+      toast.success("Desk card saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
@@ -433,7 +434,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
   async function handleDeleteQuickAction(actionId: string) {
     try {
       await deleteQuickAction.mutateAsync(actionId);
-      toast.success("Quick action removed");
+      toast.success("Desk card removed");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
@@ -473,24 +474,27 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
     <div className={`grid size-full min-h-0 grid-cols-1 gap-6 ${revisionLab ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" : "xl:grid-cols-[minmax(0,1fr)_22rem]"}`}>
       {/* Editor column */}
       <div className="min-h-0 space-y-4">
-        <Card className="gap-4 py-4">
+        <Card className="gap-4 border-border/70 bg-background/92 py-4 shadow-sm">
           <CardHeader className="px-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-2">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+                  Writing Desk
+                </div>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BookOpenTextIcon className="size-4" />
-                  Block Editor
+                  Composer
                 </CardTitle>
                 <CardDescription>
-                  Refine the document directly, then save or export the final markdown.
+                  Shape the draft directly, then save it, export it, or send a passage into Revision Lab.
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{wordCount} words</Badge>
                 <Badge variant="outline">{characterCount} chars</Badge>
-                <Badge variant="outline">{document.status}</Badge>
+                <Badge variant="outline" className="bg-muted/30">{document.status}</Badge>
                 <Badge variant={saveState === "saved" ? "secondary" : "outline"}>
-                  {saveState === "saving" ? "Saving..." : saveState === "dirty" ? "Unsaved" : "Saved"}
+                  {saveState === "saving" ? "Saving..." : saveState === "dirty" ? "Not saved" : "Saved"}
                 </Badge>
                 <Button size="sm" variant="outline" onClick={() => void handleCopyMarkdown()}>
                   <CopyIcon className="size-4" />
@@ -502,7 +506,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => handleOpenRevisionLab("document")}>
                   <FilePenLineIcon className="size-4" />
-                  Compare Draft
+                  Send to Revision Lab
                 </Button>
                 <Button
                   size="sm"
@@ -524,10 +528,10 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
             <Input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Document title"
+              placeholder="Piece title"
             />
             <div className="text-muted-foreground flex items-center justify-between text-xs">
-              <span>Autosaves after 1.2s of idle time.</span>
+              <span>Autosaves after 1.2s of idle time so the desk stays current.</span>
               <span>Shortcut: Cmd/Ctrl+S</span>
             </div>
             <BlockEditor
@@ -588,8 +592,11 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
 
           {/* ── Refine ── */}
           <TabsContent value="refine" className="mt-3 flex-1 overflow-y-auto space-y-4">
-            <Card className="gap-4 py-4">
+            <Card className="gap-4 border-border/70 bg-background/90 py-4 shadow-sm">
               <CardHeader className="px-4">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+                  Revision Moves
+                </div>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Wand2Icon className="size-4" />
                   Refine & Compare
@@ -631,10 +638,10 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
                     placeholder="Tell the AI exactly how to transform the current draft..."
                   />
                 )}
-                <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                <div className="rounded-2xl border border-border/70 bg-[linear-gradient(135deg,rgba(217,119,6,0.08),transparent_55%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))] p-3">
                   <div className="text-sm font-medium">Writing Memory</div>
                   <div className="text-muted-foreground mt-1 text-xs">
-                    Pinned style cues, recurring constraints, and reminders for this document. They are applied to every transform.
+                    Pinned style cues, recurring constraints, and reminders for this piece. They are applied to every transform.
                   </div>
                   <Textarea
                     value={writingMemory}
@@ -660,7 +667,9 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
                   Apply transform
                 </Button>
                 <div className="text-muted-foreground text-xs">
-                  Select a paragraph or block first to target only that section.
+                  {selectionPreview.length > 0
+                    ? "A selection is active. Transforms and Revision Lab can target just this passage."
+                    : "Select a paragraph or block first to target only that section."}
                 </div>
                 <div className="grid grid-cols-1 gap-2 pt-1">
                   <Button type="button" variant="outline" onClick={() => handleOpenRevisionLab("selection")}>
@@ -672,7 +681,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
                     Compare full draft in Revision Lab
                   </Button>
                 </div>
-                <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                <div className="rounded-2xl border border-border/70 bg-[linear-gradient(135deg,rgba(20,83,45,0.08),transparent_60%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))] p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <div className="text-sm font-medium">Desk Cards</div>
@@ -763,11 +772,14 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
 
           {/* ── History ── */}
           <TabsContent value="history" className="mt-3 flex-1 overflow-y-auto space-y-3">
-            <Card className="gap-4 py-4">
+            <Card className="gap-4 border-border/70 bg-background/90 py-4 shadow-sm">
               <CardHeader className="px-4">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+                  Revision Archive
+                </div>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <HistoryIcon className="size-4" />
-                  Doc-Edit History
+                  Revision History
                 </CardTitle>
                 <CardDescription>
                   Pick a version from any prior run and insert it at your cursor.
@@ -779,7 +791,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
             </Card>
 
             {document.source_run_id && (
-              <Card className="gap-4 py-4">
+              <Card className="gap-4 border-border/70 bg-background/90 py-4 shadow-sm">
                 <CardHeader className="px-4">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <FileClockIcon className="size-4" />
@@ -797,7 +809,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
                     className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                     href={`/workspace/doc-edits/${document.source_run_id}`}
                   >
-                    Open source run
+                    Open source revision
                     <ArrowUpRightIcon className="size-4" />
                   </Link>
                 </CardContent>
@@ -807,7 +819,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
 
           {/* ── Snapshots ── */}
           <TabsContent value="snapshots" className="mt-3 flex-1 overflow-y-auto space-y-3">
-            <Card className="gap-4 py-4">
+            <Card className="gap-4 border-border/70 bg-background/90 py-4 shadow-sm">
               <CardHeader className="px-4">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <FileClockIcon className="size-4" />
@@ -840,12 +852,12 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
                   ) : (
                     <PlusIcon className="size-4" />
                   )}
-                  Save snapshot
+                  Save draft snapshot
                 </Button>
               </CardContent>
             </Card>
 
-            <Card className="gap-4 py-4">
+            <Card className="gap-4 border-border/70 bg-background/90 py-4 shadow-sm">
               <CardHeader className="px-4">
                 <CardTitle className="text-base">Snapshot Stack</CardTitle>
                 <CardDescription>
@@ -855,7 +867,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
               <CardContent className="space-y-3 px-4">
                 {snapshots.length === 0 ? (
                   <div className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-sm">
-                    No snapshots yet.
+                    No snapshots yet. Save one before a major rewrite, merge, or structural change.
                   </div>
                 ) : (
                   snapshots.map((snapshot) => (
@@ -890,7 +902,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
             </Card>
 
             {selectedSnapshot ? (
-              <Card className="gap-4 py-4">
+              <Card className="gap-4 border-border/70 bg-background/90 py-4 shadow-sm">
                 <CardHeader className="px-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -908,7 +920,7 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
                       ) : (
                         <HistoryIcon className="size-4" />
                       )}
-                      Restore snapshot
+                      Restore into Composer
                     </Button>
                   </div>
                 </CardHeader>

@@ -18,10 +18,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getAPIClient } from "@/core/api";
 import { getBackendBaseURL } from "@/core/config";
+import { searchPinboardBookmarks } from "@/core/pinboard/api";
+import type { PinboardBookmark } from "@/core/pinboard/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ClipSource = "surfsense" | "calibre" | "chat" | "pasted";
+type ClipSource = "surfsense" | "calibre" | "chat" | "pasted" | "pinboard";
 
 interface Clip {
   id: string;
@@ -43,6 +45,7 @@ const SOURCE_COLORS: Record<ClipSource, string> = {
   calibre: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   chat: "bg-violet-500/20 text-violet-400 border-violet-500/30",
   pasted: "bg-green-500/20 text-green-400 border-green-500/30",
+  pinboard: "bg-rose-500/20 text-rose-400 border-rose-500/30",
 };
 
 const SOURCE_LABELS: Record<ClipSource, string> = {
@@ -50,6 +53,7 @@ const SOURCE_LABELS: Record<ClipSource, string> = {
   calibre: "Calibre",
   chat: "Chat",
   pasted: "Pasted",
+  pinboard: "Pinboard",
 };
 
 // ─── Persistence helpers ───────────────────────────────────────────────────────
@@ -105,6 +109,8 @@ function normalizeSSResults(payload: unknown): SurfSenseResult[] {
 // ─── Calibre result type ──────────────────────────────────────────────────────
 
 type CalibreItem = { id?: number; title: string; authors?: string; preview?: string };
+
+type PinboardItem = PinboardBookmark;
 
 // ─── Source badge ─────────────────────────────────────────────────────────────
 
@@ -636,6 +642,151 @@ function PasteTab({
   );
 }
 
+function formatPinboardClip(item: PinboardItem) {
+  const lines = [`**${item.title}**`, item.url];
+  if (item.tags.length) {
+    lines.push(`Tags: ${item.tags.join(", ")}`);
+  }
+  const body = item.description ?? item.extended ?? "";
+  if (body) {
+    lines.push("", body);
+  }
+  return lines.join("\n").trim();
+}
+
+function PinboardTab({
+  stash,
+  onAddToStash,
+}: {
+  stash: Clip[];
+  onAddToStash: (clip: Omit<Clip, "id" | "addedAt">) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [tag, setTag] = useState("");
+  const [results, setResults] = useState<PinboardItem[]>([]);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleSearch(nextQuery: string, nextTag = tag) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      void doSearch(nextQuery, nextTag);
+    }, 400);
+  }
+
+  async function doSearch(nextQuery: string, nextTag: string) {
+    if (!nextQuery.trim() && !nextTag.trim()) {
+      setResults([]);
+      setWarning(null);
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const payload = await searchPinboardBookmarks({
+        query: nextQuery.trim(),
+        tag: nextTag.trim() || undefined,
+        top_k: 8,
+      });
+      setResults(payload.items ?? []);
+      setWarning(payload.warning ?? payload.error?.message ?? null);
+    } catch (err) {
+      setWarning(err instanceof Error ? err.message : "Pinboard search failed");
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  const stashedTitles = new Set(stash.filter((c) => c.source === "pinboard").map((c) => c.title));
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2">
+        <div className="relative">
+          <Input
+            value={query}
+            onChange={(e) => {
+              const next = e.target.value;
+              setQuery(next);
+              handleSearch(next, tag);
+            }}
+            placeholder="Search Pinboard bookmarks..."
+            className="h-8 pr-8 text-sm"
+          />
+          <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
+            {isSearching ? (
+              <Loader2Icon className="size-3.5 animate-spin text-muted-foreground" />
+            ) : (
+              <SearchIcon className="size-3.5 text-muted-foreground" />
+            )}
+          </div>
+        </div>
+        <Input
+          value={tag}
+          onChange={(e) => {
+            const next = e.target.value;
+            setTag(next);
+            handleSearch(query, next);
+          }}
+          placeholder="Filter by tag (optional)"
+          className="h-8 text-sm"
+        />
+      </div>
+
+      {warning && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+          {warning}
+        </div>
+      )}
+
+      {results.length > 0 ? (
+        <div className="space-y-2">
+          {results.map((item, i) => {
+            const alreadyStashed = stashedTitles.has(item.title);
+            const preview = item.description ?? item.extended ?? item.url;
+            return (
+              <div key={`${item.url_normalized}-${i}`} className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <SourceBadge source="pinboard" />
+                    <div className="mt-1 font-medium leading-snug">{item.title}</div>
+                    <div className="mt-1 truncate text-[11px] text-muted-foreground">{item.url}</div>
+                    {item.tags.length > 0 && (
+                      <div className="mt-1 text-[11px] text-muted-foreground">#{item.tags.join(" #")}</div>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="mt-0.5 h-6 shrink-0 px-2 text-xs"
+                    disabled={alreadyStashed}
+                    onClick={() => {
+                      onAddToStash({
+                        source: "pinboard",
+                        title: item.title,
+                        content: formatPinboardClip(item),
+                      });
+                    }}
+                  >
+                    <PlusIcon className="size-3" />
+                    {alreadyStashed ? "Added" : "Add"}
+                  </Button>
+                </div>
+                <p className="mt-1 line-clamp-3 text-muted-foreground">{preview}</p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed px-3 py-4 text-xs text-muted-foreground">
+          Search Pinboard bookmarks by text or tag, then stash useful scraps into the desk.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ClipsBoard({ docId, onInsert }: ClipsBoardProps) {
@@ -674,12 +825,15 @@ export function ClipsBoard({ docId, onInsert }: ClipsBoardProps) {
     <div className="flex h-full flex-col gap-3">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col">
         <div className="flex items-center justify-between gap-2 shrink-0">
-          <TabsList className="h-8 grid grid-cols-4 flex-1">
+          <TabsList className="h-8 grid grid-cols-5 flex-1">
             <TabsTrigger value="surfsense" className="text-xs px-1">
               SurfSense
             </TabsTrigger>
             <TabsTrigger value="calibre" className="text-xs px-1">
               Calibre
+            </TabsTrigger>
+            <TabsTrigger value="pinboard" className="text-xs px-1">
+              Pinboard
             </TabsTrigger>
             <TabsTrigger value="chat" className="text-xs px-1">
               Chat
@@ -702,6 +856,10 @@ export function ClipsBoard({ docId, onInsert }: ClipsBoardProps) {
 
           <TabsContent value="calibre" className="mt-0 space-y-3">
             <CalibreTab stash={clips} onAddToStash={addToStash} />
+          </TabsContent>
+
+          <TabsContent value="pinboard" className="mt-0 space-y-3">
+            <PinboardTab stash={clips} onAddToStash={addToStash} />
           </TabsContent>
 
           <TabsContent value="chat" className="mt-0 space-y-3">

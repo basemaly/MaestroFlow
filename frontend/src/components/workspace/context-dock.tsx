@@ -9,6 +9,7 @@ import { ArtifactTrigger } from "./artifacts";
 import { CalibreStatus } from "./calibre-status";
 import { AgentPresetMenu, KnowledgeSourceMenu, type KnowledgeSourceValue } from "./context-controls";
 import { DocEditDialog } from "./doc-edit-dialog";
+import { PinboardActions } from "./pinboard-actions";
 import { SnippetShelf } from "./snippet-shelf";
 import { SurfSenseActions } from "./surfsense-actions";
 
@@ -53,6 +54,7 @@ export function ContextDock({
             onChange={onAgentPresetChange}
             compact
           />
+          <PinboardActions />
           <SurfSenseActions />
           <CalibreStatus />
           {includeRevisionLab ? (

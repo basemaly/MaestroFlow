@@ -29,11 +29,23 @@ cp .env.example .env
 ### Development
 
 ```bash
-# Start development server
-pnpm dev
+# Start the standalone frontend only
+pnpm exec next dev --hostname 127.0.0.1 --port 3010
 
-# The app will be available at http://localhost:3000
+# The app will be available at http://127.0.0.1:3010
 ```
+
+For the full MaestroFlow workspace stack, prefer `make dev` from the repo root and use `http://localhost:2027`.
+
+Canonical local ports:
+
+| Surface | URL |
+|---|---|
+| Public app | `http://localhost:2027` |
+| Frontend direct | `http://127.0.0.1:3010` |
+| Gateway direct | `http://127.0.0.1:8001` |
+| LangGraph direct | `http://127.0.0.1:2024` |
+| Langfuse | `http://127.0.0.1:3000` |
 
 ### Build
 
@@ -81,9 +93,9 @@ Key environment variables (see `.env.example` for full list):
 
 ```bash
 # Backend API URL
-NEXT_PUBLIC_BACKEND_BASE_URL="http://localhost:8001"
+NEXT_PUBLIC_BACKEND_BASE_URL="http://127.0.0.1:8001"
 # LangGraph API URL
-NEXT_PUBLIC_LANGGRAPH_BASE_URL="http://localhost:2024"
+NEXT_PUBLIC_LANGGRAPH_BASE_URL="http://127.0.0.1:2024"
 # Optional static/demo-only mode
 NEXT_PUBLIC_STATIC_WEBSITE_ONLY="false"
 ```
@@ -140,7 +152,7 @@ src/
 - Uses pnpm workspaces (see `packageManager` in package.json)
 - Turbopack enabled by default in development for faster builds
 - Environment validation can be skipped with `SKIP_ENV_VALIDATION=1` (useful for Docker)
-- Backend API URLs are optional; nginx proxy is used by default in development
+- Backend API URLs are optional in full-stack `make dev`; set them explicitly when running the frontend directly on `3010`
 - Production Docker builds exclude `public/demo` so the app can ship as a lean MaestroFlow frontend instead of a demo bundle
 
 ## License
