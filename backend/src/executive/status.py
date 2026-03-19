@@ -443,14 +443,18 @@ async def collect_system_status() -> ExecutiveSystemStatus:
     status_map = {status.component_id: status for status in statuses}
     for status in statuses:
         status.dependencies = _dependencies(status.component_id, status_map)
-    summary = {
-        "healthy": sum(1 for item in statuses if item.state == "healthy"),
-        "degraded": sum(1 for item in statuses if item.state == "degraded"),
-        "unavailable": sum(1 for item in statuses if item.state == "unavailable"),
-        "misconfigured": sum(1 for item in statuses if item.state == "misconfigured"),
-        "disabled": sum(1 for item in statuses if item.state == "disabled"),
-        "unknown": sum(1 for item in statuses if item.state == "unknown"),
+    # Single-pass aggregation instead of O(n*6) with 6 separate sum() calls
+    state_counts: dict[str, int] = {
+        "healthy": 0,
+        "degraded": 0,
+        "unavailable": 0,
+        "misconfigured": 0,
+        "disabled": 0,
+        "unknown": 0,
     }
+    for item in statuses:
+        state_counts[item.state] = state_counts.get(item.state, 0) + 1
+    summary = state_counts
     return ExecutiveSystemStatus(summary=summary, components=statuses)
 
 
