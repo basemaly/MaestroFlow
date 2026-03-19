@@ -1,0 +1,97 @@
+/* Enhanced dialog and modal animations */
+
+/* Smooth dialog overlay fade */
+[role="dialog"] {
+  animation: dialog-in 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Smooth dialog content scale and fade */
+[role="dialog"] > div {
+  animation: dialog-content-in 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: center;
+}
+
+@keyframes dialog-content-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* List item animations for dialog content */
+.dialog-list-item {
+  animation: list-item-in 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.dialog-list-item:nth-child(1) { animation-delay: 30ms; }
+.dialog-list-item:nth-child(2) { animation-delay: 60ms; }
+.dialog-list-item:nth-child(3) { animation-delay: 90ms; }
+.dialog-list-item:nth-child(4) { animation-delay: 120ms; }
+.dialog-list-item:nth-child(5) { animation-delay: 150ms; }
+.dialog-list-item:nth-child(n+6) { animation-delay: 180ms; }
+
+@keyframes list-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Smooth tooltip animations */
+.tooltip-content {
+  animation: tooltip-in 150ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Dropdown menu smooth appear */
+[role="menu"] {
+  animation: menu-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Smooth menu item hover */
+[role="menuitem"] {
+  transition: background-color 150ms ease-out;
+}
+
+[role="menuitem"]:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
