@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { CheckCircleIcon, AlertCircleIcon, Loader2Icon } from "lucide-react";
 
 type StatusType = "idle" | "loading" | "success" | "error";
@@ -40,7 +41,7 @@ const sizeConfig = {
   lg: { icon: "size-5", outer: "size-10" },
 };
 
-export function StatusIndicator({
+export const StatusIndicator = memo(function StatusIndicator({
   status,
   message,
   size = "md",
@@ -64,4 +65,4 @@ export function StatusIndicator({
       )}
     </div>
   );
-}
+});

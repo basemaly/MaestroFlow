@@ -1,9 +1,13 @@
 "use client";
 
 import { ChevronDownIcon } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 
-export function ThinkingTrace({ thoughts }: { thoughts: string[] }) {
+export const ThinkingTrace = memo(function ThinkingTrace({
+  thoughts,
+}: {
+  thoughts: string[];
+}) {
   const [expanded, setExpanded] = useState(false);
 
   if (!thoughts.length) return null;
@@ -24,8 +28,10 @@ export function ThinkingTrace({ thoughts }: { thoughts: string[] }) {
           </span>
         </div>
         <ChevronDownIcon
-          className="size-4 text-amber-600/60 transition-transform"
-          style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
+          className="size-4 text-amber-600/60 transition-transform duration-300 ease-out"
+          style={{
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+          }}
         />
       </button>
 
@@ -45,4 +51,4 @@ export function ThinkingTrace({ thoughts }: { thoughts: string[] }) {
       )}
     </div>
   );
-}
+});

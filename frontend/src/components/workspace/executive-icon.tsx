@@ -1,8 +1,9 @@
 "use client";
 
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 
-export function ExecutiveIcon({
+export const ExecutiveIcon = memo(function ExecutiveIcon({
   className,
   size = "md",
 }: {
@@ -29,4 +30,4 @@ export function ExecutiveIcon({
       𝄞
     </span>
   );
-}
+});

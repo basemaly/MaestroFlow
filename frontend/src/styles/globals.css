@@ -3,6 +3,7 @@
 @import "../components/workspace/sidebar-button-enhancements.css";
 @import "../components/workspace/dialog-animations.css";
 @import "../components/workspace/input-focus-enhancements.css";
+@import "../components/workspace/accessibility-optimizations.css";
 
 @source "../node_modules/streamdown/dist/index.js";
 

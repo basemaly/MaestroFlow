@@ -1,6 +1,8 @@
 "use client";
 
-export function MusicalClefLoader() {
+import { memo } from "react";
+
+export const MusicalClefLoader = memo(function MusicalClefLoader() {
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-12">
       {/* Animated treble clef symbol with musical glow */}
@@ -75,4 +77,4 @@ export function MusicalClefLoader() {
       </div>
     </div>
   );
-}
+});

@@ -1,8 +1,9 @@
 "use client";
 
+import { memo } from "react";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 
-export function MusicalBackground() {
+export const MusicalBackground = memo(function MusicalBackground() {
   return (
     <div
       aria-hidden="true"
@@ -44,4 +45,4 @@ export function MusicalBackground() {
       <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-background/40 to-transparent" />
     </div>
   );
-}
+});

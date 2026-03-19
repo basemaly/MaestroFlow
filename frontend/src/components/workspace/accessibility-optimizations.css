@@ -1,0 +1,82 @@
+/* Accessibility and performance optimizations */
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Optimize font rendering */
+.musical-icon-hover,
+.sidebar-menu-button-enhanced,
+[role="button"] {
+  font-feature-settings: "kern";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* GPU acceleration hints */
+.sidebar-menu-button-enhanced,
+.dialog-list-item,
+.tooltip-content,
+[role="menu"],
+[role="dialog"] {
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Reduce flickering grid animation complexity */
+.flickering-grid {
+  will-change: opacity;
+  contain: layout style paint;
+}
+
+/* Optimize transform performance */
+.animate-bounce,
+.animate-pulse,
+[class*="animate-"] {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: more) {
+  .sidebar-menu-button-enhanced {
+    border: 1px solid currentColor;
+  }
+
+  [role="dialog"],
+  [role="menu"] {
+    border: 1px solid currentColor;
+  }
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+  /* Reduce perceived jank in dark mode */
+  :root {
+    color-scheme: dark;
+  }
+
+  /* Prevent flashing white on dark theme */
+  body {
+    background-color: #1a1a1a;
+  }
+}
+
+/* Print styles */
+@media print {
+  .musical-background,
+  .animate-bounce,
+  .animate-pulse,
+  [class*="animate-"],
+  .sidebar-menu-button-enhanced {
+    animation: none !important;
+    transition: none !important;
+  }
+}

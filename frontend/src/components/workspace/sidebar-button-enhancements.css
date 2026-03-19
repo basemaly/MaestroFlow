@@ -3,6 +3,7 @@
 .sidebar-menu-button-enhanced {
   @apply relative overflow-hidden;
   transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, background-color;
 }
 
 .sidebar-menu-button-enhanced::before {
