@@ -21,6 +21,7 @@ def view_image_tool(
     """Read an image file.
 
     Use this tool to read an image file and make it available for display.
+    The image becomes available to the system/client display flow; this tool does not return raw image bytes in the text result.
 
     When to use the view_image tool:
     - When you need to view an image file.

@@ -20,7 +20,8 @@ def setup_agent(
     """Setup the custom DeerFlow agent.
 
     Args:
-        soul: Full SOUL.md content defining the agent's personality and behavior.
+        soul: Full SOUL.md content defining the agent's personality and behavior. It should be Markdown
+            with clear sections such as role, tone, and core directives so the custom agent has a stable identity.
         description: One-line description of what the agent does.
     """
 

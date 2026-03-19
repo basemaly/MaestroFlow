@@ -40,6 +40,7 @@ async def preview_calibre_books_for_search_space(
     """Preview Calibre Server books that would be ingested into a specific SurfSense search space.
 
     Use this before ingest when the user wants to review or refine a book selection.
+    For user-review flows, preview first and only call ingest after the user approves the exact ids or filters.
     Require an explicit `search_space_id`. This tool does not write anything.
 
     Args:

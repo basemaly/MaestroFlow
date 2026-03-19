@@ -113,7 +113,8 @@ async def ingest_calibre_books_to_search_space(
     """Ingest Calibre Server books into a specific SurfSense search space as working-knowledge notes.
 
     Use this when the user explicitly asks to ingest or import books from the Calibre server
-    into a chosen SurfSense search space. Require an explicit `search_space_id`.
+    into a chosen SurfSense search space. For review-driven workflows, call the preview tool first
+    and only ingest after the user approves the exact ids or filters. Require an explicit `search_space_id`.
 
     Args:
         search_space_id: Exact SurfSense search space to ingest into.

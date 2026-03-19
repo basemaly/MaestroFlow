@@ -13,6 +13,14 @@ except ImportError:
 # Prompt template for updating memory based on conversation
 MEMORY_UPDATE_PROMPT = """You are a memory management system. Your task is to analyze a conversation and update the user's memory profile.
 
+<constraints>
+High-Visibility Constraints:
+- Only record durable information that will matter in future conversations.
+- Do NOT infer facts that are not clearly supported by the conversation.
+- Do NOT record file upload events, temporary files, or other session-only artifacts.
+- Return ONLY valid JSON. No markdown, commentary, or surrounding text.
+</constraints>
+
 Current Memory State:
 <current_memory>
 {current_memory}
@@ -80,6 +88,50 @@ Memory Section Guidelines:
 - Keep technical terms in their original form (DeepSeek, LangGraph, etc.)
 - Note language capabilities in personalContext
 
+Few-Shot Examples:
+Example A — durable update:
+Conversation snippet:
+User: I lead the platform team at Acme and mostly work in Python and Postgres.
+Assistant: Noted.
+Expected shape:
+{{
+  "user": {{
+    "workContext": {{ "summary": "Leads the platform team at Acme and primarily works with Python and Postgres.", "shouldUpdate": true }},
+    "personalContext": {{ "summary": "", "shouldUpdate": false }},
+    "topOfMind": {{ "summary": "", "shouldUpdate": false }}
+  }},
+  "history": {{
+    "recentMonths": {{ "summary": "", "shouldUpdate": false }},
+    "earlierContext": {{ "summary": "", "shouldUpdate": false }},
+    "longTermBackground": {{ "summary": "", "shouldUpdate": false }}
+  }},
+  "newFacts": [
+    {{ "content": "Leads the platform team at Acme.", "category": "context", "confidence": 0.95 }},
+    {{ "content": "Primarily works with Python and Postgres.", "category": "knowledge", "confidence": 0.95 }}
+  ],
+  "factsToRemove": []
+}}
+
+Example B — ignore transient/session-only info:
+Conversation snippet:
+User: I uploaded three PDFs today and I'm exhausted right now.
+Assistant: I can help with those PDFs.
+Expected shape:
+{{
+  "user": {{
+    "workContext": {{ "summary": "", "shouldUpdate": false }},
+    "personalContext": {{ "summary": "", "shouldUpdate": false }},
+    "topOfMind": {{ "summary": "", "shouldUpdate": false }}
+  }},
+  "history": {{
+    "recentMonths": {{ "summary": "", "shouldUpdate": false }},
+    "earlierContext": {{ "summary": "", "shouldUpdate": false }},
+    "longTermBackground": {{ "summary": "", "shouldUpdate": false }}
+  }},
+  "newFacts": [],
+  "factsToRemove": []
+}}
+
 Output Format (JSON):
 {{
   "user": {{
@@ -100,6 +152,7 @@ Output Format (JSON):
 
 Important Rules:
 - Only set shouldUpdate=true if there's meaningful new information
+- Only record durable facts that will matter in future sessions
 - Follow length guidelines: workContext/personalContext are concise (1-3 sentences), topOfMind and history sections are detailed (paragraphs)
 - Include specific metrics, version numbers, and proper nouns in facts
 - Only add facts that are clearly stated (0.9+) or strongly implied (0.7+)
@@ -109,9 +162,6 @@ Important Rules:
 - For history sections, integrate new information chronologically into appropriate time period
 - Preserve technical accuracy - keep exact names of technologies, companies, projects
 - Focus on information useful for future interactions and personalization
-- IMPORTANT: Do NOT record file upload events in memory. Uploaded files are
-  session-specific and ephemeral — they will not be accessible in future sessions.
-  Recording upload events causes confusion in subsequent conversations.
 
 Return ONLY valid JSON, no explanation or markdown."""
 
@@ -138,8 +188,14 @@ Categories:
 
 Rules:
 - Only extract clear, specific facts
+- Do NOT infer facts that are not directly supported by the message
+- Do NOT guess intent, permanence, or preferences unless the message states them clearly
 - Confidence should reflect certainty (explicit statement = 0.9+, implied = 0.6-0.8)
 - Skip vague or temporary information
+
+Examples:
+- Durable fact: "I prefer Python for backend work" → record as a preference or knowledge fact
+- Skip: "I'm tired today" or "I uploaded a file just now" → temporary/session-only information
 
 Return ONLY valid JSON."""
 
