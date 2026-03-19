@@ -1,6 +1,6 @@
 "use client";
 
-import { BotIcon, PlusIcon } from "lucide-react";
+import { ArrowRightIcon, BotIcon, PlusIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -22,14 +22,15 @@ export function AgentGallery({ initialAgents }: { initialAgents?: Agent[] }) {
   return (
     <div className="flex size-full flex-col">
       {/* Page header */}
-      <div className="flex items-center justify-between border-b px-6 py-4">
-        <div>
-          <h1 className="text-xl font-semibold">{t.agents.title}</h1>
+      <div className="flex items-center justify-between border-b border-border/70 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.06),transparent_28%)] px-6 py-5">
+        <div className="max-w-3xl">
+          <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Agent Presets</div>
+          <h1 className="mt-2 text-xl font-semibold tracking-tight">{t.agents.title}</h1>
           <p className="text-muted-foreground mt-0.5 text-sm">
             {t.agents.description}
           </p>
           <p className="text-muted-foreground mt-1 text-xs">
-            Use these as reusable presets from chat, documents, and Executive.
+            Use these as reusable presets across chats, Composer, Executive, and lab workflows.
           </p>
         </div>
         <Button onClick={handleNewAgent}>
@@ -63,7 +64,7 @@ export function AgentGallery({ initialAgents }: { initialAgents?: Agent[] }) {
             ))}
           </div>
         ) : agents.length === 0 ? (
-          <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+          <div className="flex h-64 flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border/80 bg-background/70 text-center">
             <div className="bg-muted flex h-14 w-14 items-center justify-center rounded-full">
               <BotIcon className="text-muted-foreground h-7 w-7" />
             </div>
@@ -76,6 +77,7 @@ export function AgentGallery({ initialAgents }: { initialAgents?: Agent[] }) {
             <Button variant="outline" className="mt-2" onClick={handleNewAgent}>
               <PlusIcon className="mr-1.5 h-4 w-4" />
               {t.agents.newAgent}
+              <ArrowRightIcon className="ml-1.5 h-4 w-4" />
             </Button>
           </div>
         ) : (

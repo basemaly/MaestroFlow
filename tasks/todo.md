@@ -1,25 +1,20 @@
-# Workflow Graph Optimization Plan
+# Documents Composer Desk Plan
 
 ## Goal
 
-Treat MaestroFlow workflow routing as a mutable DAG experiment surface inside Autoresearcher so the system can benchmark faster and cheaper execution variants without bypassing Executive approval.
+Extend MaestroFlow Documents with low-risk saved quick actions and writing memory, plus medium-scope document snapshots with diff and restore, while keeping the workflow closer to a composer's collage desk than a sterile settings panel.
 
 ## Plan
 
-- [x] Read project context, architecture, and decisions
-- [x] Inspect current Autoresearcher, Executive, model-routing, and workflow graph surfaces
-- [x] Capture the implementation checklist in `tasks/todo.md`
-- [x] Add a workflow-route WDL schema and deterministic execution sandbox
-- [x] Add per-node telemetry, quality checks, and composite scoring for workflow experiments
-- [x] Add mutator strategies for model swaps and dependency parallelization
-- [x] Extend Autoresearcher storage and service logic to support `workflow_route` experiments
-- [x] Expose workflow-route experiment endpoints through gateway and Executive
-- [x] Extend the Autoresearcher UI to launch and inspect workflow-route experiments
-- [x] Add targeted backend tests for workflow-route execution, mutation, scoring, and promotion gating
-- [x] Run verification on the changed backend and frontend surfaces
+- [x] Read current Documents storage, editor shell, and related workspace surfaces
+- [x] Add document-native persistence for writing memory, quick actions, and snapshots
+- [x] Extend the Documents API and transform path to use writing memory during edits
+- [x] Integrate desk-card quick actions, writing memory, and snapshot diff/restore into the block editor shell
+- [x] Add targeted backend tests for quick actions, writing memory, and snapshots
+- [x] Run backend tests, frontend typecheck, and targeted eslint on changed files
 
 ## Review
 
-- The implementation will reuse the existing Autoresearcher and Executive approval loop rather than introducing a second promotion system.
-- Workflow optimization will stay manual-start and experiment-scoped, matching the project decision to keep Autoresearcher as a lab instead of an always-on optimizer.
-- The first pass will use deterministic synthetic workflows and heuristic mutations so routing experiments are reproducible before any live-traffic bandit rollout.
+- Writing memory is document-native rather than reused from the broader chat memory system, so editing stays predictable and scoped to the draft.
+- Quick actions are saved as reusable desk cards for one-click transforms instead of expanding the built-in operation enum further.
+- Snapshots are explicit saves with diff and restore, and restore automatically creates a pre-restore backup snapshot before overwriting the draft.

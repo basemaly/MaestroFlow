@@ -101,8 +101,11 @@ def render_candidate_html(experiment_id: str, candidate_id: str, html: str) -> t
 
 
 def _render_html_with_playwright(html_path: Path, screenshot_path: Path) -> None:
+    # Try pnpm from PATH, then common install locations
+    pnpm_candidates = ["pnpm", "/usr/local/bin/pnpm", str(Path.home() / ".local/share/pnpm/pnpm")]
+    pnpm_bin = next((p for p in pnpm_candidates if Path(p).exists() or p == "pnpm"), "pnpm")
     command = [
-        "pnpm",
+        pnpm_bin,
         "--dir",
         str(FRONTEND_DIR),
         "exec",
@@ -111,7 +114,10 @@ def _render_html_with_playwright(html_path: Path, screenshot_path: Path) -> None
         str(html_path),
         str(screenshot_path),
     ]
-    proc = subprocess.run(command, capture_output=True, text=True, check=False)
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        raise RuntimeError("Playwright renderer not available (pnpm not found); screenshot skipped")
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout or "Playwright render failed").strip())
 

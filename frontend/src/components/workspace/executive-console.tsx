@@ -129,7 +129,7 @@ export function ExecutiveConsole() {
     {
       role: "assistant",
       content:
-        "Executive is ready. Ask what is broken, what workflow to use, or preview a safe operational action.",
+        "Executive is ready. Ask for system status, the next safe operational move, or a preview before you execute anything.",
     },
   ]);
 
@@ -633,7 +633,7 @@ export function ExecutiveConsole() {
                   Executive Chat
                 </CardTitle>
                 <CardDescription>
-                  Ask what is broken, what workflow to use, or what action should happen next.
+                  Ask for status, the right workflow, or the safest next operational move.
                 </CardDescription>
               </div>
               <select

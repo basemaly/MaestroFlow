@@ -27,6 +27,7 @@ async def transform_selection(
     selection_markdown: str,
     operation: str,
     instruction: str | None = None,
+    writing_memory: str | None = None,
     model_location: str = "mixed",
     model_strength: str = "fast",
     preferred_model: str | None = None,
@@ -36,6 +37,7 @@ async def transform_selection(
         raise ValueError(f"Unsupported transform operation '{operation}'")
 
     custom_instruction = instruction.strip() if instruction else ""
+    writing_memory_text = writing_memory.strip() if writing_memory else ""
     messages = [
         SystemMessage(
             content=(
@@ -45,6 +47,11 @@ async def transform_selection(
                 "Preserve markdown structure when possible.\n"
                 f"Primary operation: {base_instruction}"
                 + (f"\nCustom instruction: {custom_instruction}" if custom_instruction else "")
+                + (
+                    f"\nWriting memory to honor while editing:\n{writing_memory_text}"
+                    if writing_memory_text
+                    else ""
+                )
             )
         ),
         HumanMessage(

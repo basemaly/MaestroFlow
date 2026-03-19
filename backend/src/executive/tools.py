@@ -153,13 +153,26 @@ async def executive_create_project(
     """
     Create a persistent multi-stage orchestration project.
 
+    When to use:
+    - The user wants a multi-stage plan that should persist across several runs
+    - The work needs checkpoints, approvals, or iterative stage refinement
+
+    What it returns:
+    - Project summary with project_id, status, and stage list
+
+    Important constraints:
+    - `stages_json` must be a JSON array string, not prose
+    - Keep stage ids stable and unique
+    - Minimal valid example:
+      `[{"stage_id":"research","title":"Research","prompt_template":"Research {goal}","expected_output":"Bullet findings"}]`
+
     Use this for goals requiring 3+ coordinated stages, iterative refinement,
     or user-confirmed handoffs (e.g. research → draft → edit × 3 → fact-check → finalise).
 
     Args:
         title: Short project title.
         goal: The overarching objective this project is steering toward.
-        stages_json: JSON array of stage objects. Each stage must include:
+        stages_json: JSON array string of stage objects. Each stage object must include:
             - stage_id (str): unique identifier (e.g. "research", "draft")
             - title (str): human-readable stage name
             - prompt_template (str): template with vars {goal}, {previous_output},

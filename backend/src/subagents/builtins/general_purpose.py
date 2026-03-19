@@ -15,12 +15,20 @@ GENERAL_PURPOSE_SYSTEM_PROMPT = """You are a general-purpose subagent working on
 </guidelines>
 
 <output_format>
-When you complete the task, provide:
-1. A brief summary of what was accomplished
-2. Key findings or results
-3. Any relevant file paths, data, or artifacts created
-4. Issues encountered (if any)
-5. Citations: Use `[citation:Title](URL)` format for external sources
+Use the sections the task specifies. Format each section as a markdown heading (## Section Name).
+If the task does not specify sections, default to:
+## Summary
+- Brief summary of what was accomplished
+
+## Findings
+- Key findings or results
+
+## Next Steps
+- Recommended actions or follow-ups
+
+For citations use: [citation:Title](URL)
+For code tasks, return only a fenced code block with no prose.
+For JSON tasks, return only a JSON object with no prose.
 </output_format>
 
 <working_directory>

@@ -1,18 +1,22 @@
 # DeerFlow - Unified Development Environment
 
-.PHONY: help config check install dev dev-daemon daemon-start daemon-stop daemon-status stack-up stack-down stack-start stack-stop stack-restart stack-status stack-rebuild stop clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config check doctor install dev dev-daemon daemon-start daemon-stop daemon-status local-daemon-start local-daemon-stop local-daemon-status stack-up stack-down stack-start stack-stop stack-restart stack-status stack-rebuild stop clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
 
 help:
 	@echo "DeerFlow Development Commands:"
 	@echo "  make config          - Generate local config files (aborts if config already exists)"
 	@echo "  make check           - Check if all required tools are installed"
+	@echo "  make doctor          - Verify canonical local ports, listeners, and URL wiring"
 	@echo "  make install         - Install all dependencies (frontend + backend)"
 	@echo "  make setup-sandbox   - Pre-pull sandbox container image (recommended)"
 	@echo "  make dev             - Start all services (frontend + backend + nginx on localhost:2027)"
 	@echo "                       - Uses Docker for LangGraph + LangGraph Postgres"
 	@echo "  make dev-daemon      - Start all services detached from the current shell"
-	@echo "  make daemon-stop     - Stop detached MaestroFlow services"
-	@echo "  make daemon-status   - Show detached MaestroFlow supervisor status"
+	@echo "  make daemon-stop     - Stop detached Docker-backed MaestroFlow services"
+	@echo "  make daemon-status   - Show detached Docker-backed MaestroFlow status"
+	@echo "  make local-daemon-start  - Start detached split-port local services"
+	@echo "  make local-daemon-stop   - Stop detached split-port local services"
+	@echo "  make local-daemon-status - Show detached split-port local status"
 	@echo "  make stack-up        - Fast path: start the full local AI stack"
 	@echo "  make stack-down      - Stop the full local AI stack"
 	@echo "  make stack-rebuild   - Rebuild SurfSense, then start the full local AI stack"
@@ -131,6 +135,9 @@ install:
 	@echo "  make setup-sandbox"
 	@echo ""
 
+doctor:
+	@./scripts/check-dev-ports.sh
+
 # Pre-pull sandbox Docker image (optional but recommended)
 setup-sandbox:
 	@echo "=========================================="
@@ -194,6 +201,15 @@ daemon-stop:
 daemon-status:
 	@./scripts/daemon.sh status
 
+local-daemon-start:
+	@./scripts/local-daemon.sh start
+
+local-daemon-stop:
+	@./scripts/local-daemon.sh stop
+
+local-daemon-status:
+	@./scripts/local-daemon.sh status
+
 stack-up:
 	@./scripts/maestro_stack.sh up
 
@@ -218,13 +234,17 @@ stack-status:
 # Stop all services
 stop:
 	@echo "Stopping all services..."
-	@-pkill -f "langgraph dev" 2>/dev/null || true
 	@-pkill -f "uvicorn src.gateway.app:app" 2>/dev/null || true
-	@-pkill -f "next dev" 2>/dev/null || true
+	@-pkill -f "next dev.*--port 3010" 2>/dev/null || true
+	@-pkill -f "pnpm.*next dev" 2>/dev/null || true
 	@-nginx -c $(PWD)/docker/nginx/nginx.local.conf -p $(PWD) -s quit 2>/dev/null || true
 	@sleep 1
+	@-pkill -9 -f "nginx.*nginx.local.conf" 2>/dev/null || true
 	@-pkill -9 nginx 2>/dev/null || true
-	@-docker compose -p deer-flow-dev -f $(PWD)/docker/docker-compose-dev.yaml stop langgraph langgraph-postgres >/dev/null 2>&1 || true
+	@-lsof -nP -iTCP:2027 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+	@-lsof -nP -iTCP:8001 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+	@-lsof -nP -iTCP:3010 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+	@-docker compose -p deer-flow-dev -f $(PWD)/docker/docker-compose-dev.yaml stop langgraph langgraph-redis langgraph-postgres >/dev/null 2>&1 || true
 	@echo "Cleaning up sandbox containers..."
 	@-./scripts/cleanup-containers.sh deer-flow-sandbox 2>/dev/null || true
 	@echo "✓ All services stopped"

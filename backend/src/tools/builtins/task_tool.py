@@ -91,12 +91,16 @@ def task_tool(
     - Simple, single-step operations (use tools directly)
     - Tasks requiring user interaction or clarification
 
+    Model selection note:
+    - If you omit `subagent_model`, the task uses normal system routing/default behavior.
+
     Args:
         description: A short (3-5 word) description of the task for logging/display. ALWAYS PROVIDE THIS PARAMETER FIRST.
         prompt: The task description for the subagent. Be specific and clear about what needs to be done. ALWAYS PROVIDE THIS PARAMETER SECOND.
         subagent_type: The type of subagent to use. If omitted, auto-classified from the description and prompt. ALWAYS PROVIDE THIS PARAMETER THIRD when you know the type.
-        subagent_model: Optional model preference for the subagent. Use exact model names when possible,
-            or phrases like "fastest gemini model", "fastest local model", or "gpt-5-2-codex".
+        subagent_model: Optional model preference for the subagent. If omitted, normal system routing/default
+            behavior is used. Use exact model names when possible, or phrases like "fastest gemini model",
+            "fastest local model", or "gpt-5-2-codex".
         max_turns: Optional maximum number of agent turns. Defaults to subagent's configured max.
     """
     # Auto-classify subagent_type when not explicitly provided

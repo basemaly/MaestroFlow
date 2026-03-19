@@ -13,6 +13,8 @@
 #
 # Access: http://localhost:2027
 
+name: deer-flow-dev
+
 services:
   langgraph-postgres:
     profiles:
@@ -67,8 +69,8 @@ services:
       # On Docker Desktop/OrbStack, use your actual host paths like /Users/username/...
       # Set these in your shell before running docker-compose:
       #   export DEER_FLOW_ROOT=/absolute/path/to/deer-flow
-      - SKILLS_HOST_PATH=${DEER_FLOW_ROOT}/skills
-      - THREADS_HOST_PATH=${DEER_FLOW_ROOT}/backend/.deer-flow/threads
+      - SKILLS_HOST_PATH=${DEER_FLOW_ROOT:-/Volumes/BA/DEV/MaestroFlow}/skills
+      - THREADS_HOST_PATH=${DEER_FLOW_ROOT:-/Volumes/BA/DEV/MaestroFlow}/backend/.deer-flow/threads
       - KUBECONFIG_PATH=/root/.kube/config
       - NODE_HOST=host.docker.internal
       # Override K8S API server URL since kubeconfig uses 127.0.0.1

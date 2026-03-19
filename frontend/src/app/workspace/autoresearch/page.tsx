@@ -37,8 +37,8 @@ async function loadInitialData(): Promise<{
 export default async function AutoresearchPage() {
   const initialData = await loadInitialData();
   return (
-    <div className="flex size-full flex-col">
-      <div className="border-b px-6 py-5">
+    <div className="flex size-full flex-col bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_22%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.05),transparent_20%)]">
+      <div className="border-b border-border/70 px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
@@ -49,6 +49,9 @@ export default async function AutoresearchPage() {
             <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
               A dedicated lab for prompt and workflow experiments. It stays separate from Executive and from normal agent
               presets so experiments do not silently mutate live behavior.
+            </p>
+            <p className="text-muted-foreground mt-2 max-w-2xl text-xs">
+              Start one experiment at a time, compare the candidates, and only promote changes that beat the current baseline.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

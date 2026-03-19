@@ -236,8 +236,8 @@ export function ArtifactFileDetail({
             {language === "markdown" && isCodeFile && (
               <ArtifactAction
                 icon={PenLineIcon}
-                label="Edit in Block Editor"
-                tooltip="Edit in Block Editor"
+                label="Edit in Composer"
+                tooltip="Edit in Composer"
                 disabled={!content}
                 onClick={async () => {
                   try {
@@ -247,10 +247,10 @@ export function ArtifactFileDetail({
                       source_thread_id: threadId,
                       source_filepath: filepath,
                     });
-                    void router.push(`/workspace/docs/${document.doc_id}`);
+                    void router.push(`/workspace/composer/${document.doc_id}`);
                     setOpen(false);
                   } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Failed to open block editor");
+                    toast.error(error instanceof Error ? error.message : "Failed to open Composer");
                   }
                 }}
               />

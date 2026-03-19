@@ -97,10 +97,10 @@ export function WorkspaceNavChatList() {
           isSidebarOpen={isSidebarOpen}
         />
         <NavItem
-          href="/workspace/docs"
+          href="/workspace/composer"
           icon={BookOpenTextIcon}
           label={t.sidebar.documents}
-          isActive={pathname.startsWith("/workspace/docs")}
+          isActive={pathname.startsWith("/workspace/composer") || pathname.startsWith("/workspace/docs")}
           isSidebarOpen={isSidebarOpen}
         />
         <NavItem

@@ -2,14 +2,18 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  ActivityIcon,
   ArrowRightIcon,
   CheckCircle2Icon,
+  ClockIcon,
   FlaskConicalIcon,
   HourglassIcon,
   ImageIcon,
   PlayIcon,
   ShieldCheckIcon,
   SquareIcon,
+  XCircleIcon,
+  ZapIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -19,6 +23,8 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   approveAutoresearchExperiment,
@@ -49,7 +55,39 @@ function statusTone(status: string) {
   return STATUS_STYLES[status] ?? "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
 }
 
-function getCritiqueField(candidate: ExperimentSummary["domain"] extends never ? never : { metadata?: Record<string, unknown> }, field: string): string | null {
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  running: <ZapIcon className="h-3 w-3" />,
+  awaiting_approval: <ClockIcon className="h-3 w-3" />,
+  promoted: <CheckCircle2Icon className="h-3 w-3" />,
+  evaluated: <ActivityIcon className="h-3 w-3" />,
+  rejected: <XCircleIcon className="h-3 w-3" />,
+  stopped: <SquareIcon className="h-3 w-3" />,
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  running: "Running",
+  awaiting_approval: "Awaiting Approval",
+  promoted: "Promoted",
+  evaluated: "Evaluated",
+  rejected: "Rejected",
+  stopped: "Stopped",
+  rolled_back: "Rolled Back",
+};
+
+function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function relativeTime(isoString: string | undefined): string | null {
+  if (!isoString) return null;
+  const diff = Date.now() - new Date(isoString).getTime();
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function getCritiqueField(candidate: { metadata?: Record<string, unknown> }, field: string): string | null {
   const critique = candidate.metadata?.critique;
   if (!critique || typeof critique !== "object") {
     return null;
@@ -248,24 +286,38 @@ export function AutoresearchPageClient({
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
-                <div className="text-muted-foreground text-[11px] uppercase tracking-wide">Mutation count</div>
-                <input
-                  className="border-input bg-background mt-2 w-full rounded-md border px-3 py-2 text-sm"
+                <label htmlFor="prompt-mutation-count" className="text-muted-foreground text-[11px] uppercase tracking-wide">
+                  Mutation count
+                </label>
+                <Input
+                  id="prompt-mutation-count"
+                  className="mt-2"
                   value={promptMutationCount}
                   onChange={(event) => setPromptMutationCount(event.target.value)}
                   inputMode="numeric"
                   placeholder="3"
+                  aria-describedby="prompt-mutation-hint"
                 />
+                <p id="prompt-mutation-hint" className="sr-only">
+                  Number of prompt mutations to generate, between 1 and 5.
+                </p>
               </div>
               <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
-                <div className="text-muted-foreground text-[11px] uppercase tracking-wide">Benchmark subset</div>
-                <input
-                  className="border-input bg-background mt-2 w-full rounded-md border px-3 py-2 text-sm"
+                <label htmlFor="prompt-benchmark-limit" className="text-muted-foreground text-[11px] uppercase tracking-wide">
+                  Benchmark subset
+                </label>
+                <Input
+                  id="prompt-benchmark-limit"
+                  className="mt-2"
                   value={promptBenchmarkLimit}
                   onChange={(event) => setPromptBenchmarkLimit(event.target.value)}
                   inputMode="numeric"
                   placeholder="3"
+                  aria-describedby="benchmark-limit-hint"
                 />
+                <p id="benchmark-limit-hint" className="sr-only">
+                  Number of benchmark cases to use, between 1 and 10.
+                </p>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -307,7 +359,7 @@ export function AutoresearchPageClient({
                     disabled={createMutation.isPending}
                   >
                     <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
-                    Start
+                    Launch run
                   </Button>
                 </div>
               </div>
@@ -328,24 +380,36 @@ export function AutoresearchPageClient({
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-              <select
-                className="border-input bg-background/70 w-full rounded-md border px-3 py-2 text-sm"
-                value={selectedWorkflowTemplateId}
-                onChange={(event) => setSelectedWorkflowTemplateId(event.target.value)}
-              >
-                {workflowTemplates.map((template) => (
-                  <option key={template.template_id} value={template.template_id}>
-                    {template.title}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="border-input bg-background/70 w-full rounded-md border px-3 py-2 text-sm"
-                value={workflowMutationCount}
-                onChange={(event) => setWorkflowMutationCount(event.target.value)}
-                inputMode="numeric"
-                placeholder="Mutations"
-              />
+              <div>
+                <label htmlFor="workflow-template-select" className="sr-only">
+                  Workflow template
+                </label>
+                <Select value={selectedWorkflowTemplateId} onValueChange={setSelectedWorkflowTemplateId}>
+                  <SelectTrigger id="workflow-template-select" className="bg-background/70">
+                    <SelectValue placeholder="Select a workflow template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workflowTemplates.map((template) => (
+                      <SelectItem key={template.template_id} value={template.template_id}>
+                        {template.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label htmlFor="workflow-mutation-count" className="sr-only">
+                  Number of mutations
+                </label>
+                <Input
+                  id="workflow-mutation-count"
+                  className="bg-background/70"
+                  value={workflowMutationCount}
+                  onChange={(event) => setWorkflowMutationCount(event.target.value)}
+                  inputMode="numeric"
+                  placeholder="Mutations"
+                />
+              </div>
             </div>
             {selectedWorkflowTemplate ? (
               <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -370,7 +434,7 @@ export function AutoresearchPageClient({
               disabled={createWorkflowMutation.isPending || !selectedWorkflowTemplateId}
             >
               <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
-              Start workflow optimization
+              Launch workflow probe
             </Button>
           </CardContent>
         </Card>
@@ -386,31 +450,49 @@ export function AutoresearchPageClient({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <input
-              className="border-input bg-background/70 w-full rounded-md border px-3 py-2 text-sm"
-              value={designTitle}
-              onChange={(event) => setDesignTitle(event.target.value)}
-              placeholder="Experiment title"
-            />
-            <Textarea
-              value={designPrompt}
-              onChange={(event) => setDesignPrompt(event.target.value)}
-              className="min-h-24 bg-background/70"
-              placeholder="Design goal"
-            />
-            <Textarea
-              value={designCode}
-              onChange={(event) => setDesignCode(event.target.value)}
-              className="min-h-56 bg-background/70 font-mono text-xs"
-              placeholder="Paste HTML or a self-contained component snippet"
-            />
+            <div>
+              <label htmlFor="design-experiment-title" className="sr-only">
+                Experiment title
+              </label>
+              <Input
+                id="design-experiment-title"
+                className="bg-background/70"
+                value={designTitle}
+                onChange={(event) => setDesignTitle(event.target.value)}
+                placeholder="Experiment title"
+              />
+            </div>
+            <div>
+              <label htmlFor="design-prompt" className="sr-only">
+                Design goal
+              </label>
+              <Textarea
+                id="design-prompt"
+                value={designPrompt}
+                onChange={(event) => setDesignPrompt(event.target.value)}
+                className="min-h-24 bg-background/70"
+                placeholder="Design goal"
+              />
+            </div>
+            <div>
+              <label htmlFor="design-code" className="sr-only">
+                Component code
+              </label>
+              <Textarea
+                id="design-code"
+                value={designCode}
+                onChange={(event) => setDesignCode(event.target.value)}
+                className="min-h-56 bg-background/70 font-mono text-xs"
+                placeholder="Paste HTML or a self-contained component snippet"
+              />
+            </div>
             <Button
               className="w-full"
               onClick={() => createDesignMutation.mutate()}
               disabled={createDesignMutation.isPending || !designPrompt.trim() || !designCode.trim()}
             >
               <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
-              Start design optimization
+              Launch design probe
             </Button>
           </CardContent>
         </Card>
@@ -453,17 +535,21 @@ export function AutoresearchPageClient({
                 </CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                <Badge className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                  <ClockIcon className="h-3 w-3" />
                   {awaitingApproval.length} awaiting approval
                 </Badge>
-                <Badge variant="outline">{runningExperiments.length} running</Badge>
+                <Badge variant="outline" className="inline-flex items-center gap-1">
+                  <ZapIcon className="h-3 w-3" />
+                  {runningExperiments.length} running
+                </Badge>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {experimentsData.length === 0 ? (
               <div className="text-muted-foreground rounded-2xl border border-dashed p-5 text-sm">
-                No experiments yet. Start one explicitly from the left.
+                No experiments yet. Launch a bounded run from the left, then review the candidates here.
               </div>
             ) : (
               experimentsData.map((experiment) => (
@@ -471,17 +557,22 @@ export function AutoresearchPageClient({
                   key={experiment.experiment_id}
                   type="button"
                   onClick={() => router.replace(`/workspace/autoresearch?experiment=${encodeURIComponent(experiment.experiment_id)}`)}
+                  aria-pressed={selectedExperimentId === experiment.experiment_id}
+                  aria-label={`Select experiment: ${experiment.title}`}
                   className={`block w-full rounded-2xl border bg-background/70 p-4 text-left transition-colors ${
                     selectedExperimentId === experiment.experiment_id
-                      ? "border-emerald-500/40 ring-1 ring-emerald-500/20"
+                      ? "border-emerald-500 bg-emerald-500/5 ring-2 ring-emerald-500/20"
                       : "border-border/60 hover:border-border"
                   }`}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
+                  <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                    <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-sm font-medium">{experiment.title}</div>
-                        <Badge className={statusTone(experiment.status)}>{experiment.status}</Badge>
+                        <div className="text-sm font-semibold">{experiment.title}</div>
+                        <Badge className={`inline-flex items-center gap-1 ${statusTone(experiment.status)}`} aria-label={`Status: ${statusLabel(experiment.status)}`}>
+                          {STATUS_ICONS[experiment.status]}
+                          {statusLabel(experiment.status)}
+                        </Badge>
                         <Badge variant="outline">{experiment.role}</Badge>
                       </div>
                       <div className="text-muted-foreground text-xs">
@@ -489,9 +580,14 @@ export function AutoresearchPageClient({
                         {typeof experiment.top_score === "number" ? ` · top score ${experiment.top_score.toFixed(2)}` : ""}
                       </div>
                     </div>
-                    {experiment.promotion_status === "awaiting_approval" ? (
-                      <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300">Executive review</Badge>
-                    ) : null}
+                    <div className="flex flex-col items-end gap-1.5">
+                      {experiment.promotion_status === "awaiting_approval" ? (
+                        <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300">Executive review</Badge>
+                      ) : null}
+                      {relativeTime(experiment.updated_at?.toString()) ? (
+                        <span className="text-muted-foreground text-[11px]">{relativeTime(experiment.updated_at?.toString())}</span>
+                      ) : null}
+                    </div>
                   </div>
                 </button>
               ))
@@ -571,13 +667,27 @@ export function AutoresearchPageClient({
                               <Badge className="bg-zinc-500/10 text-zinc-700 dark:text-zinc-300">Unscored</Badge>
                             )}
                             {candidate.promoted_at ? (
-                              <Badge className="bg-sky-500/10 text-sky-700 dark:text-sky-300">Promoted</Badge>
+                              <Badge className="inline-flex items-center gap-1 bg-sky-500/10 text-sky-700 dark:text-sky-300">
+                                <CheckCircle2Icon className="h-3 w-3" />
+                                Promoted
+                              </Badge>
                             ) : null}
                           </div>
                           {candidate.score ? (
-                            <div className="text-muted-foreground mt-2 text-xs">
-                              Correctness {candidate.score.correctness.toFixed(2)} · Efficiency {candidate.score.efficiency.toFixed(2)} · Speed{" "}
-                              {candidate.score.speed.toFixed(2)}
+                            <div className="mt-3 space-y-1.5">
+                              {[
+                                { label: "Correctness", value: candidate.score.correctness, color: "bg-emerald-500" },
+                                { label: "Efficiency", value: candidate.score.efficiency, color: "bg-blue-500" },
+                                { label: "Speed", value: candidate.score.speed, color: "bg-violet-500" },
+                              ].map(({ label, value, color }) => (
+                                <div key={label} className="flex items-center gap-2">
+                                  <span className="text-muted-foreground w-20 text-[11px]">{label}</span>
+                                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border/60">
+                                    <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.round(value * 100)}%` }} />
+                                  </div>
+                                  <span className="text-muted-foreground w-8 text-right text-[11px]">{value.toFixed(2)}</span>
+                                </div>
+                              ))}
                             </div>
                           ) : (
                             <div className="text-muted-foreground mt-2 text-xs">
@@ -653,7 +763,7 @@ export function AutoresearchPageClient({
                             <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-white">
                               <img
                                 src={candidate.metadata.screenshot_url}
-                                alt={`${candidate.source} preview`}
+                                alt={`UI design candidate ${candidate.candidate_id} from ${candidate.source} source`}
                                 className="h-auto w-full object-cover"
                               />
                             </div>

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypedDict
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -9,6 +9,34 @@ from pydantic import BaseModel, Field
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+class ExperimentMetadata(TypedDict, total=False):
+    """Metadata fields common to all experiment domains."""
+
+    notes: str | None
+    source_mutation_strategy: str
+
+
+class PromptExperimentMetadata(ExperimentMetadata):
+    """Metadata specific to prompt optimization experiments."""
+
+    benchmark_count: int
+    top_score: float
+
+
+class UiDesignExperimentMetadata(ExperimentMetadata):
+    """Metadata specific to UI design experiments."""
+
+    critique: dict[str, str]
+    baseline_comparison: dict[str, float]
+
+
+class WorkflowRouteExperimentMetadata(ExperimentMetadata):
+    """Metadata specific to workflow route experiments."""
+
+    score_breakdown: dict[str, float]
+    baseline_comparison: dict[str, float]
 
 
 ExperimentDomain = Literal["subagent_prompt", "workflow_route", "ui_design"]
@@ -61,7 +89,7 @@ class CandidateRecord(BaseModel):
     source: Literal["champion", "mutation", "manual"] = "mutation"
     score: CandidateScore | None = None
     benchmark_case_ids: list[str] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)  # Validated at domain level (PromptExperimentMetadata, etc.)
     created_at: datetime = Field(default_factory=_utc_now)
     promoted_at: datetime | None = None
 

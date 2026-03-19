@@ -34,6 +34,7 @@ const lowlight = createLowlight(common);
 export interface BlockEditorHandle {
   getSelectionMarkdown: () => string;
   replaceSelectionMarkdown: (markdown: string) => void;
+  insertMarkdown: (markdown: string) => void;
 }
 
 function ToolbarButton({
@@ -157,6 +158,17 @@ export const BlockEditor = forwardRef<BlockEditorHandle, {
         .chain()
         .focus()
         .insertContentAt({ from, to }, markdownToHtml(nextMarkdown))
+        .run();
+    },
+    insertMarkdown(nextMarkdown: string) {
+      if (!editor) {
+        return;
+      }
+      const { to } = editor.state.selection;
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(to, markdownToHtml(nextMarkdown))
         .run();
     },
   }), [editor]);
