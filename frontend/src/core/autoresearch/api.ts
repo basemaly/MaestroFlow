@@ -4,20 +4,41 @@ import type {
   ExperimentSummary,
 } from "./types";
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || `Autoresearch API failed: ${response.status}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(path, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      let message: string;
+      try {
+        const body = await response.json();
+        message = typeof body?.detail === "string" ? body.detail : JSON.stringify(body);
+      } catch {
+        message = await response.text().catch(() => "");
+      }
+      throw new Error(message || `Request failed (${response.status})`);
+    }
+    return response.json() as Promise<T>;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timed out. The operation may still be running in the background.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return response.json() as Promise<T>;
 }
 
 export function getAutoresearchRegistry(): Promise<AutoresearchRegistryPayload> {

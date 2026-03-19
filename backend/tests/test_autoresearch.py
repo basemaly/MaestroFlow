@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
-from src.autoresearch.models import CandidateScore
+import pytest
+
+from src.autoresearch.models import BenchmarkCase, CandidateRecord, CandidateScore, ExperimentRecord
 from src.autoresearch.prompts import register_prompt_defaults
 from src.autoresearch.service import (
     approve_experiment,
@@ -8,9 +11,15 @@ from src.autoresearch.service import (
     create_ui_design_experiment,
     create_workflow_route_experiment,
     get_candidate_screenshot_path,
+    get_experiment_detail,
     get_registry_payload,
     list_experiment_summaries,
+    reject_experiment,
+    rollback_role_prompt,
+    stop_experiment,
+    submit_candidate_score,
 )
+from src.autoresearch.storage import get_candidate, get_champion, get_experiment, save_candidate, save_champion
 from src.autoresearch.ui_design import get_ui_candidate_paths
 from src.subagents.registry import get_subagent_config
 
@@ -154,3 +163,256 @@ def test_workflow_route_approval_promotes_candidate(monkeypatch, tmp_path: Path)
     assert detail["experiment"]["promotion_status"] == "approved"
     promoted = [candidate for candidate in detail["candidates"] if candidate.get("promoted_at")]
     assert promoted
+
+
+def test_reject_experiment_updates_status(monkeypatch, tmp_path: Path):
+    """Test that rejecting an experiment updates status and promotion_status."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+    register_prompt_defaults({"general-purpose": "You are a general-purpose agent."})
+    monkeypatch.setattr(
+        "src.autoresearch.service.generate_prompt_mutations",
+        lambda **_: [{"prompt_text": "Test", "strategy": "test"}],
+    )
+    monkeypatch.setattr(
+        "src.autoresearch.service.evaluate_candidate_record",
+        lambda candidate, **_: (
+            setattr(
+                candidate,
+                "score",
+                CandidateScore(correctness=0.8, efficiency=0.8, speed=0.8, composite=0.8),
+            ),
+            candidate,
+        )[1],
+    )
+
+    result = create_prompt_experiment("general-purpose")
+    experiment_id = result["experiment"]["experiment_id"]
+
+    rejected = reject_experiment(experiment_id, reason="Not suitable")
+    assert rejected["experiment"]["status"] == "rejected"
+    assert rejected["experiment"]["promotion_status"] == "rejected"
+    assert rejected["experiment"]["last_error"] == "Not suitable"
+
+
+def test_reject_experiment_invalid_id(monkeypatch, tmp_path: Path):
+    """Test that rejecting nonexistent experiment raises ValueError."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+
+    with pytest.raises(ValueError, match="Unknown experiment"):
+        reject_experiment("nonexistent-id")
+
+
+def test_rollback_prompt_restores_version(monkeypatch, tmp_path: Path):
+    """Test that rollback creates new champion version."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+
+    original = rollback_role_prompt("test-role", "Original prompt")
+    assert original.version == 1
+
+    rolled_back = rollback_role_prompt("test-role", "New prompt", actor_id="user123")
+    assert rolled_back.version == 2
+    assert rolled_back.prompt_text == "New prompt"
+    assert rolled_back.promoted_by == "user123"
+
+
+def test_rollback_prompt_invalid_role(monkeypatch, tmp_path: Path):
+    """Test that rollback succeeds even for unknown roles (creates initial version)."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+
+    result = rollback_role_prompt("brand-new-role", "First version")
+    assert result.version == 1
+    assert result.role == "brand-new-role"
+
+
+def test_stop_experiment_halts_running(monkeypatch, tmp_path: Path):
+    """Test that stopping an experiment changes status to stopped."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+    register_prompt_defaults({"general-purpose": "You are a general-purpose agent."})
+    monkeypatch.setattr(
+        "src.autoresearch.service.generate_prompt_mutations",
+        lambda **_: [{"prompt_text": "Test", "strategy": "test"}],
+    )
+    monkeypatch.setattr(
+        "src.autoresearch.service.evaluate_candidate_record",
+        lambda candidate, **_: (
+            setattr(
+                candidate,
+                "score",
+                CandidateScore(correctness=0.5, efficiency=0.5, speed=0.5, composite=0.5),
+            ),
+            candidate,
+        )[1],
+    )
+
+    result = create_prompt_experiment("general-purpose", max_mutations=1)
+    experiment_id = result["experiment"]["experiment_id"]
+
+    stopped = stop_experiment(experiment_id, reason="User cancelled")
+    assert stopped["experiment"]["status"] == "stopped"
+    assert stopped["experiment"]["last_error"] == "User cancelled"
+
+
+def test_stop_experiment_idempotent(monkeypatch, tmp_path: Path):
+    """Test that stopping an already stopped experiment doesn't error."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+    register_prompt_defaults({"general-purpose": "You are a general-purpose agent."})
+    monkeypatch.setattr(
+        "src.autoresearch.service.generate_prompt_mutations",
+        lambda **_: [{"prompt_text": "Test", "strategy": "test"}],
+    )
+    monkeypatch.setattr(
+        "src.autoresearch.service.evaluate_candidate_record",
+        lambda candidate, **_: (
+            setattr(
+                candidate,
+                "score",
+                CandidateScore(correctness=0.5, efficiency=0.5, speed=0.5, composite=0.5),
+            ),
+            candidate,
+        )[1],
+    )
+
+    result = create_prompt_experiment("general-purpose", max_mutations=1)
+    experiment_id = result["experiment"]["experiment_id"]
+
+    stop_experiment(experiment_id, reason="First stop")
+    stopped_twice = stop_experiment(experiment_id, reason="Second stop")
+    assert stopped_twice["experiment"]["status"] == "stopped"
+
+
+def test_approve_with_no_scored_candidates(monkeypatch, tmp_path: Path):
+    """Test that approving experiment with no scores raises descriptive error."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+
+    from src.autoresearch.storage import new_experiment_id
+
+    experiment = ExperimentRecord(
+        experiment_id=new_experiment_id(),
+        domain="subagent_prompt",
+        role="test-role",
+        title="Empty experiment",
+        champion_version=1,
+        champion_prompt="Test",
+        status="draft",
+    )
+    from src.autoresearch.storage import create_experiment
+
+    create_experiment(experiment)
+
+    with pytest.raises(ValueError, match="No scored mutation candidates"):
+        approve_experiment(experiment.experiment_id)
+
+
+def test_score_deserialization_edge_cases(monkeypatch, tmp_path: Path):
+    """Test that score round-trip preserves all values including edge cases."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+
+    from src.autoresearch.storage import new_candidate_id
+
+    # Test all zeros
+    candidate_zeros = CandidateRecord(
+        candidate_id=new_candidate_id(),
+        experiment_id="test-exp",
+        role="test",
+        prompt_text="Test",
+        score=CandidateScore(correctness=0.0, efficiency=0.0, speed=0.0, composite=0.0),
+    )
+    save_candidate(candidate_zeros)
+    retrieved_zeros = get_candidate(candidate_zeros.candidate_id)
+    assert retrieved_zeros.score.correctness == 0.0
+    assert retrieved_zeros.score.composite == 0.0
+
+    # Test all ones
+    candidate_ones = CandidateRecord(
+        candidate_id=new_candidate_id(),
+        experiment_id="test-exp",
+        role="test",
+        prompt_text="Test",
+        score=CandidateScore(correctness=1.0, efficiency=1.0, speed=1.0, composite=1.0),
+    )
+    save_candidate(candidate_ones)
+    retrieved_ones = get_candidate(candidate_ones.candidate_id)
+    assert retrieved_ones.score.correctness == 1.0
+
+    # Test with notes
+    candidate_notes = CandidateRecord(
+        candidate_id=new_candidate_id(),
+        experiment_id="test-exp",
+        role="test",
+        prompt_text="Test",
+        score=CandidateScore(
+            correctness=0.5,
+            efficiency=0.5,
+            speed=0.5,
+            composite=0.5,
+            notes="Some notes",
+        ),
+    )
+    save_candidate(candidate_notes)
+    retrieved_notes = get_candidate(candidate_notes.candidate_id)
+    assert retrieved_notes.score.notes == "Some notes"
+
+
+def test_datetime_tz_aware_storage(monkeypatch, tmp_path: Path):
+    """Test that datetime values are stored and retrieved with UTC timezone."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+
+    from src.autoresearch.storage import new_candidate_id
+
+    now = datetime.now(UTC)
+    candidate = CandidateRecord(
+        candidate_id=new_candidate_id(),
+        experiment_id="test-exp",
+        role="test",
+        prompt_text="Test",
+        created_at=now,
+        promoted_at=now,
+    )
+    save_candidate(candidate)
+    retrieved = get_candidate(candidate.candidate_id)
+
+    assert retrieved.created_at.tzinfo == UTC
+    assert retrieved.promoted_at.tzinfo == UTC
+    assert retrieved.created_at.replace(microsecond=0) == now.replace(microsecond=0)
+
+
+def test_candidate_screenshot_nonexistent(monkeypatch, tmp_path: Path):
+    """Test that requesting screenshot for nonexistent candidate raises error."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+
+    with pytest.raises(ValueError, match="Unknown UI design experiment"):
+        get_candidate_screenshot_path("nonexistent-exp", "nonexistent-cand")
+
+
+def test_experiment_state_transitions_validation(monkeypatch, tmp_path: Path):
+    """Test that experiments follow expected status transitions."""
+    monkeypatch.setenv("AUTORESEARCH_DB_PATH", str(tmp_path / "autoresearch.db"))
+    register_prompt_defaults({"general-purpose": "You are a general-purpose agent."})
+    monkeypatch.setattr(
+        "src.autoresearch.service.generate_prompt_mutations",
+        lambda **_: [{"prompt_text": "Test", "strategy": "test"}],
+    )
+    monkeypatch.setattr(
+        "src.autoresearch.service.evaluate_candidate_record",
+        lambda candidate, **_: (
+            setattr(
+                candidate,
+                "score",
+                CandidateScore(correctness=0.95, efficiency=0.95, speed=0.95, composite=0.95),
+            ),
+            candidate,
+        )[1],
+    )
+
+    result = create_prompt_experiment("general-purpose")
+    exp_id = result["experiment"]["experiment_id"]
+    assert result["experiment"]["status"] in ("evaluated", "awaiting_approval")
+
+    # Verify we can approve the experiment and it transitions to promoted
+    approved = approve_experiment(exp_id)
+    assert approved["experiment"]["status"] == "promoted"
+    assert approved["experiment"]["promotion_status"] == "approved"
+
+    # Verify the champion was updated
+    reloaded = get_experiment_detail(exp_id)
+    assert reloaded["experiment"]["promotion_status"] == "approved"

@@ -6,6 +6,7 @@ import base64
 import os
 from typing import Any
 from urllib.parse import urlparse
+from urllib.parse import urlunsplit
 
 import httpx
 
@@ -34,7 +35,41 @@ async def _probe(url: str, *, headers: dict[str, str] | None = None, timeout: fl
             return False, f"HTTP {response.status_code}"
         return True, None
     except Exception as exc:
-        return False, str(exc)
+        message = str(exc).strip() or exc.__class__.__name__
+        return False, message
+
+
+def _candidate_origins(origin: str) -> list[str]:
+    parsed = urlparse(origin)
+    if not parsed.scheme or not parsed.netloc:
+        return [origin.rstrip("/")]
+
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    candidates = [origin.rstrip("/")]
+
+    if host in {"host.docker.internal", "localhost", "127.0.0.1"}:
+        for alt_host in ("127.0.0.1", "localhost", "host.docker.internal"):
+            rebuilt = urlunsplit((parsed.scheme, f"{alt_host}{port}", "", "", "")).rstrip("/")
+            if rebuilt not in candidates:
+                candidates.append(rebuilt)
+    return candidates
+
+
+async def _probe_service(
+    origin: str,
+    path: str,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout: float = 2.5,
+) -> tuple[bool, str | None, str]:
+    last_error: str | None = None
+    for candidate_origin in _candidate_origins(origin):
+        available, error = await _probe(_join_url(candidate_origin, path), headers=headers, timeout=timeout)
+        if available:
+            return True, None, candidate_origin
+        last_error = error
+    return False, last_error, origin
 
 
 def _langfuse_headers() -> dict[str, str] | None:
@@ -63,8 +98,8 @@ async def get_external_services_status() -> dict[str, Any]:
 
     surfsense_configured = bool(surfsense_config.base_url and surfsense_config.bearer_token)
     surfsense_origin = _normalize_origin(surfsense_config.base_url)
-    surfsense_available, surfsense_error = (
-        await _probe(_join_url(surfsense_origin, "/health")) if surfsense_configured else (False, None)
+    surfsense_available, surfsense_error, surfsense_effective_origin = (
+        await _probe_service(surfsense_origin, "/health") if surfsense_configured else (False, None, surfsense_origin)
     )
     statuses.append(
         {
@@ -73,7 +108,7 @@ async def get_external_services_status() -> dict[str, Any]:
             "configured": surfsense_configured,
             "available": surfsense_available if surfsense_configured else False,
             "required": False,
-            "url": surfsense_origin,
+            "url": surfsense_effective_origin,
             "message": (
                 None
                 if surfsense_configured and surfsense_available
@@ -84,10 +119,10 @@ async def get_external_services_status() -> dict[str, Any]:
 
     langfuse_configured = langfuse_config.is_configured
     langfuse_origin = _normalize_origin(langfuse_config.host)
-    langfuse_available, langfuse_error = (
-        await _probe(_join_url(langfuse_origin, "/api/public/health"), headers=_langfuse_headers())
+    langfuse_available, langfuse_error, langfuse_effective_origin = (
+        await _probe_service(langfuse_origin, "/api/public/health", headers=_langfuse_headers())
         if langfuse_configured
-        else (False, None)
+        else (False, None, langfuse_origin)
     )
     statuses.append(
         {
@@ -96,7 +131,7 @@ async def get_external_services_status() -> dict[str, Any]:
             "configured": langfuse_configured,
             "available": langfuse_available if langfuse_configured else False,
             "required": False,
-            "url": langfuse_origin,
+            "url": langfuse_effective_origin,
             "message": (
                 None
                 if langfuse_configured and langfuse_available
@@ -107,10 +142,10 @@ async def get_external_services_status() -> dict[str, Any]:
 
     litellm_configured = bool(litellm_base_url)
     litellm_origin = _normalize_origin(litellm_base_url or "http://127.0.0.1:4000")
-    litellm_available, litellm_error = (
-        await _probe(_join_url(litellm_origin, "/v1/models"), headers=_litellm_headers())
+    litellm_available, litellm_error, litellm_effective_origin = (
+        await _probe_service(litellm_origin, "/v1/models", headers=_litellm_headers())
         if litellm_configured
-        else (False, None)
+        else (False, None, litellm_origin)
     )
     statuses.append(
         {
@@ -119,7 +154,7 @@ async def get_external_services_status() -> dict[str, Any]:
             "configured": litellm_configured,
             "available": litellm_available if litellm_configured else False,
             "required": True,
-            "url": litellm_origin,
+            "url": litellm_effective_origin,
             "message": (
                 None
                 if litellm_configured and litellm_available

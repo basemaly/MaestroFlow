@@ -85,7 +85,7 @@ async def create_autoresearch_prompt_experiment(request: CreatePromptExperimentR
             benchmark_limit=request.benchmark_limit,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=f"Cannot create prompt experiment: {exc}") from exc
 
 
 @router.post("/experiments/ui-design")
@@ -98,9 +98,9 @@ async def create_autoresearch_ui_design_experiment(request: CreateUiDesignExperi
             max_iterations=request.max_iterations,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=f"Cannot create UI design experiment: {exc}") from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=f"UI design experiment failed: {exc}") from exc
 
 
 @router.post("/experiments/workflow-route")
@@ -112,7 +112,7 @@ async def create_autoresearch_workflow_route_experiment(request: CreateWorkflowR
             max_mutations=request.max_mutations,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=f"Cannot create workflow route experiment: {exc}") from exc
 
 
 @router.get("/experiments/{experiment_id}")
@@ -120,7 +120,7 @@ async def get_autoresearch_experiment(experiment_id: str) -> dict:
     try:
         return get_experiment_detail(experiment_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=f"Experiment not found: {exc}") from exc
 
 
 @router.get("/experiments/{experiment_id}/candidates/{candidate_id}/screenshot")
@@ -129,7 +129,7 @@ async def get_autoresearch_candidate_screenshot(experiment_id: str, candidate_id
         path = get_candidate_screenshot_path(experiment_id, candidate_id)
         return FileResponse(path, media_type="image/png")
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=f"Screenshot not available: {exc}") from exc
 
 
 @router.post("/experiments/{experiment_id}/candidates/{candidate_id}/score")
@@ -144,7 +144,7 @@ async def score_autoresearch_candidate(experiment_id: str, candidate_id: str, re
             notes=request.notes,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=f"Cannot score candidate: {exc}") from exc
 
 
 @router.post("/experiments/{experiment_id}/approve")
@@ -152,7 +152,7 @@ async def approve_autoresearch_experiment(experiment_id: str, actor_id: str = "e
     try:
         return approve_experiment(experiment_id, approved_by=actor_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=f"Cannot approve experiment: {exc}") from exc
 
 
 @router.post("/experiments/{experiment_id}/reject")
@@ -160,7 +160,7 @@ async def reject_autoresearch_experiment(experiment_id: str, request: RejectExpe
     try:
         return reject_experiment(experiment_id, reason=request.reason)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=f"Experiment not found: {exc}") from exc
 
 
 @router.post("/prompts/rollback")
@@ -169,7 +169,7 @@ async def rollback_autoresearch_prompt(request: RollbackPromptRequest) -> dict:
         champion = rollback_role_prompt(request.role, request.prompt_text, actor_id=request.actor_id)
         return {"champion": champion.model_dump(mode="json")}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=f"Rollback failed: {exc}") from exc
 
 
 @router.post("/experiments/{experiment_id}/stop")
@@ -177,4 +177,4 @@ async def stop_autoresearch_experiment(experiment_id: str, request: StopExperime
     try:
         return stop_experiment(experiment_id, reason=request.reason)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=f"Experiment not found: {exc}") from exc

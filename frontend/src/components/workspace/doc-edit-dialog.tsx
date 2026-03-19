@@ -1024,7 +1024,7 @@ export function DocEditDialog({
 }) {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [studioKey, setStudioKey] = useState(0);
   const [prefillDoc, setPrefillDoc] = useState("");
 
@@ -1064,7 +1064,7 @@ export function DocEditDialog({
   }
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (!v) setIsFullscreen(false); }}>
+    <Sheet open={open} onOpenChange={setOpen}>
       {showTrigger ? (
         <SheetTrigger asChild>
           <Button
@@ -1079,13 +1079,13 @@ export function DocEditDialog({
         </SheetTrigger>
       ) : null}
       <SheetContent
-        side="right"
+        side={isMinimized ? "right" : "left"}
         showClose={false}
         className={cn(
           "flex flex-col gap-0 p-0 transition-all duration-200",
-          isFullscreen
-            ? "!inset-0 !h-screen !w-screen !max-w-none rounded-none"
-            : "w-[min(96vw,1680px)] max-w-none",
+          isMinimized
+            ? "w-[min(90vw,600px)] max-w-none"
+            : "!inset-0 !h-screen !w-screen !max-w-none rounded-none",
         )}
       >
         <SheetHeader className="flex shrink-0 flex-row items-center justify-between border-b px-4 py-2">
@@ -1097,18 +1097,26 @@ export function DocEditDialog({
             Compare and choose writing revisions
           </SheetDescription>
           <div className="flex items-center gap-1">
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => setIsFullscreen((v) => !v)}
-              title={isFullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
-            >
-              {isFullscreen ? (
-                <Minimize2Icon className="size-4" />
-              ) : (
+            {isMinimized && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => setIsMinimized(false)}
+                title="Expand to fullscreen"
+              >
                 <Maximize2Icon className="size-4" />
-              )}
-            </Button>
+              </Button>
+            )}
+            {!isMinimized && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => setIsMinimized(true)}
+                title="Minimize to slideout"
+              >
+                <Minimize2Icon className="size-4" />
+              </Button>
+            )}
             <Button
               size="icon-sm"
               variant="ghost"

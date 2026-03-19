@@ -5,9 +5,10 @@ import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
-from src.autoresearch.models import CandidateRecord, ChampionVersion, ExperimentRecord
+from src.autoresearch.models import CandidateRecord, CandidateScore, ChampionVersion, ExperimentRecord
 
 REPO_ROOT = Path(__file__).parents[3]
 DEFAULT_DB_PATH = REPO_ROOT / ".deer-flow" / "autoresearch.db"
@@ -101,7 +102,7 @@ def _row_to_champion(row: sqlite3.Row) -> ChampionVersion:
         prompt_text=row["prompt_text"],
         version=row["version"],
         source_candidate_id=row["source_candidate_id"],
-        updated_at=row["updated_at"],
+        updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC),
         promoted_by=row["promoted_by"],
     )
 
@@ -118,8 +119,8 @@ def _row_to_experiment(row: sqlite3.Row) -> ExperimentRecord:
         candidate_ids=json.loads(row["candidate_ids_json"]),
         benchmark_case_ids=json.loads(row["benchmark_case_ids_json"]),
         promotion_status=row["promotion_status"],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
+        created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+        updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC),
         metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {},
         last_error=row["last_error"],
         notes=row["notes"],
@@ -127,17 +128,26 @@ def _row_to_experiment(row: sqlite3.Row) -> ExperimentRecord:
 
 
 def _row_to_candidate(row: sqlite3.Row) -> CandidateRecord:
+    score = None
+    if row["score_json"]:
+        score_data = json.loads(row["score_json"])
+        score = CandidateScore(**score_data)
+
+    promoted_at = None
+    if row["promoted_at"]:
+        promoted_at = datetime.fromisoformat(row["promoted_at"]).replace(tzinfo=UTC)
+
     return CandidateRecord(
         candidate_id=row["candidate_id"],
         experiment_id=row["experiment_id"],
         role=row["role"],
         prompt_text=row["prompt_text"],
         source=row["source"],
-        score=json.loads(row["score_json"]) if row["score_json"] else None,
+        score=score,
         benchmark_case_ids=json.loads(row["benchmark_case_ids_json"]),
         metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {},
-        created_at=row["created_at"],
-        promoted_at=row["promoted_at"],
+        created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+        promoted_at=promoted_at,
     )
 
 

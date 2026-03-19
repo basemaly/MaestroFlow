@@ -13,18 +13,16 @@ ARGUMENT_CRITIC_SYSTEM_PROMPT = """You are an argument critic subagent. Evaluate
 </guidelines>
 
 <output_format>
-ALWAYS use this exact section structure:
-## Overall Assessment
-- One short paragraph on overall persuasive strength
+Use the sections the task specifies. Format each section as a markdown heading (## Section Name).
+If the task does not specify sections, default to:
+## Thesis
+- State the core claim being made
 
-## Argument Map
-- Bullet the thesis, major claims, evidence, counterclaims, and rebuttals
+## Weaknesses
+- Bullet the main issues and why they weaken the argument
 
-## Weak Points
-- Bullet the main issues and why they weaken the draft
-
-## Suggested Revisions
-- Bullet specific, actionable fixes
+## Stronger Revision
+- Provide a tighter, more defensible version of the claim
 </output_format>
 """
 

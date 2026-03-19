@@ -43,6 +43,14 @@ from src.autoresearch.workflow_routes import (
 )
 
 def list_experiment_summaries(limit: int = 50) -> list[ExperimentSummary]:
+    """List all experiment summaries with candidate counts and top scores.
+
+    Args:
+        limit: Maximum number of experiments to return (default: 50).
+
+    Returns:
+        List of experiment summaries sorted by creation time.
+    """
     summaries: list[ExperimentSummary] = []
     for experiment in list_experiments(limit=limit):
         candidates = list_candidates(experiment.experiment_id)
@@ -65,6 +73,11 @@ def list_experiment_summaries(limit: int = 50) -> list[ExperimentSummary]:
 
 
 def get_registry_payload() -> dict:
+    """Get the autoresearch registry with all available roles and workflow templates.
+
+    Returns:
+        Dict with 'roles', 'champions', and 'workflow_templates' for UI initialization.
+    """
     champions = list_prompt_champions()
     workflow_templates = []
     for template in list_workflow_templates():
@@ -95,6 +108,21 @@ def create_prompt_experiment(
     max_mutations: int = 3,
     benchmark_limit: int | None = None,
 ) -> dict:
+    """Create a new prompt optimization experiment for a given role.
+
+    Args:
+        role: Target role (e.g., 'subagent_prompt:general_purpose').
+        title: Experiment title (optional).
+        notes: Additional context (optional).
+        max_mutations: Number of prompt mutations to generate (1-5, default: 3).
+        benchmark_limit: Max benchmark cases to use (optional).
+
+    Returns:
+        Dict with 'experiment_id', 'champion_version', and 'candidates'.
+
+    Raises:
+        ValueError: If role is unknown or max_mutations is out of range.
+    """
     ensure_default_champions()
     champion = get_champion(role)
     if champion is None:
@@ -173,6 +201,17 @@ def create_prompt_experiment(
 
 
 def get_experiment_detail(experiment_id: str) -> dict:
+    """Fetch detailed experiment record with all candidates and scores.
+
+    Args:
+        experiment_id: Experiment ID.
+
+    Returns:
+        Dict with experiment record and full candidate list.
+
+    Raises:
+        ValueError: If experiment not found.
+    """
     experiment = get_experiment(experiment_id)
     if experiment is None:
         raise ValueError(f"Unknown experiment '{experiment_id}'.")
@@ -199,6 +238,22 @@ def submit_candidate_score(
     speed: float,
     notes: str | None = None,
 ) -> dict:
+    """Score a candidate in an experiment.
+
+    Args:
+        experiment_id: Experiment ID.
+        candidate_id: Candidate ID.
+        correctness: Correctness score (0-1).
+        efficiency: Efficiency score (0-1).
+        speed: Speed/latency score (0-1).
+        notes: Optional scoring notes.
+
+    Returns:
+        Dict with updated candidate and composite score.
+
+    Raises:
+        ValueError: If candidate or experiment not found.
+    """
     experiment = get_experiment(experiment_id)
     if experiment is None:
         raise ValueError(f"Unknown experiment '{experiment_id}'.")
@@ -234,6 +289,18 @@ def submit_candidate_score(
 
 
 def approve_experiment(experiment_id: str, approved_by: str = "executive") -> dict:
+    """Approve and promote a candidate to champion.
+
+    Args:
+        experiment_id: Experiment ID.
+        approved_by: User ID approving (default: 'executive').
+
+    Returns:
+        Dict with updated experiment and new champion version.
+
+    Raises:
+        ValueError: If experiment has no scored candidates.
+    """
     experiment = get_experiment(experiment_id)
     if experiment is None:
         raise ValueError(f"Unknown experiment '{experiment_id}'.")
@@ -290,6 +357,18 @@ def approve_experiment(experiment_id: str, approved_by: str = "executive") -> di
 
 
 def reject_experiment(experiment_id: str, reason: str | None = None) -> dict:
+    """Reject an experiment and its candidates.
+
+    Args:
+        experiment_id: Experiment ID.
+        reason: Optional rejection reason.
+
+    Returns:
+        Dict with updated experiment status.
+
+    Raises:
+        ValueError: If experiment not found.
+    """
     experiment = get_experiment(experiment_id)
     if experiment is None:
         raise ValueError(f"Unknown experiment '{experiment_id}'.")
@@ -302,6 +381,16 @@ def reject_experiment(experiment_id: str, reason: str | None = None) -> dict:
 
 
 def rollback_role_prompt(role: str, prompt_text: str, actor_id: str = "executive") -> ChampionVersion:
+    """Rollback to a specific prompt version for a role.
+
+    Args:
+        role: Target role.
+        prompt_text: Prompt text to restore.
+        actor_id: User ID performing rollback (default: 'executive').
+
+    Returns:
+        New champion version record.
+    """
     prior = get_champion(role)
     next_version = (prior.version if prior else 0) + 1
     return save_champion(
@@ -317,6 +406,18 @@ def rollback_role_prompt(role: str, prompt_text: str, actor_id: str = "executive
 
 
 def stop_experiment(experiment_id: str, reason: str | None = None) -> dict:
+    """Stop a running experiment.
+
+    Args:
+        experiment_id: Experiment ID.
+        reason: Optional reason for stopping.
+
+    Returns:
+        Dict with updated experiment status.
+
+    Raises:
+        ValueError: If experiment not found.
+    """
     experiment = get_experiment(experiment_id)
     if experiment is None:
         raise ValueError(f"Unknown experiment '{experiment_id}'.")
@@ -328,6 +429,18 @@ def stop_experiment(experiment_id: str, reason: str | None = None) -> dict:
 
 
 def get_candidate_screenshot_path(experiment_id: str, candidate_id: str) -> Path:
+    """Get the filesystem path for a UI design candidate screenshot.
+
+    Args:
+        experiment_id: Experiment ID.
+        candidate_id: Candidate ID.
+
+    Returns:
+        Path object (may not exist).
+
+    Raises:
+        ValueError: If experiment not found or not a UI design experiment.
+    """
     experiment = get_experiment(experiment_id)
     if experiment is None or experiment.domain != "ui_design":
         raise ValueError(f"Unknown UI design experiment '{experiment_id}'.")
@@ -352,6 +465,17 @@ def create_ui_design_experiment(
     title: str | None = None,
     max_iterations: int = 3,
 ) -> dict:
+    """Create a UI design optimization experiment.
+
+    Args:
+        prompt: Mutation prompt for VLM to critique and improve component.
+        component_code: React component code to optimize.
+        title: Experiment title (optional).
+        max_iterations: Max design iterations (1-3, default: 3).
+
+    Returns:
+        Dict with 'experiment_id' and initial 'candidates'.
+    """
     max_iterations = max(1, min(max_iterations, 3))
     experiment = ExperimentRecord(
         experiment_id=new_experiment_id(),
@@ -438,6 +562,16 @@ def create_workflow_route_experiment(
     title: str | None = None,
     max_mutations: int = 3,
 ) -> dict:
+    """Create a workflow route optimization experiment.
+
+    Args:
+        template_id: Workflow template ID.
+        title: Experiment title (optional).
+        max_mutations: Max route mutations (1-5, default: 3).
+
+    Returns:
+        Dict with 'experiment_id' and initial 'candidates'.
+    """
     max_mutations = max(1, min(max_mutations, 5))
     baseline_workflow = get_workflow_template(template_id)
     champion_role = f"workflow-route:{template_id}"
@@ -568,9 +702,18 @@ def _evaluate_ui_design_candidate(
     prompt: str,
     baseline_length: int,
 ) -> CandidateRecord:
+    from src.autoresearch.ui_design import _heuristic_ui_critique
     started_at = time.perf_counter()
-    _, screenshot_path = render_candidate_html(experiment_id, candidate.candidate_id, candidate.prompt_text)
-    critique = run_vlm_critic(prompt, candidate.prompt_text, screenshot_path)
+    screenshot_path = None
+    try:
+        _, screenshot_path = render_candidate_html(experiment_id, candidate.candidate_id, candidate.prompt_text)
+    except RuntimeError:
+        # Renderer not available (pnpm/Playwright missing) — fall back to heuristic
+        pass
+    if screenshot_path is not None and screenshot_path.exists():
+        critique = run_vlm_critic(prompt, candidate.prompt_text, screenshot_path)
+    else:
+        critique = _heuristic_ui_critique(prompt, candidate.prompt_text)
     elapsed = time.perf_counter() - started_at
     visual_score = float(critique.get("score", 0))
     candidate.score = build_ui_design_score(

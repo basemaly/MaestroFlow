@@ -14,7 +14,8 @@ WRITING_REFINER_SYSTEM_PROMPT = """You are a writing refiner subagent. Rewrite t
 </guidelines>
 
 <output_format>
-ALWAYS use this exact section structure:
+Use the sections the task specifies. Format each section as a markdown heading (## Section Name).
+If the task does not specify sections, default to:
 ## Summary
 - One short paragraph on what changed
 

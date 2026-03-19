@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 
 from src.models import create_chat_model
+
+logger = logging.getLogger(__name__)
 
 
 def _fallback_mutations(champion_prompt: str, count: int) -> list[dict[str, str]]:
@@ -94,5 +97,9 @@ Return strict JSON with this shape:
             if prompt_text:
                 mutations.append({"prompt_text": prompt_text, "strategy": strategy})
         return mutations or _fallback_mutations(champion_prompt, count)
-    except Exception:
+    except (KeyError, ValueError, TypeError) as e:
+        logger.warning(f"Mutation generation failed ({e.__class__.__name__}: {e}), using fallback mutations")
+        return _fallback_mutations(champion_prompt, count)
+    except Exception as e:
+        logger.error(f"Unexpected error during mutation generation: {e}", exc_info=True)
         return _fallback_mutations(champion_prompt, count)

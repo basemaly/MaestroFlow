@@ -218,13 +218,17 @@ stack-status:
 # Stop all services
 stop:
 	@echo "Stopping all services..."
-	@-pkill -f "langgraph dev" 2>/dev/null || true
 	@-pkill -f "uvicorn src.gateway.app:app" 2>/dev/null || true
-	@-pkill -f "next dev" 2>/dev/null || true
+	@-pkill -f "next dev.*--port 3010" 2>/dev/null || true
+	@-pkill -f "pnpm.*next dev" 2>/dev/null || true
 	@-nginx -c $(PWD)/docker/nginx/nginx.local.conf -p $(PWD) -s quit 2>/dev/null || true
 	@sleep 1
+	@-pkill -9 -f "nginx.*nginx.local.conf" 2>/dev/null || true
 	@-pkill -9 nginx 2>/dev/null || true
-	@-docker compose -p deer-flow-dev -f $(PWD)/docker/docker-compose-dev.yaml stop langgraph langgraph-postgres >/dev/null 2>&1 || true
+	@-lsof -nP -iTCP:2027 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+	@-lsof -nP -iTCP:8001 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+	@-lsof -nP -iTCP:3010 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+	@-docker compose -p deer-flow-dev -f $(PWD)/docker/docker-compose-dev.yaml stop langgraph langgraph-redis langgraph-postgres >/dev/null 2>&1 || true
 	@echo "Cleaning up sandbox containers..."
 	@-./scripts/cleanup-containers.sh deer-flow-sandbox 2>/dev/null || true
 	@echo "✓ All services stopped"
