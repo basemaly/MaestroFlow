@@ -62,14 +62,18 @@ function formatBrowserAction(action: BrowserJobAction): string {
 export function ExecutiveSidecarPanel() {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <MemoizedOpenVikingCard />
-      <MemoizedActivepiecesCard />
-      <MemoizedBrowserRuntimeCard />
-      <MemoizedStateSnapshotDiffPanel
+      {/* OpenVikingCard disabled: No OpenViking service configured, overlaps with file uploads */}
+      {/* <MemoizedOpenVikingCard /> */}
+      {/* ActivepiecesCard disabled: No service running, duplicates subagent task delegation */}
+      {/* <MemoizedActivepiecesCard /> */}
+      {/* BrowserRuntimeCard disabled: No service configured, functionality covered by existing tools (Firecrawl, bash) */}
+      {/* <MemoizedBrowserRuntimeCard /> */}
+      {/* StateSnapshotDiffPanel disabled: No StateWeave service, niche autoresearch-only feature */}
+      {/* <MemoizedStateSnapshotDiffPanel
         title="StateWeave snapshots"
         description="Snapshot and compare long-running project or experiment state."
         scope="experiment"
-      />
+      /> */}
     </div>
   );
 }
