@@ -273,19 +273,6 @@ async def executive_stop_autoresearch_experiment(experiment_id: str, request: Ex
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/blueprints")
-async def executive_blueprints(limit: int = 50) -> dict:
-    return {"blueprints": list_blueprints_payload(limit=limit)}
-
-
-@router.post("/blueprints")
-async def executive_register_blueprint(request: ExecutiveBlueprintModel) -> dict:
-    try:
-        return register_blueprint_payload(request.model_dump(mode="json"))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
 @router.get("/blueprints/{blueprint_id}/runs")
 async def executive_blueprint_runs(blueprint_id: str, limit: int = 50) -> dict:
     return {"runs": list_blueprint_runs_payload(blueprint_id, limit=limit)}

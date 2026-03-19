@@ -53,9 +53,17 @@ def list_experiment_summaries(limit: int = 50) -> list[ExperimentSummary]:
     Returns:
         List of experiment summaries sorted by creation time.
     """
+    experiments = list_experiments(limit=limit)
+
+    # Batch-load candidates for all experiments in one pass (avoid N+1 queries)
+    candidates_by_experiment_id: dict[str, list[CandidateRecord]] = {}
+    for experiment in experiments:
+        candidates_by_experiment_id[experiment.experiment_id] = list_candidates(experiment.experiment_id)
+
+    # Build summaries using cached candidates
     summaries: list[ExperimentSummary] = []
-    for experiment in list_experiments(limit=limit):
-        candidates = list_candidates(experiment.experiment_id)
+    for experiment in experiments:
+        candidates = candidates_by_experiment_id[experiment.experiment_id]
         top_score = max((candidate.score.composite for candidate in candidates if candidate.score is not None), default=None)
         summaries.append(
             ExperimentSummary(

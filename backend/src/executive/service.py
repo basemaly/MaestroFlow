@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from src.autoresearch.service import (
     approve_experiment,
     get_experiment_detail,
@@ -15,6 +17,8 @@ from src.executive.models import ExecutiveActionDefinition, ExecutiveBlueprint
 from src.executive.registry import get_component_registry, list_action_definitions
 from src.executive.status import collect_component_status, collect_system_status
 from src.executive.storage import list_approvals, list_audit_entries, list_blueprints, list_blueprint_runs, list_heartbeats, record_blueprint_heartbeat, upsert_blueprint
+
+logger = logging.getLogger(__name__)
 
 
 def get_registry_payload() -> dict:
@@ -127,8 +131,8 @@ def get_capabilities_payload() -> dict:
                 "supports_thinking": getattr(m, "supports_thinking", False),
                 "supports_vision": getattr(m, "supports_vision", False),
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to load models for capabilities: %s", e, exc_info=False)
 
     try:
         from src.tools import get_available_tools
@@ -138,8 +142,8 @@ def get_capabilities_payload() -> dict:
             {"name": t.name, "description": (t.description or "")[:120]}
             for t in tools
         ]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to load tools for capabilities: %s", e, exc_info=False)
 
     try:
         from src.skills import load_skills
@@ -149,13 +153,14 @@ def get_capabilities_payload() -> dict:
                 "description": s.description,
                 "enabled": s.enabled,
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to load skills for capabilities: %s", e, exc_info=False)
 
     try:
         from src.subagents.registry import get_subagent_names
         capabilities["subagent_types"] = get_subagent_names()
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to load subagent names, using defaults: %s", e, exc_info=False)
         capabilities["subagent_types"] = ["general-purpose", "bash"]
 
     return capabilities
