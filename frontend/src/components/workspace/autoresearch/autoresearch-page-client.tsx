@@ -1,5 +1,7 @@
 "use client";
 
+import "./autoresearch-optimizations.css";
+
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIcon,
@@ -55,6 +57,18 @@ const STATUS_STYLES: Record<string, string> = {
 
 function statusTone(status: string) {
   return STATUS_STYLES[status] ?? "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
+}
+
+function statusBadgeClass(status: string): string {
+  const classMap: Record<string, string> = {
+    running: "experiment-status-badge status-running",
+    awaiting_approval: "experiment-status-badge status-awaiting",
+    promoted: "experiment-status-badge status-promoted",
+    evaluated: "experiment-status-badge status-evaluated",
+    rejected: "experiment-status-badge status-rejected",
+    stopped: "experiment-status-badge status-evaluated",
+  };
+  return classMap[status] ?? "experiment-status-badge status-evaluated";
 }
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
@@ -362,14 +376,14 @@ export function AutoresearchPageClient({
                       {promptBenchmarkLimitValue === 1 ? "" : "s"}.
                     </div>
                   </div>
-                  <Button
-                    size="sm"
+                  <button
+                    className="btn-launch-primary"
                     onClick={() => createMutation.mutate(champion.role)}
                     disabled={createMutation.isPending}
                   >
-                    <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
+                    <PlayIcon className="mr-1.5 inline h-3.5 w-3.5" />
                     Launch run
-                  </Button>
+                  </button>
                 </div>
               </div>
             ))}
@@ -464,14 +478,14 @@ export function AutoresearchPageClient({
                 No workflow templates are registered yet.
               </div>
             )}
-            <Button
-              className="w-full"
+            <button
+              className="btn-launch-secondary w-full"
               onClick={() => createWorkflowMutation.mutate()}
               disabled={createWorkflowMutation.isPending || !selectedWorkflowTemplateId}
             >
-              <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
+              <PlayIcon className="mr-1.5 inline h-3.5 w-3.5" />
               Launch workflow probe
-            </Button>
+            </button>
           </CardContent>
         </Card>
 
@@ -522,14 +536,14 @@ export function AutoresearchPageClient({
                 placeholder="Paste HTML or a self-contained component snippet"
               />
             </div>
-            <Button
-              className="w-full"
+            <button
+              className="btn-launch-tertiary w-full"
               onClick={() => createDesignMutation.mutate()}
               disabled={createDesignMutation.isPending || !designPrompt.trim() || !designCode.trim()}
             >
-              <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
+              <PlayIcon className="mr-1.5 inline h-3.5 w-3.5" />
               Launch design probe
-            </Button>
+            </button>
           </CardContent>
         </Card>
 
@@ -609,10 +623,10 @@ export function AutoresearchPageClient({
                     <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="text-sm font-semibold">{experiment.title}</div>
-                        <Badge className={`inline-flex items-center gap-1 ${statusTone(experiment.status)}`} aria-label={`Status: ${statusLabel(experiment.status)}`}>
+                        <div className={statusBadgeClass(experiment.status)} aria-label={`Status: ${statusLabel(experiment.status)}`}>
                           {STATUS_ICONS[experiment.status]}
                           {statusLabel(experiment.status)}
-                        </Badge>
+                        </div>
                         <Badge variant="outline">{experiment.role}</Badge>
                       </div>
                       <div className="text-muted-foreground text-xs">
