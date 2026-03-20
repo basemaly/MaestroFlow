@@ -30,6 +30,7 @@ import {
   LayoutListIcon,
   Loader2Icon,
   NetworkIcon,
+  Pencil,
   PlusIcon,
   SearchIcon,
   SparklesIcon,
@@ -840,15 +841,20 @@ function BlockCard({
   isSelected,
   onSelect,
   onRemove,
+  onUpdateTitle,
   overlay = false,
 }: {
   block: CollageBlock;
   isSelected: boolean;
   onSelect: () => void;
   onRemove: () => void;
+  onUpdateTitle?: (title: string) => void;
   overlay?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(block.title);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const wc = wordCount(block.content);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id });
 
@@ -856,6 +862,13 @@ function BlockCard({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  function commitTitle() {
+    const trimmed = titleDraft.trim();
+    if (trimmed && trimmed !== block.title) onUpdateTitle?.(trimmed);
+    else setTitleDraft(block.title);
+    setEditingTitle(false);
+  }
 
   return (
     <div
@@ -880,6 +893,21 @@ function BlockCard({
             <SourceBadge source={block.source} />
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-muted-foreground">{wc}w</span>
+              {!overlay && onUpdateTitle && (
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTitleDraft(block.title);
+                    setEditingTitle(true);
+                    setTimeout(() => titleInputRef.current?.select(), 0);
+                  }}
+                  title="Edit title"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+              )}
               <button
                 type="button"
                 className="text-muted-foreground hover:text-foreground"
@@ -910,7 +938,23 @@ function BlockCard({
               </button>
             </div>
           </div>
-          <div className="truncate font-medium leading-snug">{block.title}</div>
+          {editingTitle ? (
+            <input
+              ref={titleInputRef}
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
+                if (e.key === "Escape") { setTitleDraft(block.title); setEditingTitle(false); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full rounded-md border border-primary/50 bg-background px-1.5 py-0.5 text-xs font-medium outline-none ring-1 ring-primary/30"
+              autoFocus
+            />
+          ) : (
+            <div className="truncate font-medium leading-snug">{block.title}</div>
+          )}
           <p className={cn("text-muted-foreground", expanded ? "whitespace-pre-wrap" : "line-clamp-4")}>
             {block.content}
           </p>
@@ -928,6 +972,7 @@ function AssemblyCanvas({
   canvasView,
   onSelectBlock,
   onRemoveBlock,
+  onUpdateBlockTitle,
   onReorder,
   onUpdateBlockPosition,
   onSynthesize,
@@ -940,12 +985,14 @@ function AssemblyCanvas({
   canvasView: "list" | "board" | "structure";
   onSelectBlock: (id: string) => void;
   onRemoveBlock: (id: string) => void;
+  onUpdateBlockTitle: (id: string, title: string) => void;
   onReorder: (fromId: string, toId: string) => void;
   onUpdateBlockPosition: (id: string, x: number, y: number) => void;
   onSynthesize: (orderedIds?: string[]) => void;
   onCanvasViewChange: (view: "list" | "board" | "structure") => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<BlockSource | null>(null);
   const activeBlock = blocks.find((b) => b.id === activeId) ?? null;
 
   const sensors = useSensors(
@@ -973,6 +1020,11 @@ function AssemblyCanvas({
               <Badge variant="secondary" className="h-4 px-1 text-[10px] shrink-0">
                 {blocks.length}
               </Badge>
+            )}
+            {blocks.length > 0 && (
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                ~{blocks.reduce((s, b) => s + wordCount(b.content), 0).toLocaleString()}w
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1.5">
@@ -1035,46 +1087,87 @@ function AssemblyCanvas({
       </div>
 
       {canvasView === "list" && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={(e) => setActiveId(e.active.id as string)}
-          onDragEnd={handleDragEnd}
-          onDragCancel={() => setActiveId(null)}
-        >
-          <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
-            <ScrollArea className="flex-1">
-              <div className="space-y-2 p-3">
-                {blocks.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border/80 bg-background/60 px-4 py-8 text-center text-xs text-muted-foreground">
-                    Pull fragments from the Materials drawer, paste notes, then stack them here in working order.
-                  </div>
-                ) : (
-                  blocks.map((block) => (
-                    <BlockCard
-                      key={block.id}
-                      block={block}
-                      isSelected={selectedBlockId === block.id}
-                      onSelect={() => onSelectBlock(block.id)}
-                      onRemove={() => onRemoveBlock(block.id)}
-                    />
-                  ))
-                )}
+        <>
+          {/* Source filter chips */}
+          {blocks.length > 0 && (() => {
+            const uniqueSrcs = Array.from(new Set(blocks.map((b) => b.source)));
+            if (uniqueSrcs.length < 2) return null;
+            return (
+              <div className="flex shrink-0 flex-wrap gap-1 border-b border-border/50 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setSourceFilter(null)}
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
+                    sourceFilter === null
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-border/60 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  All
+                </button>
+                {uniqueSrcs.map((src) => (
+                  <button
+                    key={src}
+                    type="button"
+                    onClick={() => setSourceFilter(src)}
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
+                      sourceFilter === src
+                        ? SOURCE_BADGE[src]
+                        : "border-border/60 text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {SOURCE_LABELS[src]}
+                  </button>
+                ))}
               </div>
-            </ScrollArea>
-          </SortableContext>
-          <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
-            {activeBlock && (
-              <BlockCard
-                block={activeBlock}
-                isSelected={false}
-                onSelect={noop}
-                onRemove={noop}
-                overlay
-              />
-            )}
-          </DragOverlay>
-        </DndContext>
+            );
+          })()}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={(e) => setActiveId(e.active.id as string)}
+            onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveId(null)}
+          >
+            <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
+              <ScrollArea className="flex-1">
+                <div className="space-y-2 p-3">
+                  {blocks.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border/80 bg-background/60 px-4 py-8 text-center text-xs text-muted-foreground">
+                      Pull fragments from the Materials drawer, paste notes, then stack them here in working order.
+                    </div>
+                  ) : (
+                    blocks
+                      .filter((b) => sourceFilter === null || b.source === sourceFilter)
+                      .map((block) => (
+                        <BlockCard
+                          key={block.id}
+                          block={block}
+                          isSelected={selectedBlockId === block.id}
+                          onSelect={() => onSelectBlock(block.id)}
+                          onRemove={() => onRemoveBlock(block.id)}
+                          onUpdateTitle={(title) => onUpdateBlockTitle(block.id, title)}
+                        />
+                      ))
+                  )}
+                </div>
+              </ScrollArea>
+            </SortableContext>
+            <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
+              {activeBlock && (
+                <BlockCard
+                  block={activeBlock}
+                  isSelected={false}
+                  onSelect={noop}
+                  onRemove={noop}
+                  overlay
+                />
+              )}
+            </DragOverlay>
+          </DndContext>
+        </>
       )}
 
       {canvasView === "board" && (
@@ -1313,6 +1406,10 @@ export function CollageWorkspace({ document, onSwitchToEditor }: CollageWorkspac
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, x, y } : b)));
   }, []);
 
+  const updateBlockTitle = useCallback((id: string, title: string) => {
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, title } : b)));
+  }, []);
+
   const handleSynthesize = useCallback(
     async (orderedIds?: string[]) => {
       if (blocks.length === 0) return;
@@ -1359,6 +1456,7 @@ export function CollageWorkspace({ document, onSwitchToEditor }: CollageWorkspac
         canvasView={canvasView}
         onSelectBlock={setSelectedBlockId}
         onRemoveBlock={removeBlock}
+        onUpdateBlockTitle={updateBlockTitle}
         onReorder={reorderBlocks}
         onUpdateBlockPosition={updateBlockPosition}
         onSynthesize={handleSynthesize}
