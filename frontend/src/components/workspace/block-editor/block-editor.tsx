@@ -8,21 +8,26 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
-import { EditorContent, useEditor } from "@tiptap/react";
+import Underline from "@tiptap/extension-underline";
+import { type Editor, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
 import {
+  BoldIcon,
   CheckSquareIcon,
   Code2Icon,
   Heading1Icon,
   Heading2Icon,
+  ItalicIcon,
   ListIcon,
   ListOrderedIcon,
   MinusIcon,
   QuoteIcon,
+  StrikethroughIcon,
   Table2Icon,
+  UnderlineIcon,
 } from "lucide-react";
-import { forwardRef, useEffect, useImperativeHandle } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import GlobalDragHandle from "tiptap-extension-global-drag-handle";
 
 import { Button } from "@/components/ui/button";
@@ -63,6 +68,74 @@ function ToolbarButton({
   );
 }
 
+// ─── Inline format bar (appears above selection) ─────────────────────────────
+
+function InlineFormatBar({ editor }: { editor: Editor }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    const update = () => {
+      const { from, to, empty } = editor.state.selection;
+      if (empty) { setPos(null); return; }
+      const start = editor.view.coordsAtPos(from);
+      const end = editor.view.coordsAtPos(to);
+      const editorDom = editor.view.dom;
+      const rect = editorDom.getBoundingClientRect();
+      const midX = (start.left + end.left) / 2 - rect.left;
+      setPos({ top: start.top - rect.top - 44, left: midX });
+    };
+    editor.on("selectionUpdate", update);
+    editor.on("blur", () => setPos(null));
+    return () => { editor.off("selectionUpdate", update); editor.off("blur", () => setPos(null)); };
+  }, [editor]);
+
+  if (!pos) return null;
+
+  return (
+    <div
+      ref={barRef}
+      className="pointer-events-auto absolute z-50 flex items-center gap-0.5 rounded-xl border border-border/70 bg-background/95 px-1.5 py-1 shadow-lg backdrop-blur-sm"
+      style={{ top: pos.top, left: pos.left, transform: "translateX(-50%)" }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {(
+        [
+          { action: "toggleBold", mark: "bold", Icon: BoldIcon, title: "Bold" },
+          { action: "toggleItalic", mark: "italic", Icon: ItalicIcon, title: "Italic" },
+          { action: "toggleUnderline", mark: "underline", Icon: UnderlineIcon, title: "Underline" },
+          { action: "toggleStrike", mark: "strike", Icon: StrikethroughIcon, title: "Strikethrough" },
+        ] as const
+      ).map(({ action, mark, Icon, title }) => (
+        <button
+          key={mark}
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); (editor.chain().focus() as unknown as Record<string, () => unknown>)[action]?.(); }}
+          className={cn(
+            "flex size-7 items-center justify-center rounded-lg transition-colors hover:bg-muted",
+            editor.isActive(mark) && "bg-primary text-primary-foreground hover:bg-primary/90",
+          )}
+          title={title}
+        >
+          <Icon className="size-3.5" />
+        </button>
+      ))}
+      <div className="mx-1 h-4 w-px bg-border/70" />
+      <button
+        type="button"
+        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleCode().run(); }}
+        className={cn(
+          "flex size-7 items-center justify-center rounded-lg transition-colors hover:bg-muted",
+          editor.isActive("code") && "bg-primary text-primary-foreground hover:bg-primary/90",
+        )}
+        title="Inline code"
+      >
+        <Code2Icon className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export const BlockEditor = forwardRef<BlockEditorHandle, {
   markdown: string;
   editorJson?: Record<string, unknown> | null;
@@ -99,6 +172,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, {
       TableHeader,
       TableCell,
       CodeBlockLowlight.configure({ lowlight }),
+      Underline,
     ],
     content: editorJson ?? markdownToHtml(markdown),
     editorProps: {
@@ -247,6 +321,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, {
           />
         </div>
       </div>
+      <InlineFormatBar editor={editor} />
       <EditorContent editor={editor} />
     </div>
   );
