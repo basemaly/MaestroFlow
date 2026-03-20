@@ -885,13 +885,19 @@ export function InputBox({
           />
           <KnowledgeSourceMenu
             value={
-              (context.knowledge_source as "auto" | "calibre-library" | undefined) ??
+              (context.knowledge_source as "auto" | "calibre-library" | "surfsense" | undefined) ??
               "auto"
             }
-            onChange={(knowledge_source) =>
+            surfsenseSpaceId={
+              typeof context.surfsense_search_space_id === "number"
+                ? context.surfsense_search_space_id
+                : null
+            }
+            onChange={(knowledge_source, spaceId) =>
               onContextChange?.({
                 ...context,
                 knowledge_source,
+                surfsense_search_space_id: spaceId ?? undefined,
               })
             }
           />

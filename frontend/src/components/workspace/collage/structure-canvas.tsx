@@ -14,7 +14,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Loader2Icon, SparklesIcon, Trash2Icon } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ const SOURCE_BADGE: Record<string, string> = {
 
 // ─── Custom block node ────────────────────────────────────────────────────────
 
-function BlockNode({ data }: { data: { block: CollageBlock } }) {
+const BlockNode = memo(function BlockNode({ data }: { data: { block: CollageBlock } }) {
   const { block } = data;
   return (
     <div
@@ -64,7 +64,7 @@ function BlockNode({ data }: { data: { block: CollageBlock } }) {
       <p className="mt-0.5 line-clamp-2 text-muted-foreground">{block.content}</p>
     </div>
   );
-}
+});
 
 const NODE_TYPES = { blockNode: BlockNode };
 
@@ -111,13 +111,18 @@ export function StructureCanvas({
   synthesizing: boolean;
   onSynthesize: (orderedIds?: string[]) => void;
 }) {
-  const initialNodes: Node[] = blocks.map((block, idx) => ({
-    id: block.id,
-    type: "blockNode",
-    position: { x: 60, y: 60 + idx * 140 },
-    data: { block },
-    deletable: false,
-  }));
+  const initialNodes: Node[] = useMemo(
+    () =>
+      blocks.map((block, idx) => ({
+        id: block.id,
+        type: "blockNode" as const,
+        position: { x: 60, y: 60 + idx * 140 },
+        data: { block },
+        deletable: false,
+      })),
+    // Only recompute if block IDs change, not the entire blocks array
+    [blocks.length],
+  );
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -126,6 +131,7 @@ export function StructureCanvas({
   useEffect(() => {
     setNodes((prev) => {
       const existingIds = new Set(prev.map((n) => n.id));
+      const blockIds = new Set(blocks.map((b) => b.id));
       const incoming = blocks.map((block, idx) => ({
         id: block.id,
         type: "blockNode" as const,
@@ -133,18 +139,18 @@ export function StructureCanvas({
         data: { block },
         deletable: false,
       }));
-      // Remove nodes for deleted blocks
-      const blockIds = new Set(blocks.map((b) => b.id));
+      // Filter existing nodes that are still in blocks, then add new ones
       const filtered = prev.filter((n) => blockIds.has(n.id));
-      // Add new blocks
       const added = incoming.filter((n) => !existingIds.has(n.id));
       return [...filtered, ...added];
     });
     // Clean up edges pointing to removed blocks
-    const blockIds = new Set(blocks.map((b) => b.id));
-    setEdges((prev) => prev.filter((e) => blockIds.has(e.source) && blockIds.has(e.target)));
+    setEdges((prev) => {
+      const blockIds = new Set(blocks.map((b) => b.id));
+      return prev.filter((e) => blockIds.has(e.source) && blockIds.has(e.target));
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocks]);
+  }, [blocks.length]);
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge({ ...connection, animated: true }, eds)),

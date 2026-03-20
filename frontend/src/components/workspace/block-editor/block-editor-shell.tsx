@@ -214,7 +214,13 @@ function HistoryRunStub({
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
-export function BlockEditorShell({ document }: { document: DocumentRecord }) {
+export function BlockEditorShell({
+  document,
+  editorHandleRef,
+}: {
+  document: DocumentRecord;
+  editorHandleRef?: React.MutableRefObject<BlockEditorHandle | null>;
+}) {
   const updateDocument = useUpdateDocument(document.doc_id);
   const transformDocument = useTransformDocument(document.doc_id);
   const { data: quickActionsData } = useDocumentQuickActions();
@@ -247,6 +253,11 @@ export function BlockEditorShell({ document }: { document: DocumentRecord }) {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const readyRef = useRef(false);
   const editorRef = useRef<BlockEditorHandle | null>(null);
+
+  // Sync external handle ref on every render so callers can call insertMarkdown
+  if (editorHandleRef !== undefined) {
+    editorHandleRef.current = editorRef.current;
+  }
 
   useEffect(() => {
     setTitle(document.title);

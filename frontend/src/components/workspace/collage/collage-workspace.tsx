@@ -35,7 +35,7 @@ import {
   SparklesIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -1285,7 +1285,7 @@ export function CollageWorkspace({ document, onSwitchToEditor }: CollageWorkspac
     saveBlocks(document.doc_id, blocks);
   }, [blocks, document.doc_id]);
 
-  function addBlock(partial: Omit<CollageBlock, "id" | "addedAt">) {
+  const addBlock = useCallback((partial: Omit<CollageBlock, "id" | "addedAt">) => {
     const block: CollageBlock = {
       ...partial,
       id: crypto.randomUUID(),
@@ -1293,57 +1293,60 @@ export function CollageWorkspace({ document, onSwitchToEditor }: CollageWorkspac
     };
     setBlocks((prev) => [...prev, block]);
     setSelectedBlockId(block.id);
-  }
+  }, []);
 
-  function removeBlock(id: string) {
+  const removeBlock = useCallback((id: string) => {
     setBlocks((prev) => prev.filter((b) => b.id !== id));
-    if (selectedBlockId === id) setSelectedBlockId(null);
-  }
+    setSelectedBlockId((current) => (current === id ? null : current));
+  }, []);
 
-  function reorderBlocks(fromId: string, toId: string) {
+  const reorderBlocks = useCallback((fromId: string, toId: string) => {
     setBlocks((prev) => {
       const fromIdx = prev.findIndex((b) => b.id === fromId);
       const toIdx = prev.findIndex((b) => b.id === toId);
       if (fromIdx === -1 || toIdx === -1) return prev;
       return arrayMove(prev, fromIdx, toIdx);
     });
-  }
+  }, []);
 
-  function updateBlockPosition(id: string, x: number, y: number) {
+  const updateBlockPosition = useCallback((id: string, x: number, y: number) => {
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, x, y } : b)));
-  }
+  }, []);
 
-  async function handleSynthesize(orderedIds?: string[]) {
-    if (blocks.length === 0) return;
-    setSynthesizing(true);
-    const ordered = orderedIds
-      ? orderedIds.map((id) => blocks.find((b) => b.id === id)).filter(Boolean) as CollageBlock[]
-      : blocks;
-    const combined = ordered.map((b) => b.content).join("\n\n---\n\n");
-    try {
-      const result = await transformDocument.mutateAsync({
-        document_markdown: combined,
-        selection_markdown: combined,
-        operation: "rewrite",
-        instruction:
-          "Synthesize these source blocks into a single coherent, well-structured document. Preserve the key ideas from each source. Remove redundancy.",
-      });
-      await updateDocument.mutateAsync({ content_markdown: result.transformed_markdown });
-      toast.success(`Draft stitched with ${result.model_name}`);
-      onSwitchToEditor();
-    } catch {
-      // Fallback: join blocks and switch
+  const handleSynthesize = useCallback(
+    async (orderedIds?: string[]) => {
+      if (blocks.length === 0) return;
+      setSynthesizing(true);
+      const ordered = orderedIds
+        ? orderedIds.map((id) => blocks.find((b) => b.id === id)).filter(Boolean) as CollageBlock[]
+        : blocks;
+      const combined = ordered.map((b) => b.content).join("\n\n---\n\n");
       try {
-        await updateDocument.mutateAsync({ content_markdown: combined });
-        toast.success("Fragments joined into a draft");
+        const result = await transformDocument.mutateAsync({
+          document_markdown: combined,
+          selection_markdown: combined,
+          operation: "rewrite",
+          instruction:
+            "Synthesize these source blocks into a single coherent, well-structured document. Preserve the key ideas from each source. Remove redundancy.",
+        });
+        await updateDocument.mutateAsync({ content_markdown: result.transformed_markdown });
+        toast.success(`Draft stitched with ${result.model_name}`);
         onSwitchToEditor();
-      } catch (err2) {
-        toast.error(err2 instanceof Error ? err2.message : "Synthesize failed");
+      } catch {
+        // Fallback: join blocks and switch
+        try {
+          await updateDocument.mutateAsync({ content_markdown: combined });
+          toast.success("Fragments joined into a draft");
+          onSwitchToEditor();
+        } catch (err2) {
+          toast.error(err2 instanceof Error ? err2.message : "Synthesize failed");
+        }
+      } finally {
+        setSynthesizing(false);
       }
-    } finally {
-      setSynthesizing(false);
-    }
-  }
+    },
+    [blocks, transformDocument, updateDocument, onSwitchToEditor],
+  );
 
   return (
     <div className="grid size-full min-h-0 gap-0 overflow-hidden rounded-3xl border border-border/70 bg-background/70 grid-cols-[280px_minmax(0,1fr)_280px] shadow-sm">
@@ -1358,7 +1361,7 @@ export function CollageWorkspace({ document, onSwitchToEditor }: CollageWorkspac
         onRemoveBlock={removeBlock}
         onReorder={reorderBlocks}
         onUpdateBlockPosition={updateBlockPosition}
-        onSynthesize={(ids) => void handleSynthesize(ids)}
+        onSynthesize={handleSynthesize}
         onCanvasViewChange={setCanvasView}
       />
       <Inspector
