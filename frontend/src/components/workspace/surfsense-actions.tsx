@@ -303,7 +303,7 @@ function SurfSenseActionsComponent() {
         size="sm"
         variant="ghost"
         className="h-8 px-2 text-muted-foreground"
-        title="Open SurfSense"
+        title="Open SurfSense dashboard — browse search spaces, manage documents, and review notes in the SurfSense web interface."
         asChild
       >
         <a href={surfSenseBaseUrl} target="_blank" rel="noreferrer">
@@ -335,7 +335,7 @@ function SurfSenseActionsComponent() {
         }}
       >
         <DialogTrigger asChild>
-          <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground" title="Search SurfSense Documents">
+          <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground" title="Search SurfSense — find documents, notes, and reports across your search spaces. Results open directly in SurfSense.">
             <SearchIcon className="size-4" />
           </Button>
         </DialogTrigger>

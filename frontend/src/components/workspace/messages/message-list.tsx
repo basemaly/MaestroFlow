@@ -1,5 +1,5 @@
 import type { BaseStream } from "@langchain/langgraph-sdk/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Conversation,
@@ -66,6 +66,25 @@ export function MessageList({
   // Track which threads we've already fetched quality scores for to avoid redundant requests.
   const fetchedThreadsRef = useRef(new Set<string>());
 
+  // Scroll progress minimap — tracks position in the conversation
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [isScrollable, setIsScrollable] = useState(false);
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    // StickToBottom renders an inner scroll container — find it via capture
+    const update = (e: Event) => {
+      const el = e.target as HTMLElement;
+      if (!el || typeof el.scrollTop !== "number") return;
+      const scrollable = el.scrollHeight - el.clientHeight;
+      setIsScrollable(scrollable > 80);
+      setScrollProgress(scrollable > 0 ? el.scrollTop / scrollable : 1);
+    };
+    wrapper.addEventListener("scroll", update, { passive: true, capture: true });
+    return () => wrapper.removeEventListener("scroll", update, { capture: true });
+  }, []);
+
   useEffect(() => {
     if (fetchedThreadsRef.current.has(threadId)) {
       return;
@@ -122,9 +141,25 @@ export function MessageList({
     return <MessageListSkeleton />;
   }
   return (
-    <Conversation
-      className={cn("flex size-full flex-col justify-center", className)}
-    >
+    <div ref={wrapperRef} className="relative size-full">
+      {/* Scroll minimap — thin amber bar on right edge showing conversation position */}
+      <div
+        className="pointer-events-none absolute right-0 top-0 z-10 h-full w-1 transition-opacity duration-300"
+        style={{ opacity: isScrollable ? 1 : 0 }}
+      >
+        <div className="absolute inset-0 bg-border/20" />
+        <div
+          className="absolute left-0 w-full rounded-full bg-amber-500/60 transition-[top] duration-75"
+          style={{
+            top: `${scrollProgress * (100 - 6)}%`,
+            height: "6%",
+            minHeight: "24px",
+          }}
+        />
+      </div>
+      <Conversation
+        className={cn("flex size-full flex-col justify-center", className)}
+      >
       <ConversationContent className="mx-auto w-full max-w-(--container-width-md) gap-8 pt-12">
         {groupMessages(messages, (group) => {
           if (group.type === "human" || group.type === "assistant") {
@@ -279,6 +314,7 @@ export function MessageList({
         {thread.isLoading && <StreamingIndicator className="my-4" />}
         <div style={{ height: `${paddingBottom}px` }} />
       </ConversationContent>
-    </Conversation>
+      </Conversation>
+    </div>
   );
 }

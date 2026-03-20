@@ -40,8 +40,9 @@ export function WorkspaceContainer({
 export function WorkspaceHeader({
   className,
   children,
+  rightSlot,
   ...props
-}: React.ComponentProps<"header">) {
+}: React.ComponentProps<"header"> & { rightSlot?: React.ReactNode }) {
   const { t } = useI18n();
   const pathname = usePathname();
   const segments = useMemo(() => {
@@ -98,6 +99,7 @@ export function WorkspaceHeader({
         </Breadcrumb>
       </div>
       <div className="flex items-center gap-2 pr-4">
+        {rightSlot}
         <SnippetShelf />
         <ExecutiveDrawerTrigger isSidebarOpen={false} variant="header" />
       </div>

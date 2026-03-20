@@ -308,6 +308,7 @@ def make_lead_agent(config: RunnableConfig):
     is_bootstrap = cfg.get("is_bootstrap", False)
     agent_name = cfg.get("agent_name")
     knowledge_source = cfg.get("knowledge_source")
+    surfsense_search_space_id: int | None = cfg.get("surfsense_search_space_id") or None
     # research_tools: opt-in group names the user enabled in the UI
     # e.g. ["opt:exa", "opt:serper", "opt:jina-deepresearch", "opt:factcheck"]
     research_tools: list[str] = cfg.get("research_tools") or []
@@ -368,6 +369,7 @@ def make_lead_agent(config: RunnableConfig):
             max_concurrent_subagents=max_concurrent_subagents,
             available_skills=set(["bootstrap"]),
             knowledge_source=knowledge_source,
+            surfsense_search_space_id=surfsense_search_space_id,
         )
 
         return create_agent(
@@ -401,6 +403,7 @@ def make_lead_agent(config: RunnableConfig):
             max_concurrent_subagents=max_concurrent_subagents,
             agent_name=effective_agent_name,
             knowledge_source=knowledge_source,
+            surfsense_search_space_id=surfsense_search_space_id,
         ),
         state_schema=ThreadState,
     )

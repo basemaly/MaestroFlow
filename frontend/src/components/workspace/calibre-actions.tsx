@@ -201,7 +201,7 @@ export function CalibreActions() {
       }
     }}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="h-8 px-2">
+        <Button size="sm" variant="ghost" className="h-8 px-2" title="Calibre Library — search, preview, and ingest books from your Calibre collection into a SurfSense search space. You can also trigger reindex and sync from here.">
           <BookIcon className="size-4" />
           <span className="hidden sm:inline">Calibre</span>
         </Button>

@@ -40,6 +40,7 @@ class SurfSenseCalibreClient(SurfSenseClient):
         return await self._request(
             "POST",
             "/maestroflow/calibre/sync",
+            timeout=60.0,
             params={
                 "full": str(full).lower(),
                 "collection": collection or get_calibre_default_collection(),
@@ -50,6 +51,7 @@ class SurfSenseCalibreClient(SurfSenseClient):
         return await self._request(
             "POST",
             "/maestroflow/calibre/reindex",
+            timeout=self.config.reindex_timeout_seconds,
             params={"collection": collection or get_calibre_default_collection()},
         )
 

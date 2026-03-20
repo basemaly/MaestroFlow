@@ -59,7 +59,7 @@ def _http_error_message(exc: httpx.HTTPError) -> str:
 
 
 class CalibreQueryRequest(BaseModel):
-    query: str = Field(..., min_length=1)
+    query: str = Field(default="")
     top_k: int = Field(default=8, ge=1, le=20)
     filters: dict[str, object] = Field(default_factory=dict)
     collection: str | None = None
@@ -261,9 +261,10 @@ async def get_calibre_health(collection: str | None = None) -> dict:
 
 @router.post("/query")
 async def query_calibre(req: CalibreQueryRequest) -> dict:
+    resolved_query = req.query.strip() or "*"
     try:
         payload = await SurfSenseCalibreClient().query_calibre(
-            query=req.query,
+            query=resolved_query,
             top_k=req.top_k,
             filters=req.filters,
             collection=req.collection,
@@ -274,7 +275,7 @@ async def query_calibre(req: CalibreQueryRequest) -> dict:
                 configured=True,
                 available=True,
                 summary="Calibre query completed.",
-                details={"collection": req.collection, "query": req.query},
+                details={"collection": req.collection, "query": resolved_query},
                 metrics={"total": payload.get("total", len(payload.get("items", [])))},
                 last_error=payload.get("last_error"),
             ),
@@ -292,12 +293,12 @@ async def query_calibre(req: CalibreQueryRequest) -> dict:
                 available=False,
                 healthy=False,
                 summary="Calibre query failed.",
-                details={"collection": req.collection, "query": req.query},
+                details={"collection": req.collection, "query": resolved_query},
                 last_error=warning,
             ),
             "error": build_error_envelope(
                 error_code="calibre_query_failed",
                 message=warning,
-                details={"collection": req.collection, "query": req.query},
+                details={"collection": req.collection, "query": resolved_query},
             ),
         }

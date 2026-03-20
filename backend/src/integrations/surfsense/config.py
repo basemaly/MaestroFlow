@@ -40,6 +40,7 @@ class SurfSenseConfig(BaseModel):
     sync_enabled: bool = False
     project_mapping: dict[str, int] = Field(default_factory=dict)
     timeout_seconds: float = 20.0
+    reindex_timeout_seconds: float = 120.0
 
     @staticmethod
     def _normalize_base_url(raw_url: str) -> str:
@@ -89,6 +90,7 @@ class SurfSenseConfig(BaseModel):
             sync_enabled=_parse_bool(os.getenv("SURFSENSE_SYNC_ENABLED"), default=False),
             project_mapping=_parse_mapping(os.getenv("SURFSENSE_PROJECT_MAPPING")),
             timeout_seconds=float(os.getenv("SURFSENSE_TIMEOUT_SECONDS", "20")),
+            reindex_timeout_seconds=float(os.getenv("SURFSENSE_REINDEX_TIMEOUT_SECONDS", "120")),
         )
 
 
