@@ -1,4 +1,5 @@
 import { DocumentsPageClient } from "@/components/workspace/documents/documents-page-client";
+import { withRequestIdHeaders } from "@/core/api/fetch";
 import type { DocumentsListResponse } from "@/core/documents/types";
 import { getServerAppOrigin } from "@/core/server/app-origin";
 
@@ -7,6 +8,7 @@ async function loadInitialDocuments(): Promise<DocumentsListResponse> {
     const origin = await getServerAppOrigin();
     const response = await fetch(`${origin}/api/documents`, {
       cache: "no-store",
+      headers: withRequestIdHeaders(),
       signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) {

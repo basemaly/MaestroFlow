@@ -1,3 +1,4 @@
+import { apiFetch, readApiError } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 
 import type {
@@ -13,7 +14,7 @@ export async function getCalibreStatus(
   const params = new URLSearchParams();
   if (collection) params.append("collection", collection);
 
-  const response = await fetch(
+  const response = await apiFetch(
     `${getBackendBaseURL()}/api/calibre/status${params.size > 0 ? `?${params}` : ""}`,
     {
       method: "GET",
@@ -23,7 +24,7 @@ export async function getCalibreStatus(
   );
 
   if (!response.ok) {
-    throw new Error(`Calibre status failed: ${response.statusText}`);
+    throw await readApiError(response, "Calibre status failed");
   }
 
   return response.json();
@@ -47,7 +48,7 @@ export async function queryCalibre(input: {
     body.collection = input.collection;
   }
 
-  const response = await fetch(
+  const response = await apiFetch(
     `${getBackendBaseURL()}/api/calibre/query`,
     {
       method: "POST",
@@ -58,8 +59,7 @@ export async function queryCalibre(input: {
   );
 
   if (!response.ok) {
-    const bodyText = await response.text().catch(() => "");
-    throw new Error(bodyText || `Calibre query failed: ${response.status} ${response.statusText}`);
+    throw await readApiError(response, "Calibre query failed");
   }
 
   return response.json();
@@ -73,7 +73,7 @@ export async function syncCalibre(input: {
   if (input.full) params.append("full", "true");
   if (input.collection) params.append("collection", input.collection);
 
-  const response = await fetch(
+  const response = await apiFetch(
     `${getBackendBaseURL()}/api/calibre/sync${params.size > 0 ? `?${params}` : ""}`,
     {
       method: "POST",
@@ -83,7 +83,7 @@ export async function syncCalibre(input: {
   );
 
   if (!response.ok) {
-    throw new Error(`Calibre sync failed: ${response.statusText}`);
+    throw await readApiError(response, "Calibre sync failed");
   }
 
   return response.json();
@@ -95,7 +95,7 @@ export async function reindexCalibre(input: {
   const params = new URLSearchParams();
   if (input.collection) params.append("collection", input.collection);
 
-  const response = await fetch(
+  const response = await apiFetch(
     `${getBackendBaseURL()}/api/calibre/reindex${params.size > 0 ? `?${params}` : ""}`,
     {
       method: "POST",
@@ -105,7 +105,7 @@ export async function reindexCalibre(input: {
   );
 
   if (!response.ok) {
-    throw new Error(`Calibre reindex failed: ${response.statusText}`);
+    throw await readApiError(response, "Calibre reindex failed");
   }
 
   return response.json();

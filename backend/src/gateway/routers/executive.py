@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from src.executive.agent import run_executive_chat
@@ -78,6 +78,7 @@ class ExecutiveAgentRunRequest(BaseModel):
     mode: str = "standard"
     thinking_enabled: bool = False
     subagent_enabled: bool = False
+    trace_id: str | None = None
 
 
 class ExecutiveRejectExperimentRequest(BaseModel):
@@ -204,12 +205,12 @@ def executive_update_settings(request: ExecutiveSettingsUpdateRequest) -> dict:
 
 
 @router.post("/chat")
-async def executive_chat(request: ExecutiveChatRequest) -> dict:
-    return await run_executive_chat(request.messages)
+async def executive_chat(request: ExecutiveChatRequest, http_request: Request) -> dict:
+    return await run_executive_chat(request.messages, trace_id=getattr(http_request.state, "trace_id", None))
 
 
 @router.post("/agent-runs")
-async def executive_agent_run(request: ExecutiveAgentRunRequest) -> dict:
+async def executive_agent_run(request: ExecutiveAgentRunRequest, http_request: Request) -> dict:
     try:
         return await run_agent_payload(
             prompt=request.prompt,
@@ -218,6 +219,7 @@ async def executive_agent_run(request: ExecutiveAgentRunRequest) -> dict:
             thinking_enabled=request.thinking_enabled,
             subagent_enabled=request.subagent_enabled,
             agent_name=request.agent_name,
+            trace_id=request.trace_id or getattr(http_request.state, "trace_id", None),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

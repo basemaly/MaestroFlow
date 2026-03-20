@@ -8,6 +8,7 @@ from typing import Any
 from langchain.tools import BaseTool
 
 from src.config import get_app_config, is_langfuse_enabled
+from src.models.factory import get_model_capabilities
 from src.reflection import resolve_variable
 from src.tools.builtins import (
     ask_clarification_tool,
@@ -240,10 +241,15 @@ def get_available_tools(
         model_name = config.models[0].name
 
     # Add view_image_tool only if the model supports vision
-    model_config = config.get_model_config(model_name) if model_name else None
-    if model_config is not None and model_config.supports_vision:
-        builtin_tools.append(view_image_tool)
-        logger.info(f"Including view_image_tool for model '{model_name}' (supports_vision=True)")
+    if model_name:
+        try:
+            capabilities = get_model_capabilities(model_name)
+            if capabilities["supports_vision"]:
+                builtin_tools.append(view_image_tool)
+                logger.info(f"Including view_image_tool for model '{model_name}' (supports_vision=True)")
+        except ValueError:
+            # Model not found, skip vision tool
+            pass
 
     all_tools = loaded_tools + builtin_tools + mcp_tools
 

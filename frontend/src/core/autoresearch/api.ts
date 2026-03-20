@@ -1,3 +1,4 @@
+import { apiFetch } from "@/core/api/fetch";
 import type { BrowserRuntimeChoice } from "@/core/browser-runtime";
 
 import type {
@@ -13,7 +14,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(path, {
+    const response = await apiFetch(path, {
       ...init,
       signal: controller.signal,
       headers: {

@@ -1,3 +1,4 @@
+import { apiFetch, readApiError } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 
 export async function requestJson<T>(
@@ -5,7 +6,7 @@ export async function requestJson<T>(
   init?: RequestInit,
   fallbackMessage = "Request failed",
 ): Promise<T> {
-  const response = await fetch(`${getBackendBaseURL()}${path}`, {
+  const response = await apiFetch(`${getBackendBaseURL()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -14,17 +15,7 @@ export async function requestJson<T>(
     cache: "no-store",
   });
   if (!response.ok) {
-    throw new Error(await readError(response, fallbackMessage));
+    throw await readApiError(response, fallbackMessage);
   }
   return (await response.json()) as T;
-}
-
-export async function readError(response: Response, fallbackMessage: string): Promise<string> {
-  try {
-    const payload = (await response.json()) as { detail?: string; message?: string };
-    return payload.detail ?? payload.message ?? fallbackMessage;
-  } catch {
-    const text = await response.text().catch(() => "");
-    return text || fallbackMessage;
-  }
 }

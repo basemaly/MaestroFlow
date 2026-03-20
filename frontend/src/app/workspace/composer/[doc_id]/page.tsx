@@ -2,6 +2,7 @@
 
 import {
   BookOpenTextIcon,
+  BoxesIcon,
   Loader2Icon,
   LayoutPanelTopIcon,
   PanelRightIcon,
@@ -17,6 +18,7 @@ import { BlockEditorShell } from "@/components/workspace/block-editor/block-edit
 import { CollageWorkspace } from "@/components/workspace/collage/collage-workspace";
 import { BlocksSidebar } from "@/components/workspace/composer/blocks-sidebar";
 import { ContextDock } from "@/components/workspace/context-dock";
+import { GraphComposerShell } from "@/components/workspace/graph-composer/graph-composer-shell";
 import {
   WorkspaceBody,
   WorkspaceContainer,
@@ -33,7 +35,7 @@ export default function ComposerDocumentPage() {
   const { data, isLoading, isError } = useDocument(doc_id);
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
-  const [viewMode, setViewMode] = useState<"editor" | "collage">("editor");
+  const [viewMode, setViewMode] = useState<"editor" | "graph" | "collage">(settings.layout.composer_mode ?? "editor");
   const [contextOpen, setContextOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -54,6 +56,15 @@ export default function ComposerDocumentPage() {
     document.title = `${data?.title ?? t.pages.untitled} - ${t.pages.appName}`;
   }, [data?.title, t.pages.appName, t.pages.untitled]);
 
+  useEffect(() => {
+    setViewMode(settings.layout.composer_mode ?? "editor");
+  }, [settings.layout.composer_mode]);
+
+  function handleSetViewMode(nextMode: "editor" | "graph" | "collage") {
+    setViewMode(nextMode);
+    setSettings("layout", { composer_mode: nextMode });
+  }
+
   const headerRight = (
     <div className="flex items-center gap-1.5">
       {/* Document title */}
@@ -68,16 +79,25 @@ export default function ComposerDocumentPage() {
           size="sm"
           variant={viewMode === "editor" ? "default" : "ghost"}
           className="h-7 gap-1 rounded-lg px-2.5 text-xs"
-          onClick={() => setViewMode("editor")}
+          onClick={() => handleSetViewMode("editor")}
         >
           <BookOpenTextIcon className="size-3" />
           <span className="hidden sm:inline">Composer</span>
         </Button>
         <Button
           size="sm"
+          variant={viewMode === "graph" ? "default" : "ghost"}
+          className="h-7 gap-1 rounded-lg px-2.5 text-xs"
+          onClick={() => handleSetViewMode("graph")}
+        >
+          <BoxesIcon className="size-3" />
+          <span className="hidden sm:inline">Graph</span>
+        </Button>
+        <Button
+          size="sm"
           variant={viewMode === "collage" ? "default" : "ghost"}
           className="h-7 gap-1 rounded-lg px-2.5 text-xs"
-          onClick={() => setViewMode("collage")}
+          onClick={() => handleSetViewMode("collage")}
         >
           <LayoutPanelTopIcon className="size-3" />
           <span className="hidden sm:inline">Collage</span>
@@ -175,8 +195,11 @@ export default function ComposerDocumentPage() {
               {data && viewMode === "editor" ? (
                 <BlockEditorShell document={data} editorHandleRef={editorHandleRef} />
               ) : null}
+              {data && viewMode === "graph" ? (
+                <GraphComposerShell document={data} onOpenCollage={() => handleSetViewMode("collage")} />
+              ) : null}
               {data && viewMode === "collage" ? (
-                <CollageWorkspace document={data} onSwitchToEditor={() => setViewMode("editor")} />
+                <CollageWorkspace document={data} onSwitchToEditor={() => handleSetViewMode("editor")} />
               ) : null}
             </div>
             {/* Blocks sidebar — only shown in editor mode when open */}

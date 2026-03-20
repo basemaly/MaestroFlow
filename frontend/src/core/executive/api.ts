@@ -1,3 +1,4 @@
+import { apiFetch, buildTraceId, readApiError } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 
 import type {
@@ -16,8 +17,8 @@ import type {
   ProjectSummary,
 } from "./types";
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getBackendBaseURL()}${path}`, {
+async function api<T>(path: string, init?: RequestInit & { traceId?: string }): Promise<T> {
+  const response = await apiFetch(`${getBackendBaseURL()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -26,8 +27,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
   });
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || `Executive API failed: ${response.status}`);
+    throw await readApiError(response, `Executive API failed (${response.status})`);
   }
   return response.json() as Promise<T>;
 }
@@ -108,6 +108,7 @@ export function executiveChat(
   return api("/api/executive/chat", {
     method: "POST",
     signal,
+    traceId: buildTraceId("executive-chat"),
     body: JSON.stringify({ messages }),
   });
 }
@@ -119,9 +120,11 @@ export function launchExecutiveAgentRun(body: {
   mode?: "standard" | "pro" | "ultra";
   thinking_enabled?: boolean;
   subagent_enabled?: boolean;
+  trace_id?: string;
 }): Promise<ExecutiveAgentRunResult> {
   return api("/api/executive/agent-runs", {
     method: "POST",
+    traceId: body.trace_id ?? buildTraceId("executive-run"),
     body: JSON.stringify(body),
   });
 }

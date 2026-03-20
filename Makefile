@@ -1,12 +1,13 @@
 # DeerFlow - Unified Development Environment
 
-.PHONY: help config check doctor install dev dev-daemon daemon-start daemon-stop daemon-status local-daemon-start local-daemon-stop local-daemon-status stack-up stack-down stack-start stack-stop stack-restart stack-status stack-rebuild stop clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config check doctor topology install dev dev-daemon daemon-start daemon-stop daemon-status local-daemon-start local-daemon-stop local-daemon-status stack-up stack-down stack-start stack-stop stack-restart stack-status stack-rebuild stop clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway logs logs-lnav logs-jq
 
 help:
 	@echo "DeerFlow Development Commands:"
 	@echo "  make config          - Generate local config files (aborts if config already exists)"
 	@echo "  make check           - Check if all required tools are installed"
 	@echo "  make doctor          - Verify canonical local ports, listeners, and URL wiring"
+	@echo "  make topology        - Print the current local runtime topology and listeners"
 	@echo "  make install         - Install all dependencies (frontend + backend)"
 	@echo "  make setup-sandbox   - Pre-pull sandbox container image (recommended)"
 	@echo "  make dev             - Start all services (frontend + backend + nginx on localhost:2027)"
@@ -34,6 +35,9 @@ help:
 	@echo "  make docker-logs     - View Docker development logs"
 	@echo "  make docker-logs-frontend - View Docker frontend logs"
 	@echo "  make docker-logs-gateway - View Docker gateway logs"
+	@echo "  make logs            - Tail the core stack logs with sane defaults"
+	@echo "  make logs-lnav       - Open the core stack logs in lnav"
+	@echo "  make logs-jq         - Tail JSON gateway logs through jq"
 
 config:
 	@if [ -f config.yaml ] || [ -f config.yml ] || [ -f configure.yml ]; then \
@@ -137,6 +141,18 @@ install:
 
 doctor:
 	@./scripts/check-dev-ports.sh
+
+topology:
+	@./scripts/topology.sh
+
+logs:
+	@./scripts/logs.sh
+
+logs-lnav:
+	@./scripts/logs.sh --lnav
+
+logs-jq:
+	@./scripts/logs-jq.sh
 
 # Pre-pull sandbox Docker image (optional but recommended)
 setup-sandbox:

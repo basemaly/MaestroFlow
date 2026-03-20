@@ -46,6 +46,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { StructureCanvas } from "@/components/workspace/collage/structure-canvas";
 import { getAPIClient } from "@/core/api";
+import { apiFetch, readApiError } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 import type { BlockSource, CollageBlock } from "@/core/documents/collage-blocks";
 import { loadBlocks, saveBlocks } from "@/core/documents/collage-blocks";
@@ -370,13 +371,13 @@ function SurfSenseSection({
   const [open, setOpen] = useState(true);
   const { query, results, searching, handleQueryChange } = useSearchSection<SSResult>({
     fetch: async (q, ctrl) => {
-      const res = await fetch(`${getBackendBaseURL()}/api/surfsense/search`, {
+      const res = await apiFetch(`${getBackendBaseURL()}/api/surfsense/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: ctrl.signal,
         body: JSON.stringify({ query: q.trim(), top_k: 8 }),
       });
-      if (!res.ok) throw new Error(`SurfSense ${res.status}`);
+      if (!res.ok) throw await readApiError(res, "SurfSense search failed");
       return normalizeSSResults(await res.json());
     },
   });
@@ -423,13 +424,13 @@ function CalibreSection({
   const [open, setOpen] = useState(false);
   const { query, results, searching, handleQueryChange } = useSearchSection<CalibreItem>({
     fetch: async (q, ctrl) => {
-      const res = await fetch(`${getBackendBaseURL()}/api/calibre/query`, {
+      const res = await apiFetch(`${getBackendBaseURL()}/api/calibre/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: ctrl.signal,
         body: JSON.stringify({ query: q.trim(), top_k: 8 }),
       });
-      if (!res.ok) throw new Error(`Calibre ${res.status}`);
+      if (!res.ok) throw await readApiError(res, "Calibre search failed");
       const data = (await res.json()) as { items?: CalibreItem[] };
       return Array.isArray(data.items) ? data.items : [];
     },
@@ -478,7 +479,7 @@ function PinboardSection({
   const [unavailable, setUnavailable] = useState(false);
   const { query, results, searching, handleQueryChange } = useSearchSection<PinboardItem>({
     fetch: async (q, ctrl) => {
-      const res = await fetch(`${getBackendBaseURL()}/api/pinboard/bookmarks/search`, {
+      const res = await apiFetch(`${getBackendBaseURL()}/api/pinboard/bookmarks/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: ctrl.signal,
@@ -488,7 +489,7 @@ function PinboardSection({
         setUnavailable(true);
         return [];
       }
-      if (!res.ok) throw new Error(`Pinboard ${res.status}`);
+      if (!res.ok) throw await readApiError(res, "Pinboard search failed");
       setUnavailable(false);
       const data = (await res.json()) as { bookmarks?: PinboardItem[]; results?: PinboardItem[] } | PinboardItem[];
       if (Array.isArray(data)) return data;

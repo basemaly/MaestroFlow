@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getAPIClient } from "@/core/api";
+import { apiFetch, readApiError } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 import { searchPinboardBookmarks } from "@/core/pinboard/api";
 import type { PinboardBookmark } from "@/core/pinboard/types";
@@ -257,13 +258,13 @@ function SurfSenseTab({
     abortRef.current = controller;
     setIsSearching(true);
     try {
-      const response = await fetch(`${getBackendBaseURL()}/api/surfsense/search`, {
+      const response = await apiFetch(`${getBackendBaseURL()}/api/surfsense/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({ query: q.trim(), top_k: 6 }),
       });
-      if (!response.ok) throw new Error(`SurfSense error ${response.status}`);
+      if (!response.ok) throw await readApiError(response, "SurfSense search failed");
       const data: unknown = await response.json();
       setResults(normalizeSSResults(data));
     } catch (err) {
@@ -366,13 +367,13 @@ function CalibreTab({
     abortRef.current = controller;
     setIsSearching(true);
     try {
-      const response = await fetch(`${getBackendBaseURL()}/api/calibre/query`, {
+      const response = await apiFetch(`${getBackendBaseURL()}/api/calibre/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({ query: q.trim(), top_k: 6 }),
       });
-      if (!response.ok) throw new Error(`Calibre error ${response.status}`);
+      if (!response.ok) throw await readApiError(response, "Calibre search failed");
       const data = (await response.json()) as { items?: CalibreItem[] };
       setResults(Array.isArray(data.items) ? data.items : []);
     } catch (err) {

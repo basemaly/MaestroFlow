@@ -13,6 +13,7 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
   },
   layout: {
     sidebar_collapsed: false,
+    composer_mode: "editor",
   },
 };
 
@@ -31,6 +32,7 @@ export interface LocalSettings {
   };
   layout: {
     sidebar_collapsed: boolean;
+    composer_mode: "editor" | "graph" | "collage";
   };
 }
 

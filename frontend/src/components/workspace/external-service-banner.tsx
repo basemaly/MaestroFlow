@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 
 type ExternalService = {
@@ -46,7 +47,7 @@ export function ExternalServiceBanner() {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch(`${getBackendBaseURL()}/api/health/external-services`);
+      const response = await apiFetch(`${getBackendBaseURL()}/api/health/external-services`);
       if (!response.ok) {
         if (!cancelledRef.current) setPayload(FALLBACK_WARNING);
         return;

@@ -11,6 +11,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { DevRuntimeBadge } from "@/components/workspace/dev-runtime-badge";
 import { useI18n } from "@/core/i18n/hooks";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
@@ -48,7 +49,10 @@ export function WorkspaceHeader({ className }: { className?: string }) {
             >
               MaestroFlow
             </Link>
-            <SidebarTrigger className="transition-all duration-200" />
+            <div className="flex items-center gap-2">
+              <DevRuntimeBadge />
+              <SidebarTrigger className="transition-all duration-200" />
+            </div>
           </div>
         )}
       </div>

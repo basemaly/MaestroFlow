@@ -51,6 +51,7 @@ async def run_lead_agent(
     thinking_enabled: bool = False,
     subagent_enabled: bool = False,
     agent_name: str | None = None,
+    trace_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Spawn a lead_agent run on the LangGraph server and wait for the final result.
@@ -95,7 +96,7 @@ async def run_lead_agent(
             thread_id,
             "lead_agent",
             input={"messages": [{"role": "human", "content": prompt}]},
-            config={"configurable": configurable},
+            config={"configurable": configurable, "metadata": {"trace_id": trace_id} if trace_id else {}},
         )
 
         response = _extract_last_ai_message(result.get("messages", []))

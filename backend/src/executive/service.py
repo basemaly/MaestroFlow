@@ -226,6 +226,7 @@ async def run_agent_payload(
     thinking_enabled: bool = False,
     subagent_enabled: bool = False,
     agent_name: str | None = None,
+    trace_id: str | None = None,
 ) -> dict:
     """Spawn a lead_agent run and return its result."""
     from src.executive.orchestrator import run_lead_agent
@@ -236,6 +237,7 @@ async def run_agent_payload(
         thinking_enabled=thinking_enabled,
         subagent_enabled=subagent_enabled,
         agent_name=agent_name,
+        trace_id=trace_id,
     )
 
 

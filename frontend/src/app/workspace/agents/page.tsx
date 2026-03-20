@@ -1,5 +1,6 @@
 import { AgentGallery } from "@/components/workspace/agents/agent-gallery";
 import type { Agent } from "@/core/agents/types";
+import { withRequestIdHeaders } from "@/core/api/fetch";
 import { getServerAppOrigin } from "@/core/server/app-origin";
 
 async function loadInitialAgents(): Promise<Agent[] | null> {
@@ -7,6 +8,7 @@ async function loadInitialAgents(): Promise<Agent[] | null> {
     const origin = await getServerAppOrigin();
     const response = await fetch(`${origin}/api/agents`, {
       cache: "no-store",
+      headers: withRequestIdHeaders(),
     });
     if (!response.ok) {
       return null;

@@ -60,6 +60,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { apiFetch } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
@@ -84,6 +85,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 
+import { ClipboardPasteButton } from "./clipboard-paste-button";
 import { AgentPresetMenu, KnowledgeSourceMenu } from "./context-controls";
 import { ExecutiveIcon } from "./executive-icon";
 import { useThread } from "./messages/context";
@@ -476,6 +478,18 @@ export function InputBox({
     deferredSubmit();
   }, [pendingSuggestion, deferredSubmit, textInput]);
 
+  const handlePasteIntoPrompt = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+    const current = textInput.value ?? "";
+    const nextValue = current.trim().length > 0
+      ? `${current.replace(/\s+$/, "")}\n\n${trimmed}`
+      : trimmed;
+    textInput.setInput(nextValue);
+  }, [textInput]);
+
   useEffect(() => {
     const streaming = status === "streaming";
     const wasStreaming = wasStreamingRef.current;
@@ -514,7 +528,7 @@ export function InputBox({
     setFollowupsLoading(true);
     setFollowups([]);
 
-    fetch(`${getBackendBaseURL()}/api/threads/${threadId}/suggestions`, {
+    apiFetch(`${getBackendBaseURL()}/api/threads/${threadId}/suggestions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -591,6 +605,13 @@ export function InputBox({
             </PromptInputActionMenuContent>
           </PromptInputActionMenu> */}
           <AddAttachmentsButton className="px-2!" />
+          <ClipboardPasteButton
+            className="border-2 px-2!"
+            variant="outline"
+            size="sm"
+            tooltip="Paste clipboard text into the prompt."
+            onPasteText={handlePasteIntoPrompt}
+          />
           <PromptInputActionMenu>
             <ModeHoverGuide
               mode={

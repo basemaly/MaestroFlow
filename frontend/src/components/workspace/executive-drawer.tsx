@@ -108,6 +108,22 @@ export function ExecutiveDrawerTrigger({
             </button>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
+            <Card className="border-border/60 bg-background/70">
+              <CardHeader className="space-y-1 pb-3">
+                <CardTitle className="text-base">Diagnostics</CardTitle>
+                <CardDescription>
+                  Open the dedicated diagnostics workspace for logs, request IDs, trace groups, and audit history.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/workspace/diagnostics">
+                    Open Diagnostics
+                    <ExternalLinkIcon className="size-4" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
             <ExecutiveAgentLifecycle />
             <ExecutiveProjects />
             <ExecutiveQuickChat />

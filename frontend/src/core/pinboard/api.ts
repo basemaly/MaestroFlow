@@ -1,3 +1,4 @@
+import { apiFetch } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 
 import type {
@@ -9,7 +10,7 @@ import type {
 } from "./types";
 
 export async function getPinboardConfig(): Promise<PinboardConfigResponse> {
-  const response = await fetch(`${getBackendBaseURL()}/api/pinboard/config`, { cache: "no-store" });
+  const response = await apiFetch(`${getBackendBaseURL()}/api/pinboard/config`, { cache: "no-store" });
   return (await response.json()) as PinboardConfigResponse;
 }
 
@@ -18,7 +19,7 @@ export async function searchPinboardBookmarks(input: {
   tag?: string;
   top_k?: number;
 }): Promise<PinboardSearchResponse> {
-  const response = await fetch(`${getBackendBaseURL()}/api/pinboard/bookmarks/search`, {
+  const response = await apiFetch(`${getBackendBaseURL()}/api/pinboard/bookmarks/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -33,7 +34,7 @@ export async function previewPinboardImport(input: {
   project_key?: string;
   search_space_id?: number;
 }): Promise<PinboardPreviewImportResponse> {
-  const response = await fetch(`${getBackendBaseURL()}/api/pinboard/bookmarks/preview-import`, {
+  const response = await apiFetch(`${getBackendBaseURL()}/api/pinboard/bookmarks/preview-import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -46,7 +47,7 @@ export async function importPinboardBookmarks(input: {
   project_key?: string;
   search_space_id?: number;
 }): Promise<PinboardImportResponse> {
-  const response = await fetch(`${getBackendBaseURL()}/api/pinboard/bookmarks/import`, {
+  const response = await apiFetch(`${getBackendBaseURL()}/api/pinboard/bookmarks/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

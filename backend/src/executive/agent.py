@@ -240,7 +240,7 @@ def _build_runtime_context(status: dict, advisory: list, capabilities: dict) -> 
     return "\n".join(lines)
 
 
-async def run_executive_chat(messages: list[dict[str, str]]) -> dict:
+async def run_executive_chat(messages: list[dict[str, str]], trace_id: str | None = None) -> dict:
     advisory = await get_advisory_payload()
     status = await get_status_payload()
     capabilities = get_capabilities_payload()
@@ -251,7 +251,7 @@ async def run_executive_chat(messages: list[dict[str, str]]) -> dict:
 
     try:
         agent = create_agent(
-            model=create_chat_model(name=model_name, thinking_enabled=True, trace_id=make_trace_id(seed="executive-agent")),
+            model=create_chat_model(name=model_name, thinking_enabled=True, trace_id=trace_id or make_trace_id(seed="executive-agent")),
             tools=[
                 # Introspection & planning
                 executive_get_capabilities,

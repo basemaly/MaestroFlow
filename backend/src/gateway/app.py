@@ -10,13 +10,9 @@ from src.gateway.config import get_gateway_config
 from src.gateway.startup.channels import start_channels, stop_channels
 from src.gateway.startup.proxies import start_proxies, stop_proxies
 from src.gateway.startup.scheduler import start_scheduler, stop_scheduler
+from src.logging_setup import setup_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+setup_logging("gateway")
 
 logger = logging.getLogger(__name__)
 

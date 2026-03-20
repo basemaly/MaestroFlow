@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from src.documents.ai import transform_selection
@@ -236,8 +236,8 @@ async def restore_document_snapshot(doc_id: str, snapshot_id: str) -> DocumentRe
 
 
 @router.post("/{doc_id}/actions/transform", response_model=TransformDocumentResponse)
-async def transform_document(doc_id: str, req: TransformDocumentRequest) -> TransformDocumentResponse:
-    trace_id = make_trace_id(seed=f"{doc_id}:{req.operation}")
+async def transform_document(doc_id: str, req: TransformDocumentRequest, request: Request) -> TransformDocumentResponse:
+    trace_id = getattr(request.state, "trace_id", None) or make_trace_id(seed=f"{doc_id}:{req.operation}")
     with observe_span("documents.transform", trace_id=trace_id, input={"doc_id": doc_id, **req.model_dump(exclude={"document_markdown"})}) as observation:
         try:
             document = get_document(doc_id)

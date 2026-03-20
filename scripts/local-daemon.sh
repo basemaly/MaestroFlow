@@ -14,6 +14,8 @@ LANGGRAPH_POSTGRES_URL_DEFAULT="postgresql://postgres:postgres@127.0.0.1:55434/m
 
 # shellcheck source=/dev/null
 source "$REPO_ROOT/scripts/dev-ports.sh"
+# shellcheck source=/dev/null
+source "$REPO_ROOT/scripts/dev-topology.sh"
 
 mkdir -p "$PID_DIR" "$LOG_DIR"
 export DEER_FLOW_ROOT="${DEER_FLOW_ROOT:-$REPO_ROOT}"
@@ -177,16 +179,24 @@ start_nginx() {
 }
 
 start_local_daemon() {
+  local mode
+  mode="$(detect_dev_runtime_mode)"
   if local_stack_is_running; then
     echo "MaestroFlow local detached stack is already running."
+    print_dev_topology "local-detached"
     exit 0
   fi
 
   : >"$SUPERVISOR_LOG"
   echo "Starting MaestroFlow local detached stack..." >>"$SUPERVISOR_LOG"
+  echo "Preflight topology:" >>"$SUPERVISOR_LOG"
+  {
+    print_dev_topology "$mode"
+  } >>"$SUPERVISOR_LOG"
 
   # The Docker-backed detached stack owns the same public port; tear it down first.
   "$REPO_ROOT/scripts/daemon.sh" stop >/dev/null 2>&1 || true
+  cleanup_conflicting_local_processes
   stop_local_daemon >/dev/null 2>&1 || true
   "${DOCKER_COMPOSE_CMD[@]}" down >/dev/null 2>&1 || true
   docker rm -f deer-flow-nginx deer-flow-frontend deer-flow-gateway deer-flow-langgraph deer-flow-langgraph-postgres deer-flow-langgraph-redis >/dev/null 2>&1 || true
@@ -212,6 +222,7 @@ start_local_daemon() {
       prewarm_local_routes
       echo "MaestroFlow local detached stack started."
       echo "Log: $SUPERVISOR_LOG"
+      print_dev_topology "local-detached"
       return 0
     fi
     sleep 1
@@ -233,12 +244,14 @@ stop_local_daemon() {
 }
 
 status_local_daemon() {
+  local mode
+  mode="$(detect_dev_runtime_mode)"
   if local_stack_is_running; then
-    echo "running"
-  else
-    echo "stopped"
-    return 1
+    print_dev_topology "local-detached"
+    return 0
   fi
+  print_dev_topology "$mode"
+  [ "$mode" != "stopped" ]
 }
 
 case "${1:-}" in

@@ -7,10 +7,12 @@ import {
   BotIcon,
   CopyIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   RefreshCcwIcon,
   SquareIcon,
   WrenchIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -18,8 +20,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { ClipboardPasteButton } from "@/components/workspace/clipboard-paste-button";
 import { ExecutiveIcon } from "@/components/workspace/executive-icon";
 import { ExecutiveProjects } from "@/components/workspace/executive-projects";
+import { LifecyclePill } from "@/components/workspace/lifecycle-pill";
 import { Tooltip } from "@/components/workspace/tooltip";
 import {
   confirmExecutiveApproval,
@@ -27,7 +31,6 @@ import {
   executiveChat,
   getExecutiveAdvisory,
   getExecutiveApprovals,
-  getExecutiveAudit,
   getExecutiveRegistry,
   getExecutiveSettings,
   getExecutiveStatus,
@@ -165,11 +168,6 @@ export function ExecutiveConsole() {
     queryFn: getExecutiveApprovals,
     refetchInterval: 30_000, // Reduced from 10s: approvals need refresh but not too frequent
   });
-  const auditQuery = useQuery({
-    queryKey: ["executive", "audit"],
-    queryFn: getExecutiveAudit,
-    refetchInterval: 60_000, // Reduced from 10s: audit trail is read-only historical data
-  });
   const settingsQuery = useQuery({
     queryKey: ["executive", "settings"],
     queryFn: getExecutiveSettings,
@@ -195,7 +193,7 @@ export function ExecutiveConsole() {
         const component = components.find(
           (item) => item.component_id === selectedComponentId,
         );
-        return component?.actions.includes(action.action_id);
+        return component?.actions.includes(action.action_id) && action.action_id !== "tail_component_logs";
       }),
     [actions, components, selectedComponentId],
   );
@@ -204,6 +202,26 @@ export function ExecutiveConsole() {
     () => availableActions.find((action) => action.action_id === selectedActionId),
     [availableActions, selectedActionId],
   );
+  const executiveLifecycle = useMemo(() => {
+    if (
+      statusQuery.isFetching ||
+      advisoryQuery.isFetching ||
+      approvalsQuery.isFetching
+    ) {
+      return { tone: "working" as const, label: "Refreshing", detail: "live control plane" };
+    }
+    if (statusQuery.isError || advisoryQuery.isError || approvalsQuery.isError) {
+      return { tone: "error" as const, label: "Attention", detail: "one or more feeds failed" };
+    }
+    return { tone: "success" as const, label: "Live", detail: "registry and policy synced" };
+  }, [
+    advisoryQuery.isError,
+    advisoryQuery.isFetching,
+    approvalsQuery.isError,
+    approvalsQuery.isFetching,
+    statusQuery.isError,
+    statusQuery.isFetching,
+  ]);
 
   // Live JSON validation for the action input
   const isJsonValid = useMemo(() => {
@@ -220,7 +238,6 @@ export function ExecutiveConsole() {
       queryClient.invalidateQueries({ queryKey: ["executive", "status"] }),
       queryClient.invalidateQueries({ queryKey: ["executive", "advisory"] }),
       queryClient.invalidateQueries({ queryKey: ["executive", "approvals"] }),
-      queryClient.invalidateQueries({ queryKey: ["executive", "audit"] }),
     ]);
   };
 
@@ -341,6 +358,14 @@ export function ExecutiveConsole() {
     URL.revokeObjectURL(url);
   };
 
+  const handlePasteIntoExecutiveChat = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+    setChatInput((current) => current.trim().length > 0 ? `${current.replace(/\s+$/, "")}\n\n${trimmed}` : trimmed);
+  };
+
   return (
     <div className="grid size-full min-h-0 grid-cols-1 gap-6 p-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.95fr)]">
       <div className="flex min-h-0 flex-col gap-6">
@@ -376,6 +401,7 @@ export function ExecutiveConsole() {
             </Button>
           </CardHeader>
           <CardContent className="grid gap-3 px-4">
+            <LifecyclePill tone={executiveLifecycle.tone} label={executiveLifecycle.label} detail={executiveLifecycle.detail} />
             {statusQuery.isLoading && (
               <div className="text-muted-foreground rounded-xl border border-dashed p-4 text-sm">
                 Loading component status…
@@ -400,7 +426,7 @@ export function ExecutiveConsole() {
                     <p className="text-muted-foreground text-sm">{component.summary}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {component.recommended_actions.slice(0, 3).map((actionId) => (
+                    {component.recommended_actions.filter((actionId) => actionId !== "tail_component_logs").slice(0, 3).map((actionId) => (
                       <Tooltip
                         key={`${component.component_id}-${actionId}`}
                         content={
@@ -481,7 +507,18 @@ export function ExecutiveConsole() {
                     <div className="mt-3 rounded-lg border bg-muted/30 p-3 text-sm">
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-medium">{rule.recommendation.title}</div>
-                        {rule.recommendation.action_id && (
+                        {rule.recommendation.action_id === "tail_component_logs" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-full text-xs"
+                            asChild
+                          >
+                            <Link href="/workspace/diagnostics/logs">
+                              Open Diagnostics
+                            </Link>
+                          </Button>
+                        ) : rule.recommendation.action_id ? (
                           <Button
                             size="sm"
                             variant="outline"
@@ -490,7 +527,7 @@ export function ExecutiveConsole() {
                           >
                             Load in console
                           </Button>
-                        )}
+                        ) : null}
                       </div>
                       <div className="text-muted-foreground mt-1">{rule.recommendation.summary}</div>
                     </div>
@@ -705,20 +742,35 @@ export function ExecutiveConsole() {
               <div ref={chatBottomRef} />
             </div>
             <div className="flex items-end gap-2">
-              <Textarea
-                value={chatInput}
-                onChange={(event) => setChatInput(event.target.value)}
-                rows={6}
-                className="min-h-[10rem] resize-none"
-                disabled={isChatResponding}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                    event.preventDefault();
-                    void submitChat();
-                  }
-                }}
-                placeholder="What is broken? What should I use for this task? Preview a restart?"
-              />
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <LifecyclePill
+                    tone={isChatResponding ? "working" : "idle"}
+                    label={isChatResponding ? "Executive responding" : "Ready for direction"}
+                    detail={isChatResponding ? "recommendations will auto-load" : "top recommendation will load into the console"}
+                  />
+                  <ClipboardPasteButton
+                    variant="outline"
+                    size="sm"
+                    tooltip="Paste clipboard text into the Executive prompt."
+                    onPasteText={handlePasteIntoExecutiveChat}
+                  />
+                </div>
+                <Textarea
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  rows={6}
+                  className="min-h-[10rem] resize-none"
+                  disabled={isChatResponding}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault();
+                      void submitChat();
+                    }
+                  }}
+                  placeholder="What is broken? What should I use for this task? Preview a restart?"
+                />
+              </div>
               <Tooltip
                 content={
                   isChatResponding
@@ -751,6 +803,41 @@ export function ExecutiveConsole() {
         </Card>
 
         <ExecutiveProjects />
+
+        <Card className="border-border/60 py-4">
+          <CardHeader className="px-4">
+            <CardTitle className="text-base">Diagnostics</CardTitle>
+            <CardDescription>
+              Logs, request IDs, trace groups, and audit history now live in their own screen so Executive stays focused on control and approvals.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 px-4 md:grid-cols-2">
+            <Link
+              href="/workspace/diagnostics/logs"
+              className="rounded-xl border border-border/70 bg-background/70 p-4 transition-colors hover:bg-accent/40"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium">Component logs</div>
+                <ExternalLinkIcon className="size-4 text-muted-foreground" />
+              </div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                Tail bounded per-component logs without loading them into the Executive page.
+              </div>
+            </Link>
+            <Link
+              href="/workspace/diagnostics/events"
+              className="rounded-xl border border-border/70 bg-background/70 p-4 transition-colors hover:bg-accent/40"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium">Requests, traces, and events</div>
+                <ExternalLinkIcon className="size-4 text-muted-foreground" />
+              </div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                Inspect request timelines, trace groups, approvals, and action history from the dedicated diagnostics surface.
+              </div>
+            </Link>
+          </CardContent>
+        </Card>
 
         <Card className="border-border/60 py-4">
           <CardHeader className="px-4">
@@ -810,31 +897,6 @@ export function ExecutiveConsole() {
                     </Button>
                   </div>
                 )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/60 py-4">
-          <CardHeader className="px-4">
-            <CardTitle className="text-base">Audit Trail</CardTitle>
-            <CardDescription>
-              Structured history of previews, approvals, and completed actions.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 px-4">
-            {(auditQuery.data?.entries ?? []).slice(0, 12).map((entry) => (
-              <div key={entry.audit_id} className="rounded-xl border p-4 text-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-medium">
-                    {entry.action_id} → {entry.component_id}
-                  </div>
-                  <Badge variant="outline" className="rounded-full">
-                    {entry.status}
-                  </Badge>
-                </div>
-                <div className="text-muted-foreground mt-2">{entry.result_summary}</div>
-                <div className="text-muted-foreground mt-1 text-xs">{formatTimestamp(entry.timestamp)}</div>
               </div>
             ))}
           </CardContent>

@@ -103,7 +103,40 @@ class AppConfig(BaseModel):
         config_data["extensions"] = extensions_config.model_dump()
 
         result = cls.model_validate(config_data)
+        
+        # Additional validation for common config issues
+        cls._validate_config(result)
+        
         return result
+    
+    @classmethod
+    def _validate_config(cls, config: Self) -> None:
+        """Validate the loaded config for common issues that could cause runtime failures."""
+        # Check that at least one model is configured
+        if not config.models:
+            raise ValueError("No models configured. Please add at least one model to the 'models' section in config.yaml.")
+        
+        # Check that sandbox.use is configured
+        if not config.sandbox.use:
+            raise ValueError("Sandbox 'use' field is required. Please specify a sandbox provider in config.yaml.")
+        
+        # Validate model configurations
+        for model in config.models:
+            if not model.name:
+                raise ValueError("Model name is required for all models in config.yaml.")
+            if not model.use:
+                raise ValueError(f"Model '{model.name}' is missing required 'use' field in config.yaml.")
+            if not model.model:
+                raise ValueError(f"Model '{model.name}' is missing required 'model' field in config.yaml.")
+        
+        # Validate tool configurations
+        for tool in config.tools:
+            if not tool.name:
+                raise ValueError("Tool name is required for all tools in config.yaml.")
+            if not tool.use:
+                raise ValueError(f"Tool '{tool.name}' is missing required 'use' field in config.yaml.")
+            if not tool.group:
+                raise ValueError(f"Tool '{tool.name}' is missing required 'group' field in config.yaml.")
 
     @classmethod
     def resolve_env_variables(cls, config: Any) -> Any:

@@ -13,6 +13,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { DevRuntimeBadge } from "@/components/workspace/dev-runtime-badge";
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
 
@@ -99,6 +100,7 @@ export function WorkspaceHeader({
         </Breadcrumb>
       </div>
       <div className="flex items-center gap-2 pr-4">
+        <DevRuntimeBadge />
         {rightSlot}
         <SnippetShelf />
         <ExecutiveDrawerTrigger isSidebarOpen={false} variant="header" />
@@ -137,6 +139,7 @@ function nameOfSegment(
   if (segment === "composer") return t.breadcrumb.documents;
   if (segment === "doc-edits") return t.breadcrumb.docEdits;
   if (segment === "autoresearch") return t.breadcrumb.autoresearch;
+  if (segment === "diagnostics") return t.breadcrumb.diagnostics;
   if (segment === "executive") return t.breadcrumb.executive;
   return segment[0]?.toUpperCase() + segment.slice(1);
 }

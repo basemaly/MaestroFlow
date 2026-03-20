@@ -1,3 +1,4 @@
+import { apiFetch } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 
 import type {
@@ -37,7 +38,7 @@ function normalizePack(pack: Record<string, unknown>): OpenVikingContextPack {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getBackendBaseURL()}${path}`, {
+  const response = await apiFetch(`${getBackendBaseURL()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

@@ -2,6 +2,7 @@ import logging
 from functools import lru_cache
 
 from langchain.chat_models import BaseChatModel
+from openai import RateLimitError as OpenAIRateLimitError
 
 from src.config import get_app_config, get_tracing_config, is_tracing_enabled
 from src.executive.runtime_overrides import get_default_model_override
@@ -11,10 +12,22 @@ from src.reflection import resolve_class
 
 logger = logging.getLogger(__name__)
 
-try:
-    from openai import RateLimitError as OpenAIRateLimitError
-except Exception:  # pragma: no cover - openai is expected but keep import safe
-    OpenAIRateLimitError = None
+@lru_cache(maxsize=32)
+def get_model_capabilities(name: str) -> dict[str, bool]:
+    """Get cached model capabilities for a given model name.
+    
+    Returns a dict with keys: supports_thinking, supports_vision, supports_reasoning_effort
+    """
+    config = get_app_config()
+    model_config = config.get_model_config(name)
+    if model_config is None:
+        raise ValueError(f"Model {name} not found in config") from None
+    
+    return {
+        "supports_thinking": model_config.supports_thinking,
+        "supports_vision": model_config.supports_vision,
+        "supports_reasoning_effort": model_config.supports_reasoning_effort,
+    }
 
 
 def _deep_merge_dicts(base: dict, updates: dict) -> dict:

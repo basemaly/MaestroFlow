@@ -166,6 +166,7 @@ export const zhCN: Translations = {
     newDocEdit: "新建修订会话",
     documents: "作曲台",
     autoresearch: "自动研究器",
+    diagnostics: "诊断中心",
     executive: "执行控制台",
   },
 
@@ -206,6 +207,7 @@ export const zhCN: Translations = {
     documents: "作曲台",
     docEdits: "修订实验室",
     autoresearch: "自动研究器",
+    diagnostics: "诊断中心",
     executive: "执行控制台",
   },
 

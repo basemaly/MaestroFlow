@@ -10,6 +10,8 @@ PID_DIR="$REPO_ROOT/.run"
 SUPERVISOR_LOG="$REPO_ROOT/logs/supervisor.log"
 export DEER_FLOW_ROOT="${DEER_FLOW_ROOT:-$REPO_ROOT}"
 DOCKER_COMPOSE_CMD=(docker compose -p deer-flow-dev -f "$REPO_ROOT/docker/docker-compose-dev.yaml")
+# shellcheck source=/dev/null
+source "$REPO_ROOT/scripts/dev-topology.sh"
 
 mkdir -p "$PID_DIR" "$REPO_ROOT/logs"
 
@@ -26,17 +28,25 @@ stack_is_running() {
 }
 
 start_daemon() {
+  local mode
+  mode="$(detect_dev_runtime_mode)"
   if stack_is_running; then
     echo "MaestroFlow detached stack is already running."
+    print_dev_topology "docker-detached"
     exit 0
   fi
 
   # The split-port local detached stack owns the same public port; tear it down first.
   "$REPO_ROOT/scripts/local-daemon.sh" stop >/dev/null 2>&1 || true
+  cleanup_conflicting_local_processes
 
   cd "$REPO_ROOT"
   export DEER_FLOW_ROOT="${DEER_FLOW_ROOT:-$REPO_ROOT}"
   : >"$SUPERVISOR_LOG"
+  {
+    echo "Preflight topology:"
+    print_dev_topology "$mode"
+  } >>"$SUPERVISOR_LOG"
   if command -v stdbuf >/dev/null 2>&1; then
     stdbuf -oL -eL "$REPO_ROOT/scripts/docker.sh" start >>"$SUPERVISOR_LOG" 2>&1
   else
@@ -49,6 +59,7 @@ start_daemon() {
     if stack_is_running; then
       echo "MaestroFlow detached stack started."
       echo "Log: $SUPERVISOR_LOG"
+      print_dev_topology "docker-detached"
       return 0
     fi
     sleep 1
@@ -69,12 +80,14 @@ stop_daemon() {
 }
 
 status_daemon() {
+  local mode
+  mode="$(detect_dev_runtime_mode)"
   if stack_is_running; then
-    echo "running"
-  else
-    echo "stopped"
-    return 1
+    print_dev_topology "docker-detached"
+    return 0
   fi
+  print_dev_topology "$mode"
+  [ "$mode" != "stopped" ]
 }
 
 case "${1:-}" in

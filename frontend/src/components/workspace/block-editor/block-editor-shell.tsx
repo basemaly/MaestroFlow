@@ -29,9 +29,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { apiFetch } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 import { useDocEditRuns } from "@/core/doc-editing/hooks";
 import type { DocEditRun, DocEditVersion } from "@/core/doc-editing/types";
+import {
+  normalizeComposerState,
+  withBlockEditor,
+  type ComposerStateEnvelope,
+} from "@/core/documents/composer-state";
 import {
   useCreateDocumentQuickAction,
   useCreateDocumentSnapshot,
@@ -163,7 +169,7 @@ function HistoryRunStub({
     if (next && !fullRun) {
       setLoading(true);
       try {
-        const response = await fetch(`${getBackendBaseURL()}/api/doc-edit/${run.run_id}`);
+        const response = await apiFetch(`${getBackendBaseURL()}/api/doc-edit/${run.run_id}`);
         if (response.ok) {
           const data = (await response.json()) as DocEditRun;
           setFullRun(data);
@@ -231,8 +237,9 @@ export function BlockEditorShell({
   const restoreSnapshot = useRestoreDocumentSnapshot(document.doc_id);
   const [title, setTitle] = useState(document.title);
   const [markdown, setMarkdown] = useState(document.content_markdown);
+  const [composerState, setComposerState] = useState<ComposerStateEnvelope>(() => normalizeComposerState(document.editor_json));
   const [editorJson, setEditorJson] = useState<Record<string, unknown> | null>(
-    document.editor_json ?? null,
+    normalizeComposerState(document.editor_json).block_editor,
   );
   const [writingMemory, setWritingMemory] = useState(document.writing_memory ?? "");
   const [wordCount, setWordCount] = useState(
@@ -262,7 +269,9 @@ export function BlockEditorShell({
   useEffect(() => {
     setTitle(document.title);
     setMarkdown(document.content_markdown);
-    setEditorJson(document.editor_json ?? null);
+    const normalized = normalizeComposerState(document.editor_json);
+    setComposerState(normalized);
+    setEditorJson(normalized.block_editor);
     setWritingMemory(document.writing_memory ?? "");
     setSaveState("saved");
     readyRef.current = false;
@@ -292,7 +301,7 @@ export function BlockEditorShell({
         .mutateAsync({
           title: title.trim() || "Untitled piece",
           content_markdown: markdown,
-          editor_json: editorJson,
+          editor_json: withBlockEditor(composerState, editorJson),
           writing_memory: writingMemory,
           status: "active",
         })
@@ -308,7 +317,7 @@ export function BlockEditorShell({
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [editorJson, markdown, title, updateDocument, writingMemory]);
+  }, [composerState, editorJson, markdown, title, updateDocument, writingMemory]);
 
   useEffect(() => {
     if (!selectedSnapshotId && snapshots[0]?.snapshot_id) {
@@ -343,7 +352,7 @@ export function BlockEditorShell({
       await updateDocument.mutateAsync({
         title: title.trim() || "Untitled piece",
         content_markdown: markdown,
-        editor_json: editorJson,
+        editor_json: withBlockEditor(composerState, editorJson),
         writing_memory: writingMemory,
         status: "active",
       });
@@ -470,9 +479,11 @@ export function BlockEditorShell({
   async function handleRestoreSnapshot(snapshot: DocumentSnapshot) {
     try {
       const restored = await restoreSnapshot.mutateAsync(snapshot.snapshot_id);
+      const normalized = normalizeComposerState(restored.editor_json);
       setTitle(restored.title);
       setMarkdown(restored.content_markdown);
-      setEditorJson(restored.editor_json ?? null);
+      setComposerState(normalized);
+      setEditorJson(normalized.block_editor);
       setWritingMemory(restored.writing_memory ?? "");
       setSaveState("saved");
       toast.success(`Restored snapshot: ${snapshot.label}`);

@@ -13,6 +13,13 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type {
@@ -98,7 +105,24 @@ export function PlanReviewCard({
   const rec = review.plan.recommendations;
 
   return (
-    <div className="mx-auto mt-3 mb-3 w-full max-w-(--container-width-md) rounded-2xl border border-border/70 bg-background/92 shadow-sm backdrop-blur">
+    <Dialog
+      open={true}
+      onOpenChange={(open) => {
+        if (!open && !busy) {
+          onProceedAnyway();
+        }
+      }}
+    >
+      <DialogContent
+        className="max-h-[85vh] max-w-4xl overflow-y-auto gap-0 p-0 sm:rounded-2xl border-border/70 bg-background/95 shadow-lg backdrop-blur"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        <DialogHeader className="sr-only">
+          <DialogTitle>Plan Review</DialogTitle>
+          <DialogDescription>Review the execution plan</DialogDescription>
+        </DialogHeader>
+        <div className="w-full">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-border/60 px-4 py-4">
         <div>
@@ -371,6 +395,8 @@ export function PlanReviewCard({
           </div>
         </section>
       </div>
-    </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

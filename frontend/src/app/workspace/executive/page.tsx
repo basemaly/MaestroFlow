@@ -41,7 +41,7 @@ export default function ExecutivePage() {
               </div>
               <div className="mt-2 text-2xl font-semibold tracking-tight">Operational oversight and guarded execution</div>
               <div className="mt-2 text-sm text-muted-foreground">
-                Use Executive when you need system status, approvals, operational actions, or a concise recommendation about what to do next.
+                Use Executive when you need system status, approvals, operational actions, or a concise recommendation about what to do next. Use Diagnostics for logs, request timelines, trace groups, and audit history.
               </div>
             </div>
           </div>

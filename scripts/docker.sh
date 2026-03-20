@@ -12,6 +12,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DOCKER_DIR="$PROJECT_ROOT/docker"
 export DEER_FLOW_ROOT="${DEER_FLOW_ROOT:-$PROJECT_ROOT}"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/scripts/dev-ports.sh"
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/scripts/dev-topology.sh"
 
 # Docker Compose command with project name
 COMPOSE_CMD="docker compose -p deer-flow-dev -f docker-compose-dev.yaml"
@@ -116,6 +120,10 @@ start() {
     echo "  Starting DeerFlow Docker Development"
     echo "=========================================="
     echo ""
+    echo "Preflight topology:"
+    print_dev_topology "$(detect_dev_runtime_mode)"
+    cleanup_conflicting_local_processes
+    echo ""
 
     sandbox_mode="$(detect_sandbox_mode)"
 
@@ -162,6 +170,8 @@ start() {
     echo "  🌐 Application: http://localhost:2027"
     echo "  📡 API Gateway: http://localhost:2027/api/*"
     echo "  🤖 LangGraph:   http://localhost:2027/api/langgraph/*"
+    echo ""
+    print_dev_topology "docker-detached"
     echo ""
     echo "  📋 View logs: make docker-logs"
     echo "  🛑 Stop:      make docker-stop"

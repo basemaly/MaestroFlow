@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { AutoresearchPageClient } from "@/components/workspace/autoresearch/autoresearch-page-client";
 import { MusicalClefLoader } from "@/components/workspace/musical-loader";
+import { withRequestIdHeaders } from "@/core/api/fetch";
 import type { AutoresearchRegistryPayload, ExperimentSummary } from "@/core/autoresearch/types";
 import { getServerAppOrigin } from "@/core/server/app-origin";
 
@@ -15,8 +16,8 @@ async function loadInitialData(): Promise<{
   try {
     const origin = await getServerAppOrigin();
     const [registryResponse, experimentsResponse] = await Promise.all([
-      fetch(`${origin}/api/autoresearch/registry`, { cache: "no-store" }),
-      fetch(`${origin}/api/autoresearch/experiments`, { cache: "no-store" }),
+      fetch(`${origin}/api/autoresearch/registry`, { cache: "no-store", headers: withRequestIdHeaders() }),
+      fetch(`${origin}/api/autoresearch/experiments`, { cache: "no-store", headers: withRequestIdHeaders() }),
     ]);
     const registry = registryResponse.ok
       ? ((await registryResponse.json()) as AutoresearchRegistryPayload)

@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { apiFetch, readApiError } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 import { env } from "@/env";
 
@@ -188,7 +189,7 @@ function SurfSenseActionsComponent() {
     searchAbortRef.current = controller;
     setIsSearching(true);
     try {
-      const response = await fetch(`${getBackendBaseURL()}/api/surfsense/search`, {
+      const response = await apiFetch(`${getBackendBaseURL()}/api/surfsense/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
@@ -200,8 +201,7 @@ function SurfSenseActionsComponent() {
         }),
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { detail?: string };
-        throw new Error(payload.detail ?? "SurfSense search failed");
+        throw await readApiError(response, "SurfSense search failed");
       }
       const payload = (await response.json()) as { warning?: string } & unknown;
       if (payload && typeof payload === "object" && typeof payload.warning === "string" && payload.warning) {
@@ -232,15 +232,15 @@ function SurfSenseActionsComponent() {
       setIsLoadingConfig(true);
       void (async () => {
         try {
-          const response = await fetch(
+          const response = await apiFetch(
             `${getBackendBaseURL()}/api/surfsense/config${projectKey.trim() ? `?project_key=${encodeURIComponent(projectKey.trim())}` : ""}`,
             { signal: controller.signal },
           );
           if (!response.ok) {
-            throw new Error("Failed to load SurfSense integration status");
+            throw await readApiError(response, "Failed to load SurfSense integration status");
           }
           const payload = (await response.json()) as SurfSenseConfig;
-          const spacesResponse = await fetch(`${getBackendBaseURL()}/api/surfsense/search-spaces`, {
+          const spacesResponse = await apiFetch(`${getBackendBaseURL()}/api/surfsense/search-spaces`, {
             signal: controller.signal,
           });
           const spacesPayload = spacesResponse.ok ? await spacesResponse.json() : null;

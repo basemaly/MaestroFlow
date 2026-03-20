@@ -1,12 +1,10 @@
 """Availability probes for external services used by MaestroFlow."""
 
-from __future__ import annotations
-
+import asyncio
 import base64
 import os
 from typing import Any
-from urllib.parse import urlparse
-from urllib.parse import urlunsplit
+from urllib.parse import urlparse, urlunsplit
 
 import httpx
 
@@ -14,8 +12,8 @@ from src.config import get_langfuse_config
 from src.integrations.activepieces import get_activepieces_config
 from src.integrations.browser_runtime import get_browser_runtime_config
 from src.integrations.openviking import get_openviking_config
-from src.integrations.surfsense import get_surfsense_config
 from src.integrations.stateweave import get_stateweave_config
+from src.integrations.surfsense import get_surfsense_config
 
 DEFAULT_LANGGRAPH_URL = os.getenv("LANGGRAPH_BASE_URL", "http://127.0.0.1:2024")
 
@@ -32,15 +30,32 @@ def _join_url(base: str, path: str) -> str:
 
 
 async def _probe(url: str, *, headers: dict[str, str] | None = None, timeout: float = 2.5) -> tuple[bool, str | None]:
-    try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            response = await client.get(url, headers=headers)
-        if response.status_code >= 400:
-            return False, f"HTTP {response.status_code}"
-        return True, None
-    except Exception as exc:
-        message = str(exc).strip() or exc.__class__.__name__
-        return False, message
+    """Probe a URL with retry logic and exponential backoff."""
+    max_retries = 3
+    base_delay = 0.5
+    
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+                response = await client.get(url, headers=headers)
+            if response.status_code >= 400:
+                return False, f"HTTP {response.status_code}"
+            return True, None
+        except asyncio.CancelledError:
+            # Re-raise cancellation to allow proper cleanup
+            raise
+        except Exception as exc:
+            message = str(exc).strip() or exc.__class__.__name__
+            if attempt == max_retries - 1:
+                # Last attempt failed
+                return False, message
+            
+            # Exponential backoff: base_delay * 2^attempt
+            delay = base_delay * (2 ** attempt)
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                raise
 
 
 def _candidate_origins(origin: str) -> list[str]:
@@ -60,19 +75,27 @@ def _candidate_origins(origin: str) -> list[str]:
     return candidates
 
 
+DEFAULT_TIMEOUT = float(os.getenv("EXTERNAL_SERVICE_TIMEOUT", "2.5"))
+
+
 async def _probe_service(
     origin: str,
     path: str,
     *,
     headers: dict[str, str] | None = None,
-    timeout: float = 2.5,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> tuple[bool, str | None, str]:
+    """Probe a service with multiple candidate origins and retry logic."""
     last_error: str | None = None
     for candidate_origin in _candidate_origins(origin):
-        available, error = await _probe(_join_url(candidate_origin, path), headers=headers, timeout=timeout)
-        if available:
-            return True, None, candidate_origin
-        last_error = error
+        try:
+            available, error = await _probe(_join_url(candidate_origin, path), headers=headers, timeout=timeout)
+            if available:
+                return True, None, candidate_origin
+            last_error = error
+        except asyncio.CancelledError:
+            # Re-raise cancellation to allow proper cleanup
+            raise
     return False, last_error, origin
 
 
@@ -80,7 +103,7 @@ def _langfuse_headers() -> dict[str, str] | None:
     config = get_langfuse_config()
     if not config.public_key or not config.secret_key:
         return None
-    credentials = f"{config.public_key}:{config.secret_key}".encode("utf-8")
+    credentials = f"{config.public_key}:{config.secret_key}".encode()
     return {"Authorization": "Basic " + base64.b64encode(credentials).decode("ascii")}
 
 
@@ -171,7 +194,7 @@ async def get_external_services_status() -> dict[str, Any]:
         }
     )
 
-    langgraph_available, langgraph_error = await _probe(_join_url(langgraph_base_url, "/openapi.json"))
+    langgraph_available, langgraph_error = await _probe(_join_url(langgraph_base_url, "/openapi.json"), timeout=DEFAULT_TIMEOUT)
     statuses.append(
         {
             "service": "langgraph",
@@ -186,7 +209,7 @@ async def get_external_services_status() -> dict[str, Any]:
 
     openviking_configured = openviking_config.is_configured
     openviking_available, openviking_error, openviking_origin = (
-        await _probe_service(_normalize_origin(openviking_config.base_url), "/api/openviking/config")
+        await _probe_service(_normalize_origin(openviking_config.base_url), "/docs")
         if openviking_configured and openviking_config.base_url
         else (False, None, openviking_config.base_url)
     )
@@ -199,17 +222,15 @@ async def get_external_services_status() -> dict[str, Any]:
             "available": openviking_available if openviking_configured else False,
             "required": False,
             "url": openviking_origin or openviking_config.base_url,
-            "message": (
-                None
-                if openviking_configured and openviking_available
-                else ("OpenViking is not configured." if not openviking_configured else f"OpenViking is unreachable: {openviking_error}")
-            ),
-        }
+            "message": None
+            if openviking_configured and openviking_available
+            else ("OpenViking is not configured." if not openviking_configured else f"OpenViking is unreachable: {openviking_error}"),
+        },
     )
 
     activepieces_configured = activepieces_config.is_configured
     activepieces_available, activepieces_error, activepieces_origin = (
-        await _probe_service(_normalize_origin(activepieces_config.base_url), "/api/activepieces/config")
+        await _probe_service(_normalize_origin(activepieces_config.base_url), "/api/v1/docs")
         if activepieces_configured and activepieces_config.base_url
         else (False, None, activepieces_config.base_url)
     )

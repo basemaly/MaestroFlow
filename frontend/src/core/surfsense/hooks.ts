@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { apiFetch } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 
 export interface SurfSenseSearchSpace {
@@ -37,7 +38,7 @@ export function useSurfSenseSearchSpaces() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch(`${getBackendBaseURL()}/api/surfsense/search-spaces`)
+    apiFetch(`${getBackendBaseURL()}/api/surfsense/search-spaces`)
       .then(async (res) => {
         if (cancelled) return;
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

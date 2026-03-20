@@ -26,6 +26,7 @@ from src.config.subagents_config import get_subagents_app_config
 from src.executive.runtime_overrides import get_default_model_override, get_subagent_concurrency_override
 from src.config.summarization_config import get_summarization_config
 from src.models import create_chat_model
+from src.models.factory import get_model_capabilities
 from src.models.routing import is_rate_limited_model
 from src.observability import make_trace_id
 from src.sandbox.middleware import SandboxMiddleware
@@ -267,10 +268,14 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
 
     # Add ViewImageMiddleware only if the current model supports vision.
     # Use the resolved runtime model_name from make_lead_agent to avoid stale config values.
-    app_config = get_app_config()
-    model_config = app_config.get_model_config(model_name) if model_name else None
-    if model_config is not None and model_config.supports_vision:
-        middlewares.append(ViewImageMiddleware())
+    if model_name:
+        try:
+            capabilities = get_model_capabilities(model_name)
+            if capabilities["supports_vision"]:
+                middlewares.append(ViewImageMiddleware())
+        except ValueError:
+            # Model not found, skip vision middleware
+            pass
 
     # Truncate excess task() calls to the concurrency limit (prevents runaway subagent queues).
     subagent_enabled = config.get("configurable", {}).get("subagent_enabled", False)

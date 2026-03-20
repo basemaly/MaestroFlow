@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.gateway.config import get_gateway_config
+from src.gateway.middleware import RequestLoggingMiddleware
 from src.gateway.routers import (
     activepieces,
     agents,
@@ -12,6 +13,7 @@ from src.gateway.routers import (
     browser_runtime,
     calibre,
     channels,
+    diagnostics,
     doc_editing,
     documents,
     executive,
@@ -106,6 +108,10 @@ OPENAPI_TAGS = [
         "description": "Plan review, Executive first-turn steering, and clarification flows for complex tasks",
     },
     {
+        "name": "diagnostics",
+        "description": "Request-correlated logs, traces, events, and diagnostic views",
+    },
+    {
         "name": "quality",
         "description": "Subagent output quality scores per thread",
     },
@@ -156,7 +162,7 @@ API Gateway for DeerFlow - A LangGraph-based AI agent backend with sandbox execu
 LangGraph requests are handled by nginx reverse proxy.
 This gateway provides custom endpoints for models, MCP configuration, skills, and artifacts.
     """
-    app.version = "0.1.0"
+    app.version = "0.2.0"
     app.docs_url = "/docs"
     app.redoc_url = "/redoc"
     app.openapi_url = "/openapi.json"
@@ -169,6 +175,7 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(models.router)
     app.include_router(mcp.router)
@@ -186,6 +193,7 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
     app.include_router(agents.router)
     app.include_router(suggestions.router)
     app.include_router(channels.router)
+    app.include_router(diagnostics.router)
     app.include_router(quality.router)
     app.include_router(doc_editing.router)
     app.include_router(documents.router)

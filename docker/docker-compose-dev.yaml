@@ -124,7 +124,7 @@ services:
       args:
         PNPM_STORE_PATH: ${PNPM_STORE_PATH:-/root/.local/share/pnpm/store}
     container_name: deer-flow-frontend
-    command: sh -c "pnpm run dev --hostname 0.0.0.0 --port 3000 > /app/logs/frontend.log 2>&1"
+    command: sh -c "pnpm run dev --hostname 0.0.0.0 --port 3000 2>&1 | tee /app/logs/frontend.log"
     volumes:
       - ../frontend:/app/frontend
       - ../logs:/app/logs
@@ -137,6 +137,7 @@ services:
       - WATCHPACK_POLLING=true
       - CI=true
       - MAESTROFLOW_INTERNAL_GATEWAY_URL=http://gateway:8001
+      - MAESTROFLOW_LOG_FORMAT=${MAESTROFLOW_LOG_FORMAT:-json}
     env_file:
       - ../frontend/.env
     networks:
@@ -152,7 +153,7 @@ services:
       dockerfile: backend/Dockerfile
       # cache_from disabled - requires manual setup: mkdir -p /tmp/docker-cache-gateway
     container_name: deer-flow-gateway
-    command: sh -c "cd backend && uv run uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001 --reload --reload-include='*.yaml .env' > /app/logs/gateway.log 2>&1"
+    command: sh -c "cd backend && uv run uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001 --reload --reload-include='*.yaml .env' --no-access-log 2>&1 | tee /app/logs/gateway.log"
     volumes:
       - ../backend/src:/app/backend/src
       - ../backend/.env:/app/backend/.env
@@ -161,12 +162,13 @@ services:
       - ../extensions_config.json:/app/extensions_config.json:ro
       - ../skills:/app/skills
       - ../logs:/app/logs
-      - ../backend/.deer-flow:/app/backend/.deer-flow
+      - ../backend/.deer-flow:/app/.deer-flow
       # Mount uv cache for faster dependency installation
       - ~/.cache/uv:/root/.cache/uv
     working_dir: /app
     environment:
       - CI=true
+      - MAESTROFLOW_LOG_FORMAT=${MAESTROFLOW_LOG_FORMAT:-json}
       - MAESTROFLOW_RUNTIME_PROFILE=${MAESTROFLOW_RUNTIME_PROFILE:-full}
       - LITELLM_PROXY_BASE_URL=http://host.docker.internal:4000/v1
       - LANGGRAPH_BASE_URL=http://langgraph:8000
@@ -195,7 +197,7 @@ services:
       context: ../
       dockerfile: backend/Dockerfile
     container_name: deer-flow-langgraph
-    command: sh -c "cd backend && uv run langgraph dev --host 0.0.0.0 --port 8000 --no-browser --allow-blocking --no-reload --n-jobs-per-worker ${LANGGRAPH_N_JOBS_PER_WORKER:-8} > /app/logs/langgraph.log 2>&1"
+    command: sh -c "cd backend && uv run langgraph dev --host 0.0.0.0 --port 8000 --no-browser --allow-blocking --no-reload --n-jobs-per-worker ${LANGGRAPH_N_JOBS_PER_WORKER:-8} 2>&1 | tee /app/logs/langgraph.log"
     ports:
       - "127.0.0.1:2024:8000"
     depends_on:
@@ -203,6 +205,7 @@ services:
         condition: service_healthy
     environment:
       - CI=true
+      - MAESTROFLOW_LOG_FORMAT=${MAESTROFLOW_LOG_FORMAT:-json}
       - LITELLM_PROXY_BASE_URL=http://host.docker.internal:4000/v1
       - SURFSENSE_BASE_URL=http://host.docker.internal:8002
       - LANGFUSE_BASE_URL=http://host.docker.internal:3000
@@ -234,9 +237,53 @@ services:
       - deer-flow-dev
     restart: ${DOCKER_RESTART_POLICY:-no}
 
+  activepieces:
+    profiles:
+      - core
+    image: activepieces/activepieces:latest
+    container_name: deer-flow-activepieces
+    ports:
+      - "18080:80"
+    environment:
+      - AP_POSTGRES_DATABASE=activepieces
+      - AP_POSTGRES_HOST=langgraph-postgres
+      - AP_POSTGRES_PORT=5432
+      - AP_POSTGRES_USERNAME=postgres
+      - AP_POSTGRES_PASSWORD=postgres
+      - AP_REDIS_HOST=langgraph-redis
+      - AP_REDIS_PORT=6379
+      - AP_EXECUTION_MODE=UNSANDBOXED
+      - AP_FRONTEND_URL=http://localhost:18080
+      - AP_ENCRYPTION_KEY=e8a5b6c93427f7192bc58a983f4b6d21
+      - AP_JWT_SECRET=f9d4b6a83921c57e6bd39a482f5b6c12
+    depends_on:
+      langgraph-postgres:
+        condition: service_healthy
+      langgraph-redis:
+        condition: service_started
+    networks:
+      - deer-flow-dev
+    restart: ${DOCKER_RESTART_POLICY:-no}
+
+  openviking:
+    profiles:
+      - core
+    image: ghcr.io/volcengine/openviking:latest
+    container_name: deer-flow-openviking
+    command: openviking-server --host 0.0.0.0 --port 1933 --config /app/ov.conf
+    ports:
+      - "18081:1933"
+    volumes:
+      - ./ov.conf:/app/ov.conf
+      - openviking-data:/app/data
+    networks:
+      - deer-flow-dev
+    restart: ${DOCKER_RESTART_POLICY:-no}
+
 volumes:
   langgraph-postgres-data: {}
   frontend-node-modules: {}
+  openviking-data: {}
 
 networks:
   deer-flow-dev:

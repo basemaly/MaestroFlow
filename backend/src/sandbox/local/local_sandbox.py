@@ -19,6 +19,42 @@ class LocalSandbox(Sandbox):
         """
         super().__init__(id)
         self.path_mappings = path_mappings or {}
+        # Build allowed root directories from mappings
+        self._allowed_roots = set()
+        for local_path in self.path_mappings.values():
+            resolved = Path(local_path).resolve()
+            self._allowed_roots.add(str(resolved))
+
+    def _validate_path_security(self, resolved_path: str) -> None:
+        """
+        Validate that the resolved path is within allowed directories.
+        
+        Args:
+            resolved_path: The resolved local path to validate
+            
+        Raises:
+            ValueError: If path is outside allowed directories or contains traversal
+        """
+        path = Path(resolved_path).resolve()
+        
+        # Check for path traversal (../ components)
+        try:
+            path.relative_to(path)  # This will fail if path contains ..
+        except ValueError:
+            raise ValueError(f"Path traversal not allowed: {resolved_path}")
+        
+        # Check that path is within allowed roots
+        allowed = False
+        for root in self._allowed_roots:
+            try:
+                path.relative_to(root)
+                allowed = True
+                break
+            except ValueError:
+                continue
+        
+        if not allowed:
+            raise ValueError(f"Access denied: path {resolved_path} is outside allowed directories")
 
     def _resolve_path(self, path: str) -> str:
         """
@@ -173,12 +209,14 @@ class LocalSandbox(Sandbox):
 
     def list_dir(self, path: str, max_depth=2) -> list[str]:
         resolved_path = self._resolve_path(path)
+        self._validate_path_security(resolved_path)
         entries = list_dir(resolved_path, max_depth)
         # Reverse resolve local paths back to container paths in output
         return [self._reverse_resolve_paths_in_output(entry) for entry in entries]
 
     def read_file(self, path: str) -> str:
         resolved_path = self._resolve_path(path)
+        self._validate_path_security(resolved_path)
         try:
             with open(resolved_path) as f:
                 return f.read()
@@ -188,6 +226,7 @@ class LocalSandbox(Sandbox):
 
     def write_file(self, path: str, content: str, append: bool = False) -> None:
         resolved_path = self._resolve_path(path)
+        self._validate_path_security(resolved_path)
         try:
             dir_path = os.path.dirname(resolved_path)
             if dir_path:

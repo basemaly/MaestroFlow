@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/core/api/fetch";
 import { getBackendBaseURL } from "@/core/config";
 
 type CalibreStatusPayload = {
@@ -56,7 +57,7 @@ export function CalibreStatus() {
   async function load() {
     setLoading(true);
     try {
-      const response = await fetch(`${getBackendBaseURL()}/api/calibre/status`, {
+      const response = await apiFetch(`${getBackendBaseURL()}/api/calibre/status`, {
         cache: "no-store",
       });
       const payload = await readCalibrePayload(response);
@@ -82,7 +83,7 @@ export function CalibreStatus() {
   async function sync() {
     setLoading(true);
     try {
-      const response = await fetch(`${getBackendBaseURL()}/api/calibre/sync`, {
+      const response = await apiFetch(`${getBackendBaseURL()}/api/calibre/sync`, {
         method: "POST",
       });
       const payload =
@@ -106,7 +107,7 @@ export function CalibreStatus() {
   async function reindex() {
     setLoading(true);
     try {
-      const response = await fetch(`${getBackendBaseURL()}/api/calibre/reindex`, {
+      const response = await apiFetch(`${getBackendBaseURL()}/api/calibre/reindex`, {
         method: "POST",
       });
       const payload =

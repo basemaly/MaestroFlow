@@ -167,10 +167,12 @@ Prerequisite: complete the "Configuration" steps above first (`make config` and 
 
 4. **Start services**:
    ```bash
-   make dev
+   make local-daemon-start
    ```
 
 5. **Access**: http://localhost:2027
+
+Use `make topology` if you are unsure what is actually running. For normal app work, open only `http://localhost:2027`. Reserve `http://127.0.0.1:3010` for explicit frontend-only debugging.
 
 #### Local Port Policy
 
@@ -186,10 +188,39 @@ For local development, use the same ports every time instead of guessing:
 
 Use `make doctor` to verify that the current listeners and frontend URL wiring match this policy before debugging route or Playwright issues.
 
+#### Log Workflow
+
+For day-to-day debugging, prefer the shared stack log view instead of tailing random files:
+
+```bash
+make logs
+```
+
+If you have [`lnav`](https://lnav.org/) installed, open the same merged stream with interactive filtering and search:
+
+```bash
+make logs-lnav
+```
+
+For a compact structured view of the JSON gateway logs:
+
+```bash
+make logs-jq
+```
+
+Notes:
+- The gateway now emits request-level logs with a stable `X-Request-ID` response header.
+- nginx preserves incoming `X-Request-ID` values and generates one when the caller does not send it.
+- The frontend API helpers now attach request IDs automatically for the main workspace API layers.
+- Long-running document transforms and Executive actions also send explicit trace IDs so frontend actions line up with backend traces.
+- Core Docker services write logs to both stdout and `logs/*.log`, so `docker compose logs` and local file inspection stay in sync.
+- Docker-backed Python services now default to newline-delimited JSON logs; override `MAESTROFLOW_LOG_FORMAT=console` if you prefer plain text locally.
+
 Detached runtime modes:
 
 - `make dev-daemon` starts the Docker-backed detached workspace stack and keeps `2027` as the public entrypoint.
-- `make local-daemon-start` starts the split-port local dev stack in the background while still using Docker only for LangGraph/Postgres/Redis.
+- `make local-daemon-start` is the preferred local-development launcher. It starts the split-port local dev stack in the background while still using Docker only for LangGraph/Postgres/Redis.
+- `make topology` prints the active runtime mode, listeners, and direct URLs.
 - `make daemon-status` checks the Docker-backed detached stack.
 - `make local-daemon-status` checks the split-port detached stack.
 

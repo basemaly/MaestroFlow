@@ -1,3 +1,5 @@
+import { apiFetch } from "@/core/api/fetch";
+
 import type {
   FirstTurnReviewResponse,
   PlanApprovalResult,
@@ -5,7 +7,7 @@ import type {
 } from "./types";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     ...init,
     headers: {
       "Content-Type": "application/json",
