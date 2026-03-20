@@ -160,24 +160,41 @@ def test_run_judge_handles_invalid_json(monkeypatch):
 
 
 def test_run_judge_uses_managed_prompt(monkeypatch):
+    """_run_judge fetches the eval prompt via Langfuse client.get_prompt() when available."""
     from src.subagents import llm_judge
 
     captured_prompts: list[str] = []
+    custom_template = "Evaluate: {subagent_type} output: {content}"
 
     fake_model = _make_fake_model({"relevance": 5, "completeness": 5, "grounding": 5, "quality": 5})
-    fake_model.invoke.side_effect = lambda p: (captured_prompts.append(p), MagicMock(content='{"relevance":5,"completeness":5,"grounding":5,"quality":5}'))[1]
+    fake_model.invoke.side_effect = lambda p, **kw: (
+        captured_prompts.append(p),
+        MagicMock(content='{"relevance":5,"completeness":5,"grounding":5,"quality":5}'),
+    )[1]
 
-    custom_template = "Evaluate: {subagent_type} output: {content}"
+    # Simulate Langfuse client returning a managed prompt
+    mock_prompt_client = MagicMock()
+    mock_prompt_client.prompt = custom_template
+    mock_lf_client = MagicMock()
+    mock_lf_client.get_prompt.return_value = mock_prompt_client
 
     with (
         patch("src.models.create_chat_model", return_value=fake_model),
         patch("src.observability.langfuse.score_trace_by_id"),
-        patch("src.observability.get_managed_prompt", return_value=custom_template) as mock_gmp,
+        patch("src.observability.langfuse._get_client", return_value=mock_lf_client),
     ):
         llm_judge._run_judge("test output", "general-purpose", "trace-prompt")
 
-    mock_gmp.assert_called_once_with(
+    mock_lf_client.get_prompt.assert_called_once_with(
         "maestroflow.judge.eval",
+        label="production",
+        type="text",
         fallback=llm_judge._JUDGE_PROMPT,
         cache_ttl_seconds=300,
+        fetch_timeout_seconds=2,
+        max_retries=1,
     )
+    # Verify the custom template was rendered into the prompt
+    assert len(captured_prompts) == 1
+    assert "general-purpose" in captured_prompts[0]
+    assert "test output" in captured_prompts[0]

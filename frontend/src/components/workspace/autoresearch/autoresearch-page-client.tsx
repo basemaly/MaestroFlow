@@ -46,19 +46,6 @@ import type {
 } from "@/core/autoresearch/types";
 import type { BrowserRuntimeChoice } from "@/core/browser-runtime";
 
-const STATUS_STYLES: Record<string, string> = {
-  running: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  awaiting_approval: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  promoted: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  evaluated: "bg-slate-500/10 text-slate-700 dark:text-slate-300",
-  rejected: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  stopped: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
-};
-
-function statusTone(status: string) {
-  return STATUS_STYLES[status] ?? "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
-}
-
 function statusBadgeClass(status: string): string {
   const classMap: Record<string, string> = {
     running: "experiment-status-badge status-running",

@@ -1,7 +1,7 @@
 "use client";
 
-import { memo } from "react";
 import { CheckCircleIcon, AlertCircleIcon, Loader2Icon } from "lucide-react";
+import { memo } from "react";
 
 type StatusType = "idle" | "loading" | "success" | "error";
 
@@ -60,7 +60,7 @@ export const StatusIndicator = memo(function StatusIndicator({
       </div>
       {(showLabel || message) && (
         <span className="text-xs text-muted-foreground">
-          {message || config.label}
+          {message ?? config.label}
         </span>
       )}
     </div>

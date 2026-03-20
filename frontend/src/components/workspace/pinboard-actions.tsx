@@ -153,7 +153,7 @@ export function PinboardActions() {
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground" title="Import Pinboard bookmarks">
+        <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground" title="Pinboard — browse, search, and import bookmarks from your Pinboard account into SurfSense for long-term knowledge.">
           <BookmarkIcon className="size-4" />
           <span className="hidden sm:inline">Pinboard</span>
         </Button>

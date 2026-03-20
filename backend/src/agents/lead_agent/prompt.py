@@ -392,6 +392,7 @@ def apply_prompt_template(
     agent_name: str | None = None,
     available_skills: set[str] | None = None,
     knowledge_source: str | None = None,
+    surfsense_search_space_id: int | None = None,
 ) -> str:
     # Get memory context
     memory_context = _get_memory_context(agent_name)
@@ -452,6 +453,7 @@ def apply_prompt_template(
         outputs_dir=outputs_dir,
     )
 
+    # Default calibre scope: opportunistic use
     calibre_hint = (
         "\n<calibre_scope>\n"
         "For book, author, chapter, passage, or personal-library questions, use `calibre_library_search` "
@@ -463,6 +465,7 @@ def apply_prompt_template(
         "they still require an explicit search space choice.\n"
         "</calibre_scope>"
     )
+
     if knowledge_source == "calibre-library":
         calibre_hint = (
             "\n<calibre_scope>\n"
@@ -476,8 +479,36 @@ def apply_prompt_template(
             "</calibre_scope>"
         )
 
+    # SurfSense space hint: explicit space selected by user in the UI
+    surfsense_hint = ""
+    if knowledge_source == "surfsense" and surfsense_search_space_id:
+        surfsense_hint = (
+            f"\n<surfsense_scope>\n"
+            f"The user explicitly selected SurfSense search space {surfsense_search_space_id} as their "
+            f"knowledge source. When searching SurfSense, always target search_space_id={surfsense_search_space_id} "
+            f"unless the user asks to search a different space. Do not fall back to other spaces unless instructed.\n"
+            f"</surfsense_scope>"
+        )
+    elif knowledge_source == "surfsense":
+        surfsense_hint = (
+            "\n<surfsense_scope>\n"
+            "The user has selected SurfSense as their primary knowledge source. "
+            "Route knowledge queries to SurfSense search spaces. Use the default configured search space "
+            "unless the user specifies a different one.\n"
+            "</surfsense_scope>"
+        )
+    elif not knowledge_source or knowledge_source == "auto":
+        surfsense_hint = (
+            "\n<surfsense_scope>\n"
+            "Default auto mode: use the MaestroFlow SurfSense search space for knowledge queries when "
+            "the question benefits from indexed document search. The default search space is pre-configured "
+            "as 'MaestroFlow' — no explicit space selection is needed unless the user requests a different one.\n"
+            "</surfsense_scope>"
+        )
+
     return (
         prompt
         + calibre_hint
+        + surfsense_hint
         + f"\n<current_date>{datetime.now().strftime('%Y-%m-%d, %A')}</current_date>"
     )

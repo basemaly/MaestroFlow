@@ -36,7 +36,7 @@ export async function queryCalibre(input: {
   collection?: string;
 }): Promise<CalibreQueryResponse> {
   const body: Record<string, unknown> = {
-    query: input.query,
+    query: input.query.trim() || "*",
     top_k: input.top_k ?? 8,
   };
 
@@ -58,7 +58,8 @@ export async function queryCalibre(input: {
   );
 
   if (!response.ok) {
-    throw new Error(`Calibre query failed: ${response.statusText}`);
+    const bodyText = await response.text().catch(() => "");
+    throw new Error(bodyText || `Calibre query failed: ${response.status} ${response.statusText}`);
   }
 
   return response.json();

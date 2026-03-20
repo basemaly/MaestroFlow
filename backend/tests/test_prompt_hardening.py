@@ -40,18 +40,18 @@ def test_memory_update_prompt_keeps_high_visibility_constraints_and_examples():
 
 
 def test_fact_extraction_prompt_forbids_inference_and_shows_positive_negative_examples():
-    assert "Do NOT infer facts that are not directly supported by the message" in FACT_EXTRACTION_PROMPT
-    assert "Do NOT guess intent, permanence, or preferences unless the message states them clearly" in FACT_EXTRACTION_PROMPT
-    assert 'Durable fact: "I prefer Python for backend work"' in FACT_EXTRACTION_PROMPT
-    assert 'Skip: "I\'m tired today"' in FACT_EXTRACTION_PROMPT
+    assert "NEVER infer facts not directly stated" in FACT_EXTRACTION_PROMPT
+    assert "NEVER record temporary states" in FACT_EXTRACTION_PROMPT
+    assert 'Uses Rust for systems programming professionally' in FACT_EXTRACTION_PROMPT
+    assert 'exhausted' in FACT_EXTRACTION_PROMPT
 
 
 def test_title_prompt_includes_strict_output_constraints_and_example():
     prompt_template = TitleConfig().prompt_template
 
-    assert "Return exactly one line containing only the title." in prompt_template
-    assert "Do not use markdown, quotes, bullets, prefixes like 'Title:', or conversational filler." in prompt_template
-    assert "Example output: Setting Up the Docker Environment" in prompt_template
+    assert "Return one plain line only" in prompt_template
+    assert "no prefix like 'Title:'" in prompt_template
+    assert "Correct: Migrating Postgres to TimescaleDB" in prompt_template
 
 
 def test_task_tool_description_mentions_default_subagent_model_routing():

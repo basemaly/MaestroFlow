@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 
 export const MusicalBackground = memo(function MusicalBackground() {

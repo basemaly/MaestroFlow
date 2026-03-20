@@ -54,17 +54,18 @@ class SurfSenseClient:
         self._transport = transport
         self._client: httpx.AsyncClient | None = None
 
-    async def _request(self, method: str, path: str, **kwargs) -> Any:
+    async def _request(self, method: str, path: str, *, timeout: float | None = None, **kwargs) -> Any:
         """Make a request using the shared persistent client for connection pooling."""
         headers = dict(self.config.auth_headers)
         headers.update(kwargs.pop("headers", {}))
+        effective_timeout = timeout if timeout is not None else self.config.timeout_seconds
 
         # For testing: use test transport; for production: use shared pooled client
         if self._transport is not None:
             async with httpx.AsyncClient(
                 base_url=self.config.api_base_url,
                 headers=headers,
-                timeout=self.config.timeout_seconds,
+                timeout=effective_timeout,
                 transport=self._transport,
             ) as client:
                 response = await client.request(method, path, **kwargs)
@@ -73,12 +74,12 @@ class SurfSenseClient:
 
         # Use shared persistent client for production
         client = await _get_http_client()
-        # Update headers if they differ from the default
-        if headers != dict(self.config.auth_headers):
+        # Update headers or timeout if they differ from the defaults
+        if headers != dict(self.config.auth_headers) or effective_timeout != self.config.timeout_seconds:
             async with httpx.AsyncClient(
                 base_url=self.config.api_base_url,
                 headers=headers,
-                timeout=self.config.timeout_seconds,
+                timeout=effective_timeout,
             ) as temp_client:
                 response = await temp_client.request(method, path, **kwargs)
                 response.raise_for_status()

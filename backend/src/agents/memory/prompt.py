@@ -16,8 +16,9 @@ MEMORY_UPDATE_PROMPT = """You are a memory management system. Your task is to an
 <constraints>
 High-Visibility Constraints:
 - Only record durable information that will matter in future conversations.
-- Do NOT infer facts that are not clearly supported by the conversation.
+- Do NOT infer facts that are not clearly supported by the conversation. If the user mentions a company or role, do NOT infer their tech stack or team unless explicitly stated.
 - Do NOT record file upload events, temporary files, or other session-only artifacts.
+- Remove facts directly contradicted by new information: add their IDs to factsToRemove. Common contradiction patterns: new job/company replaces old job, new primary language replaces old one, new location replaces old one.
 - Return ONLY valid JSON. No markdown, commentary, or surrounding text.
 </constraints>
 
@@ -31,11 +32,6 @@ New Conversation to Process:
 {conversation}
 </conversation>
 
-Instructions:
-1. Analyze the conversation for important information about the user
-2. Extract relevant facts, preferences, and context with specific details (numbers, names, technologies)
-3. Update the memory sections as needed following the detailed length guidelines below
-
 Memory Section Guidelines:
 
 **User Context** (Current state - concise summaries):
@@ -47,11 +43,13 @@ Memory Section Guidelines:
   Example: Primary project work, parallel technical investigations, ongoing learning/tracking
   Include: Active implementation work, troubleshooting issues, market/research interests
   Note: This captures SEVERAL concurrent focus areas, not just one task
+  Update: Integrate new themes while removing completed or abandoned ones; keep 3-5 active themes
 
 **History** (Temporal context - rich paragraphs):
 - recentMonths: Detailed summary of recent activities (4-6 sentences or 1-2 paragraphs)
   Timeline: Last 1-3 months of interactions
   Include: Technologies explored, projects worked on, problems solved, interests demonstrated
+  Update: Integrate new information chronologically into the appropriate time period
 - earlierContext: Important historical patterns (3-5 sentences or 1 paragraph)
   Timeline: 3-12 months ago
   Include: Past projects, learning journeys, established patterns
@@ -73,15 +71,6 @@ Memory Section Guidelines:
   * 0.9-1.0: Explicitly stated facts ("I work on X", "My role is Y")
   * 0.7-0.8: Strongly implied from actions/discussions
   * 0.5-0.6: Inferred patterns (use sparingly, only for clear patterns)
-
-**What Goes Where**:
-- workContext: Current job, active projects, primary tech stack
-- personalContext: Languages, personality, interests outside direct work tasks
-- topOfMind: Multiple ongoing priorities and focus areas user cares about recently (gets updated most frequently)
-  Should capture 3-5 concurrent themes: main work, side explorations, learning/tracking interests
-- recentMonths: Detailed account of recent technical explorations and work
-- earlierContext: Patterns from slightly older interactions still relevant
-- longTermBackground: Unchanging foundational facts about the user
 
 **Multilingual Content**:
 - Preserve original language for proper nouns and company names
@@ -150,52 +139,53 @@ Output Format (JSON):
   "factsToRemove": ["fact_id_1", "fact_id_2"]
 }}
 
-Important Rules:
-- Only set shouldUpdate=true if there's meaningful new information
-- Only record durable facts that will matter in future sessions
-- Follow length guidelines: workContext/personalContext are concise (1-3 sentences), topOfMind and history sections are detailed (paragraphs)
-- Include specific metrics, version numbers, and proper nouns in facts
-- Only add facts that are clearly stated (0.9+) or strongly implied (0.7+)
-- Remove facts that are contradicted by new information
-- When updating topOfMind, integrate new focus areas while removing completed/abandoned ones
-  Keep 3-5 concurrent focus themes that are still active and relevant
-- For history sections, integrate new information chronologically into appropriate time period
-- Preserve technical accuracy - keep exact names of technologies, companies, projects
-- Focus on information useful for future interactions and personalization
-
 Return ONLY valid JSON, no explanation or markdown."""
 
 
 # Prompt template for extracting facts from a single message
-FACT_EXTRACTION_PROMPT = """Extract factual information about the user from this message.
+FACT_EXTRACTION_PROMPT = """NEVER infer facts not directly stated. NEVER record temporary states ("tired today", "just uploaded"). Return ONLY valid JSON.
+
+Extract factual information about the user from this message.
 
 Message:
 {message}
 
-Extract facts in this JSON format:
-{{
-  "facts": [
-    {{ "content": "...", "category": "preference|knowledge|context|behavior|goal", "confidence": 0.0-1.0 }}
-  ]
-}}
-
 Categories:
-- preference: User preferences (likes/dislikes, styles, tools)
-- knowledge: User's expertise or knowledge areas
-- context: Background context (location, job, projects)
-- behavior: Behavioral patterns
-- goal: User's goals or objectives
+- preference: tools, styles, approaches the user likes or dislikes
+- knowledge: expertise or knowledge domains the user has
+- context: background facts — job, projects, location, languages
+- behavior: working patterns, communication habits
+- goal: stated objectives, learning targets, project ambitions
 
-Rules:
-- Only extract clear, specific facts
-- Do NOT infer facts that are not directly supported by the message
-- Do NOT guess intent, permanence, or preferences unless the message states them clearly
-- Confidence should reflect certainty (explicit statement = 0.9+, implied = 0.6-0.8)
-- Skip vague or temporary information
+Confidence:
+- 0.9+: explicitly stated ("I work at Acme", "I prefer Python")
+- 0.6–0.8: strongly implied from actions or discussion
+- below 0.6: do not record
 
-Examples:
-- Durable fact: "I prefer Python for backend work" → record as a preference or knowledge fact
-- Skip: "I'm tired today" or "I uploaded a file just now" → temporary/session-only information
+Example A — durable, explicit fact:
+Message: "I've been using Rust for systems work at my current job."
+Output:
+{{"facts": [
+  {{"content": "Uses Rust for systems programming professionally.", "category": "knowledge", "confidence": 0.95}},
+  {{"content": "Works in a systems engineering role.", "category": "context", "confidence": 0.75}}
+]}}
+
+Example B — transient, skip everything:
+Message: "I'm exhausted and just uploaded three PDFs."
+Output:
+{{"facts": []}}
+
+Example C — ambiguous, extract only what's explicit:
+Message: "I've been looking into LangGraph lately."
+Output:
+{{"facts": [
+  {{"content": "Currently exploring LangGraph.", "category": "knowledge", "confidence": 0.65}}
+]}}
+
+Output format:
+{{"facts": [
+  {{"content": "...", "category": "preference|knowledge|context|behavior|goal", "confidence": 0.0-1.0}}
+]}}
 
 Return ONLY valid JSON."""
 

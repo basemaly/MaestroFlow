@@ -669,6 +669,15 @@ async def first_turn_review(request: FirstTurnReviewRequest) -> FirstTurnReviewR
             trace_id=trace_id,
         )
         save_plan_review(record)
+
+        # LLM-as-Judge: score the generated plan quality (fire-and-forget)
+        if trace_id and not is_trivially_simple:
+            plan_text = "\n".join(
+                f"Step {i+1}: {s.title} — {s.details}" for i, s in enumerate(plan.steps)
+            ) if plan.steps else plan.summary
+            if plan_text:
+                from src.subagents.llm_judge import judge_async
+                judge_async(plan_text, trace_id=trace_id, subagent_type="planner")
         return FirstTurnReviewResponse(
             thread_id=record.thread_id,
             status=record.status,

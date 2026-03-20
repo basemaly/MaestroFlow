@@ -14,7 +14,6 @@ import {
 import { useI18n } from "@/core/i18n/hooks";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
-import { ExecutiveIcon } from "./executive-icon";
 
 export function WorkspaceHeader({ className }: { className?: string }) {
   const { t } = useI18n();
@@ -43,15 +42,12 @@ export function WorkspaceHeader({ className }: { className?: string }) {
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ExecutiveIcon size="sm" className="hidden md:inline" />
-              <Link
-                href={homeHref}
-                className="ml-1 font-serif text-lg font-semibold tracking-wide text-yellow-400 transition-all duration-200 hover:text-amber-300"
-              >
-                MaestroFlow
-              </Link>
-            </div>
+            <Link
+              href={homeHref}
+              className="font-serif text-lg font-semibold tracking-wide text-yellow-400 transition-all duration-200 hover:text-amber-300"
+            >
+              MaestroFlow
+            </Link>
             <SidebarTrigger className="transition-all duration-200" />
           </div>
         )}

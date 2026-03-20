@@ -241,11 +241,16 @@ export default function ChatPage() {
             <div className="px-4 pt-14 pb-2">
               <ContextDock
                 knowledgeSource={
-                  (settings.context.knowledge_source as "auto" | "calibre-library" | undefined) ??
+                  (settings.context.knowledge_source as "auto" | "calibre-library" | "surfsense" | undefined) ??
                   "auto"
                 }
-                onKnowledgeSourceChange={(knowledge_source) =>
-                  setSettings("context", { knowledge_source })
+                surfsenseSpaceId={
+                  typeof settings.context.surfsense_search_space_id === "number"
+                    ? settings.context.surfsense_search_space_id
+                    : null
+                }
+                onKnowledgeSourceChange={(knowledge_source, spaceId) =>
+                  setSettings("context", { knowledge_source, surfsense_search_space_id: spaceId ?? undefined })
                 }
                 agentPreset={
                   typeof settings.context.agent_name === "string"
