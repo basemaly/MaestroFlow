@@ -23,6 +23,7 @@ import {
   Table2Icon,
 } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle } from "react";
+import GlobalDragHandle from "tiptap-extension-global-drag-handle";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -83,6 +84,10 @@ export const BlockEditor = forwardRef<BlockEditorHandle, {
     extensions: [
       StarterKit.configure({
         codeBlock: false,
+      }),
+      GlobalDragHandle.configure({
+        dragHandleWidth: 20,
+        scrollTreshold: 100,
       }),
       Placeholder.configure({
         placeholder: "Start writing, paste markdown, or build with the toolbar...",
