@@ -62,18 +62,16 @@ function formatBrowserAction(action: BrowserJobAction): string {
 export function ExecutiveSidecarPanel() {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      {/* OpenVikingCard disabled: No OpenViking service configured, overlaps with file uploads */}
-      {/* <MemoizedOpenVikingCard /> */}
+      <MemoizedOpenVikingCard />
       {/* ActivepiecesCard disabled: No service running, duplicates subagent task delegation */}
       {/* <MemoizedActivepiecesCard /> */}
       {/* BrowserRuntimeCard disabled: No service configured, functionality covered by existing tools (Firecrawl, bash) */}
       {/* <MemoizedBrowserRuntimeCard /> */}
-      {/* StateSnapshotDiffPanel disabled: No StateWeave service, niche autoresearch-only feature */}
-      {/* <MemoizedStateSnapshotDiffPanel
+      <MemoizedStateSnapshotDiffPanel
         title="StateWeave snapshots"
-        description="Snapshot and compare long-running project or experiment state."
+        description="Inspect and compare diagnostic state without leaving Executive."
         scope="experiment"
-      /> */}
+      />
     </div>
   );
 }
@@ -113,6 +111,7 @@ function OpenVikingCard() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ActivepiecesCard() {
   const configQuery = useActivepiecesConfig();
   const flowsQuery = useActivepiecesFlows();
@@ -262,6 +261,7 @@ function ActivepiecesCard() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function BrowserRuntimeCard() {
   const configQuery = useBrowserRuntimeConfig();
   const jobsQuery = useBrowserRuntimeJobs();
@@ -589,6 +589,4 @@ export function StateSnapshotDiffPanel({
 
 // Memoized versions for optimal sidebar re-render performance
 const MemoizedOpenVikingCard = memo(OpenVikingCard);
-const MemoizedActivepiecesCard = memo(ActivepiecesCard);
-const MemoizedBrowserRuntimeCard = memo(BrowserRuntimeCard);
 const MemoizedStateSnapshotDiffPanel = memo(StateSnapshotDiffPanel);
