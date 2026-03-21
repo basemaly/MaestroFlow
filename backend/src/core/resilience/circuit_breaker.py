@@ -23,8 +23,10 @@ from observability.metrics import (
     record_http_client_request,
     record_http_client_retry,
 )
+from observability.structured_logging import get_structured_logger
 
 logger = logging.getLogger(__name__)
+structured_logger = get_structured_logger()
 
 T = TypeVar("T")
 
@@ -145,6 +147,7 @@ class CircuitBreaker:
         self._success_count = 0
         self._last_failure_time: Optional[datetime] = None
         self._state_changed_at = datetime.now()
+        self._last_open_time: Optional[datetime] = None  # Track when circuit last opened
 
         self.metrics = CircuitBreakerMetrics()
         self._lock = Lock()
@@ -171,6 +174,10 @@ class CircuitBreaker:
         self._state = new_state
         self._state_changed_at = datetime.now()
 
+        # Track when circuit opens for duration calculation
+        if new_state == CircuitState.OPEN:
+            self._last_open_time = self._state_changed_at
+
         # Reset counters
         if new_state == CircuitState.CLOSED:
             self._failure_count = 0
@@ -188,6 +195,30 @@ class CircuitBreaker:
         )
 
         logger.info(f"Circuit breaker '{self.name}' state changed: {old_state.value} -> {new_state.value}")
+
+        # Record structured logging events
+        try:
+            if new_state == CircuitState.OPEN:
+                structured_logger.circuit_opened(
+                    service=self.name,
+                    failure_count=self._failure_count,
+                    failure_threshold=self.config.failure_threshold,
+                )
+            elif new_state == CircuitState.CLOSED and old_state == CircuitState.HALF_OPEN:
+                # Calculate how long the circuit was open
+                duration_open = 0.0
+                if self._last_open_time:
+                    duration_open = (self._state_changed_at - self._last_open_time).total_seconds()
+                structured_logger.circuit_closed(
+                    service=self.name,
+                    success_count=self._success_count,
+                    success_threshold=self.config.success_threshold,
+                    duration_open_seconds=duration_open,
+                )
+            elif new_state == CircuitState.HALF_OPEN:
+                structured_logger.circuit_half_open(service=self.name)
+        except Exception as e:
+            logger.debug(f"Failed to log structured event: {e}")
 
         # Record Prometheus metrics
         try:
@@ -257,6 +288,10 @@ class CircuitBreaker:
         if self.state == CircuitState.OPEN:
             self.metrics.rejected_requests += 1
             try:
+                structured_logger.circuit_rejected_request(service=self.name)
+            except Exception as e:
+                logger.debug(f"Failed to log rejected request: {e}")
+            try:
                 record_http_client_request(service=self.name, status="open", duration_seconds=0.0)
             except Exception as e:
                 logger.warning(f"Failed to record circuit breaker open metric: {e}")
@@ -275,6 +310,16 @@ class CircuitBreaker:
                 self.metrics.record_request(duration, success=True)
                 self._record_success()
 
+                # Record structured logging event
+                try:
+                    structured_logger.http_request_success(
+                        service=self.name,
+                        status_code=200,  # Assume 200 for successful calls
+                        duration_ms=duration * 1000,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to log successful request: {e}")
+
                 # Record Prometheus metric
                 try:
                     record_http_client_request(service=self.name, status="success", duration_seconds=duration)
@@ -287,6 +332,17 @@ class CircuitBreaker:
                 self.metrics.timeouts += 1
                 last_exception = e
                 logger.warning(f"Circuit breaker '{self.name}' timeout on attempt {attempt + 1}")
+
+                # Record structured logging event
+                try:
+                    structured_logger.http_request_timeout(
+                        service=self.name,
+                        timeout_seconds=self.config.timeout,
+                        attempt=attempt + 1,
+                    )
+                except Exception as ex:
+                    logger.debug(f"Failed to log timeout event: {ex}")
+
                 # Record timeout metric
                 try:
                     duration = time.time() - start_time
@@ -297,6 +353,18 @@ class CircuitBreaker:
             except Exception as e:
                 last_exception = e
                 logger.warning(f"Circuit breaker '{self.name}' error on attempt {attempt + 1}: {e}")
+
+                # Record structured logging event
+                try:
+                    structured_logger.http_request_failed(
+                        service=self.name,
+                        status_code=None,
+                        error=str(e),
+                        duration_ms=(time.time() - start_time) * 1000,
+                    )
+                except Exception as ex:
+                    logger.debug(f"Failed to log failure event: {ex}")
+
                 # Record failure metric
                 try:
                     duration = time.time() - start_time
@@ -316,6 +384,17 @@ class CircuitBreaker:
                     import random
 
                     delay *= 0.5 + random.random()
+
+                # Record structured logging event for retry
+                try:
+                    structured_logger.http_request_retry(
+                        service=self.name,
+                        attempt=attempt + 1,
+                        delay_seconds=delay,
+                        reason="timeout_or_failure",
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to log retry event: {e}")
 
                 # Record retry metric
                 try:

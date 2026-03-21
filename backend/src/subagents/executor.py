@@ -29,10 +29,12 @@ from src.observability.metrics import (
     record_subagent_task,
     record_subagent_pool_size_adjustment,
 )
+from src.observability.structured_logging import get_structured_logger
 from src.subagents.config import SubagentConfig
 from src.subagents.monitoring import log_metrics_summary, record_subagent_completion, record_subagent_start
 
 logger = logging.getLogger(__name__)
+structured_logger = get_structured_logger()
 
 
 class SubagentStatus(Enum):
@@ -221,6 +223,23 @@ async def _adjust_pool_size_task():
                     record_subagent_pool_size_adjustment(direction=direction)
                 except Exception as e:
                     logger.debug(f"Failed to record pool adjustment metric: {e}")
+
+                # Record structured logging event
+                try:
+                    structured_logger.pool_size_adjusted(
+                        old_size=old_size,
+                        new_size=new_size,
+                        direction=direction,
+                        reason="dynamic_load_adjustment",
+                        metrics={
+                            "queue_depth": queue_depth,
+                            "active_workers": active,
+                            "cpu_percent": cpu_percent,
+                            "memory_percent": memory_percent,
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to log pool adjustment event: {e}")
 
                 logger.info(f"Adjusted subagent pool size: {old_size} -> {new_size} (queue_depth={queue_depth}, active={active}, cpu={cpu_percent:.1f}%, memory={memory_percent:.1f}%)")
 
