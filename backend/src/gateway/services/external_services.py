@@ -1,14 +1,15 @@
 """Availability probes for external services used by MaestroFlow."""
 
-import asyncio
-import base64
 import os
 from typing import Any
-from urllib.parse import urlparse, urlunsplit
+from urllib.parse import urlparse
 
 import httpx
 
 from src.config import get_langfuse_config
+from src.core.http import initialize_http_client_manager
+from src.core.http.client_manager import HTTPClientManager, ServiceName
+from src.core.resilience.circuit_breaker import CircuitOpenError
 from src.integrations.activepieces import get_activepieces_config
 from src.integrations.browser_runtime import get_browser_runtime_config
 from src.integrations.openviking import get_openviking_config
@@ -16,105 +17,74 @@ from src.integrations.stateweave import get_stateweave_config
 from src.integrations.surfsense import get_surfsense_config
 
 DEFAULT_LANGGRAPH_URL = os.getenv("LANGGRAPH_BASE_URL", "http://127.0.0.1:2024")
+DEFAULT_TIMEOUT = float(os.getenv("EXTERNAL_SERVICE_TIMEOUT", "2.5"))
 
 
-def _normalize_origin(url: str) -> str:
+def _normalize_origin(url: str | None) -> str:
+    if not url:
+        return ""
     parsed = urlparse(url)
     if not parsed.scheme or not parsed.netloc:
         return url.rstrip("/")
     return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
 
 
-def _join_url(base: str, path: str) -> str:
-    return f"{base.rstrip('/')}/{path.lstrip('/')}"
-
-
-async def _probe(url: str, *, headers: dict[str, str] | None = None, timeout: float = 2.5) -> tuple[bool, str | None]:
-    """Probe a URL with retry logic and exponential backoff."""
-    max_retries = 3
-    base_delay = 0.5
-    
-    for attempt in range(max_retries):
-        try:
-            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-                response = await client.get(url, headers=headers)
-            if response.status_code >= 400:
-                return False, f"HTTP {response.status_code}"
-            return True, None
-        except asyncio.CancelledError:
-            # Re-raise cancellation to allow proper cleanup
-            raise
-        except Exception as exc:
-            message = str(exc).strip() or exc.__class__.__name__
-            if attempt == max_retries - 1:
-                # Last attempt failed
-                return False, message
-            
-            # Exponential backoff: base_delay * 2^attempt
-            delay = base_delay * (2 ** attempt)
-            try:
-                await asyncio.sleep(delay)
-            except asyncio.CancelledError:
-                raise
-
-
-def _candidate_origins(origin: str) -> list[str]:
-    parsed = urlparse(origin)
-    if not parsed.scheme or not parsed.netloc:
-        return [origin.rstrip("/")]
-
-    host = parsed.hostname or ""
-    port = f":{parsed.port}" if parsed.port is not None else ""
-    candidates = [origin.rstrip("/")]
-
-    if host in {"host.docker.internal", "localhost", "127.0.0.1"}:
-        for alt_host in ("127.0.0.1", "localhost", "host.docker.internal"):
-            rebuilt = urlunsplit((parsed.scheme, f"{alt_host}{port}", "", "", "")).rstrip("/")
-            if rebuilt not in candidates:
-                candidates.append(rebuilt)
-    return candidates
-
-
-DEFAULT_TIMEOUT = float(os.getenv("EXTERNAL_SERVICE_TIMEOUT", "2.5"))
-
-
-async def _probe_service(
-    origin: str,
+async def _call_service_health(
+    manager: HTTPClientManager,
+    service: ServiceName,
     path: str,
     *,
-    headers: dict[str, str] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
-) -> tuple[bool, str | None, str]:
-    """Probe a service with multiple candidate origins and retry logic."""
-    last_error: str | None = None
-    for candidate_origin in _candidate_origins(origin):
-        try:
-            available, error = await _probe(_join_url(candidate_origin, path), headers=headers, timeout=timeout)
-            if available:
-                return True, None, candidate_origin
-            last_error = error
-        except asyncio.CancelledError:
-            # Re-raise cancellation to allow proper cleanup
-            raise
-    return False, last_error, origin
+) -> tuple[bool, str | None]:
+    try:
+        await manager.call(service, "GET", path, timeout=timeout, use_fallback=False)
+        return True, None
+    except CircuitOpenError as exc:
+        return False, str(exc)
+    except httpx.HTTPStatusError as exc:
+        return False, f"HTTP {exc.response.status_code}"
+    except httpx.RequestError as exc:
+        return False, str(exc)
+    except ValueError as exc:
+        return False, str(exc)
 
 
-def _langfuse_headers() -> dict[str, str] | None:
-    config = get_langfuse_config()
-    if not config.public_key or not config.secret_key:
-        return None
-    credentials = f"{config.public_key}:{config.secret_key}".encode()
-    return {"Authorization": "Basic " + base64.b64encode(credentials).decode("ascii")}
+async def _build_managed_service_status(
+    manager: HTTPClientManager,
+    *,
+    service: ServiceName,
+    label: str,
+    configured: bool,
+    required: bool,
+    path: str,
+    url: str,
+    not_configured_message: str,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    message: str | None = None
+    available = False
 
+    if configured:
+        available, error = await _call_service_health(manager, service, path, timeout=timeout)
+        if not available:
+            message = f"{label} is unreachable: {error or 'unknown error'}"
+    else:
+        message = not_configured_message
 
-def _litellm_headers() -> dict[str, str] | None:
-    api_key = os.getenv("LITELLM_PROXY_API_KEY")
-    if not api_key:
-        return None
-    return {"Authorization": f"Bearer {api_key}"}
+    return {
+        "service": service.value,
+        "label": label,
+        "configured": configured,
+        "available": available if configured else False,
+        "required": required,
+        "url": url or "",
+        "message": message,
+    }
 
 
 async def get_external_services_status() -> dict[str, Any]:
+    manager = initialize_http_client_manager()
+
     openviking_config = get_openviking_config()
     activepieces_config = get_activepieces_config()
     browser_runtime_config = get_browser_runtime_config()
@@ -127,155 +97,117 @@ async def get_external_services_status() -> dict[str, Any]:
 
     statuses: list[dict[str, Any]] = []
 
-    surfsense_configured = bool(surfsense_config.base_url and surfsense_config.bearer_token)
-    surfsense_origin = _normalize_origin(surfsense_config.base_url)
-    surfsense_available, surfsense_error, surfsense_effective_origin = (
-        await _probe_service(surfsense_origin, "/health") if surfsense_configured else (False, None, surfsense_origin)
+    openviking_origin = _normalize_origin(openviking_config.base_url)
+    openviking_configured = bool(openviking_config.is_configured and openviking_origin)
+    statuses.append(
+        await _build_managed_service_status(
+            manager,
+            service=ServiceName.OPENVIKING,
+            label="OpenViking",
+            configured=openviking_configured,
+            required=False,
+            path="/docs",
+            url=openviking_origin,
+            not_configured_message="OpenViking is not configured.",
+        )
     )
+
+    activepieces_origin = _normalize_origin(activepieces_config.base_url)
+    activepieces_configured = bool(activepieces_config.is_configured and activepieces_origin)
+    statuses.append(
+        await _build_managed_service_status(
+            manager,
+            service=ServiceName.ACTIVEPIECES,
+            label="Activepieces",
+            configured=activepieces_configured,
+            required=False,
+            path="/api/v1/docs",
+            url=activepieces_origin,
+            not_configured_message="Activepieces is not configured.",
+        )
+    )
+
+    browser_runtime_available = bool(browser_runtime_config.is_configured)
     statuses.append(
         {
-            "service": "surfsense",
-            "label": "SurfSense",
-            "configured": surfsense_configured,
-            "available": surfsense_available if surfsense_configured else False,
-            "required": False,
-            "url": surfsense_effective_origin,
-            "message": (
-                None
-                if surfsense_configured and surfsense_available
-                else ("SurfSense is not configured." if not surfsense_configured else f"SurfSense is unreachable: {surfsense_error}")
-            ),
-        }
-    )
-
-    langfuse_configured = langfuse_config.is_configured
-    langfuse_origin = _normalize_origin(langfuse_config.host)
-    langfuse_available, langfuse_error, langfuse_effective_origin = (
-        await _probe_service(langfuse_origin, "/api/public/health", headers=_langfuse_headers())
-        if langfuse_configured
-        else (False, None, langfuse_origin)
-    )
-    statuses.append(
-        {
-            "service": "langfuse",
-            "label": "Langfuse",
-            "configured": langfuse_configured,
-            "available": langfuse_available if langfuse_configured else False,
-            "required": False,
-            "url": langfuse_effective_origin,
-            "message": (
-                None
-                if langfuse_configured and langfuse_available
-                else ("Langfuse is not configured." if not langfuse_configured else f"Langfuse is unreachable: {langfuse_error}")
-            ),
-        }
-    )
-
-    litellm_configured = bool(litellm_base_url)
-    litellm_origin = _normalize_origin(litellm_base_url or "http://127.0.0.1:4000")
-    litellm_available, litellm_error, litellm_effective_origin = (
-        await _probe_service(litellm_origin, "/v1/models", headers=_litellm_headers())
-        if litellm_configured
-        else (False, None, litellm_origin)
-    )
-    statuses.append(
-        {
-            "service": "litellm",
-            "label": "LiteLLM",
-            "configured": litellm_configured,
-            "available": litellm_available if litellm_configured else False,
-            "required": True,
-            "url": litellm_effective_origin,
-            "message": (
-                None
-                if litellm_configured and litellm_available
-                else ("LiteLLM is not configured." if not litellm_configured else f"LiteLLM is unreachable: {litellm_error}")
-            ),
-        }
-    )
-
-    langgraph_available, langgraph_error = await _probe(_join_url(langgraph_base_url, "/openapi.json"), timeout=DEFAULT_TIMEOUT)
-    statuses.append(
-        {
-            "service": "langgraph",
-            "label": "LangGraph",
-            "configured": True,
-            "available": langgraph_available,
-            "required": True,
-            "url": langgraph_base_url,
-            "message": None if langgraph_available else f"LangGraph is unreachable: {langgraph_error}",
-        }
-    )
-
-    openviking_configured = openviking_config.is_configured
-    openviking_available, openviking_error, openviking_origin = (
-        await _probe_service(_normalize_origin(openviking_config.base_url), "/docs")
-        if openviking_configured and openviking_config.base_url
-        else (False, None, openviking_config.base_url)
-    )
-    statuses.insert(
-        0,
-        {
-            "service": "openviking",
-            "label": "OpenViking",
-            "configured": openviking_configured,
-            "available": openviking_available if openviking_configured else False,
-            "required": False,
-            "url": openviking_origin or openviking_config.base_url,
-            "message": None
-            if openviking_configured and openviking_available
-            else ("OpenViking is not configured." if not openviking_configured else f"OpenViking is unreachable: {openviking_error}"),
-        },
-    )
-
-    activepieces_configured = activepieces_config.is_configured
-    activepieces_available, activepieces_error, activepieces_origin = (
-        await _probe_service(_normalize_origin(activepieces_config.base_url), "/api/v1/docs")
-        if activepieces_configured and activepieces_config.base_url
-        else (False, None, activepieces_config.base_url)
-    )
-    statuses.insert(
-        1,
-        {
-            "service": "activepieces",
-            "label": "Activepieces",
-            "configured": activepieces_configured,
-            "available": activepieces_available if activepieces_configured else False,
-            "required": False,
-            "url": activepieces_origin or activepieces_config.base_url,
-            "message": (
-                None
-                if activepieces_configured and activepieces_available
-                else ("Activepieces is not configured." if not activepieces_configured else f"Activepieces is unreachable: {activepieces_error}")
-            ),
-        }
-    )
-
-    browser_runtime_available = browser_runtime_config.is_configured
-    statuses.insert(
-        2,
-        {
-            "service": "browser_runtime",
+            "service": ServiceName.BROWSER_RUNTIME.value,
             "label": "Browser Runtime",
-            "configured": browser_runtime_config.is_configured,
+            "configured": browser_runtime_available,
             "available": browser_runtime_available,
             "required": False,
             "url": browser_runtime_config.lightpanda_base_url or "local",
             "message": None if browser_runtime_available else "Browser runtime is not configured.",
-        },
+        }
     )
 
-    statuses.insert(
-        3,
+    statuses.append(
         {
-            "service": "stateweave",
+            "service": ServiceName.STATE_WEAVE.value,
             "label": "StateWeave",
-            "configured": stateweave_config.is_configured,
+            "configured": bool(stateweave_config.is_configured),
             "available": True,
             "required": False,
             "url": stateweave_config.base_url or "local",
             "message": None,
-        },
+        }
+    )
+
+    surfsense_origin = _normalize_origin(surfsense_config.base_url)
+    surfsense_configured = bool(surfsense_config.base_url and surfsense_config.bearer_token)
+    statuses.append(
+        await _build_managed_service_status(
+            manager,
+            service=ServiceName.SURFSENSE,
+            label="SurfSense",
+            configured=surfsense_configured,
+            required=False,
+            path="/health",
+            url=surfsense_origin,
+            not_configured_message="SurfSense is not configured.",
+        )
+    )
+
+    langfuse_origin = _normalize_origin(langfuse_config.host)
+    langfuse_configured = bool(langfuse_config.is_configured)
+    statuses.append(
+        await _build_managed_service_status(
+            manager,
+            service=ServiceName.LANGFUSE,
+            label="Langfuse",
+            configured=langfuse_configured,
+            required=False,
+            path="/api/public/health",
+            url=langfuse_origin,
+            not_configured_message="Langfuse is not configured.",
+        )
+    )
+
+    litellm_origin = _normalize_origin(litellm_base_url or "http://127.0.0.1:4000")
+    litellm_configured = bool(litellm_base_url)
+    statuses.append(
+        await _build_managed_service_status(
+            manager,
+            service=ServiceName.LITELLM,
+            label="LiteLLM",
+            configured=litellm_configured,
+            required=True,
+            path="/v1/models",
+            url=litellm_origin,
+            not_configured_message="LiteLLM is not configured.",
+        )
+    )
+
+    statuses.append(
+        await _build_managed_service_status(
+            manager,
+            service=ServiceName.LANGGRAPH,
+            label="LangGraph",
+            configured=True,
+            required=True,
+            path="/openapi.json",
+            url=langgraph_base_url,
+            not_configured_message="LangGraph is not configured.",
+        )
     )
 
     degraded = any(item["required"] and not item["available"] for item in statuses)

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
+from src.core.http.client_manager import ServiceName
 from src.gateway.routers import surfsense as surfsense_router
 from src.gateway.routers import health as health_router
 from src.gateway.services.external_services import get_external_services_status
@@ -267,12 +268,15 @@ def test_external_services_status_reports_unavailable_services(monkeypatch):
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
     get_surfsense_config.cache_clear()
 
-    async def fake_probe(url: str, *, headers=None, timeout=2.5):
-        if "3000" in url:
+    async def fake_call_service_health(manager, service, path, *, timeout=2.5):
+        if service == ServiceName.LANGFUSE:
             return True, None
         return False, "connection refused"
 
-    with patch("src.gateway.services.external_services._probe", new=fake_probe):
+    with patch(
+        "src.gateway.services.external_services._call_service_health",
+        new=fake_call_service_health,
+    ):
         result = asyncio.run(get_external_services_status())
 
     assert result["degraded"] is True

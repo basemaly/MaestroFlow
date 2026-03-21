@@ -10,6 +10,7 @@ from src.gateway.config import get_gateway_config
 from src.gateway.startup.channels import start_channels, stop_channels
 from src.gateway.startup.monitoring import start_monitoring, stop_monitoring
 from src.gateway.startup.proxies import start_proxies, stop_proxies
+from src.core.http.initialization import initialize_http_client_manager
 from src.gateway.startup.scheduler import start_scheduler, stop_scheduler
 from src.logging_setup import setup_logging
 
@@ -43,12 +44,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await start_scheduler()
     await start_proxies()
 
+    # Initialize HTTP client manager and register services (circuit breakers, pools)
+    try:
+        manager = initialize_http_client_manager()
+        logger.info("HTTP client manager initialized during gateway startup")
+    except Exception:
+        logger.exception("Failed to initialize HTTP client manager during startup")
+        raise
+
     yield
 
     await stop_proxies()
     await stop_scheduler()
     await stop_channels()
     await stop_monitoring()
+    # Cleanup HTTP client manager resources (close clients and pools)
+    try:
+        # manager is created during startup; call cleanup if available
+        if "manager" in locals() and manager is not None:
+            await manager.cleanup()
+            logger.info("HTTP client manager cleanup complete during gateway shutdown")
+    except Exception:
+        logger.exception("Error during HTTP client manager cleanup")
     logger.info("Shutting down API Gateway")
 
 
