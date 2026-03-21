@@ -8,6 +8,13 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from sqlite3 import Connection
+from contextlib import contextmanager
+import threading
+
+# Connection pool implementation
+_connection_pool = {}
+_pool_lock = threading.Lock()
 
 from src.executive.models import (
     ExecutiveActionPreview,
@@ -28,19 +35,46 @@ def get_executive_db_path() -> Path:
 
 
 @contextmanager
-def _db_conn() -> sqlite3.Connection:
+def _db_conn():
+    """Get a database connection from the pool or create a new one."""
     db_path = get_executive_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path), timeout=10)
+
+    thread_id = threading.get_ident()
+    conn_key = f"{db_path}_{thread_id}"
+
+    with _pool_lock:
+        if conn_key not in _connection_pool:
+            # Create new connection with optimized settings
+            conn = sqlite3.connect(
+                str(db_path),
+                timeout=10,
+                check_same_thread=False,  # Allow use from different threads
+            )
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA cache_size=10000")
+            conn.execute("PRAGMA temp_store=MEMORY")
+            conn.row_factory = sqlite3.Row
+            _connection_pool[conn_key] = conn
+
+        conn = _connection_pool[conn_key]
+
+    _ensure_schema(conn)
     try:
-        _ensure_schema(conn)
         yield conn
         conn.commit()
     except Exception:
         conn.rollback()
         raise
-    finally:
-        conn.close()
+
+
+def _close_all_connections() -> None:
+    """Close all connections in the pool. Use for application shutdown."""
+    with _pool_lock:
+        for conn in _connection_pool.values():
+            conn.close()
+        _connection_pool.clear()
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -59,6 +93,11 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Add indices for frequently queried columns
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_status ON executive_approvals(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_created_at ON executive_approvals(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_component_action ON executive_approvals(component_id, action_id)")
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS executive_audit (
@@ -78,6 +117,12 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Add indices for frequently queried columns
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON executive_audit(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_component_action ON executive_audit(component_id, action_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_actor ON executive_audit(actor_type, actor_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_status ON executive_audit(status)")
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS executive_runtime_overrides (
@@ -87,6 +132,9 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Add index for updated_at for time-based queries
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_runtime_overrides_updated_at ON executive_runtime_overrides(updated_at)")
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS executive_blueprints (
@@ -101,6 +149,10 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Add indices for frequently queried columns
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blueprints_status ON executive_blueprints(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blueprints_updated_at ON executive_blueprints(updated_at)")
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS executive_blueprint_runs (
@@ -117,6 +169,11 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Add indices for frequently queried columns
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blueprint_runs_blueprint_id ON executive_blueprint_runs(blueprint_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blueprint_runs_status ON executive_blueprint_runs(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blueprint_runs_started_at ON executive_blueprint_runs(started_at)")
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS executive_heartbeats (
@@ -129,6 +186,9 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Add indices for frequently queried columns
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_heartbeats_scope ON executive_heartbeats(scope_type, scope_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_heartbeats_timestamp ON executive_heartbeats(timestamp)")
 
 
 def create_approval(
@@ -334,11 +394,21 @@ def upsert_blueprint(blueprint: ExecutiveBlueprint) -> ExecutiveBlueprint:
 
 
 def _row_to_blueprint(row: sqlite3.Row) -> ExecutiveBlueprint:
+    steps_data = json.loads(row["steps_json"])
+    # Ensure steps are in the correct format
+    steps = []
+    for step in steps_data:
+        if isinstance(step, dict):
+            steps.append(step)
+        else:
+            # Handle case where step might be a tuple or other format
+            steps.append(dict(step) if hasattr(step, "_asdict") else dict(step))
+
     return ExecutiveBlueprint(
         blueprint_id=row["blueprint_id"],
         name=row["name"],
         description=row["description"],
-        steps=[step if isinstance(step, dict) else dict(step) for step in json.loads(row["steps_json"])],
+        steps=steps,
         status=row["status"],
         metadata=json.loads(row["metadata_json"]),
         created_at=datetime.fromisoformat(row["created_at"]),

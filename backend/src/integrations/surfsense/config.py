@@ -41,6 +41,8 @@ class SurfSenseConfig(BaseModel):
     project_mapping: dict[str, int] = Field(default_factory=dict)
     timeout_seconds: float = 20.0
     reindex_timeout_seconds: float = 120.0
+    circuit_breaker_enabled: bool = True
+    fallback_url: str | None = None
 
     @staticmethod
     def _normalize_base_url(raw_url: str) -> str:
@@ -80,9 +82,7 @@ class SurfSenseConfig(BaseModel):
     @classmethod
     def from_env(cls) -> "SurfSenseConfig":
         default_search_space = os.getenv("SURFSENSE_DEFAULT_SEARCH_SPACE_ID")
-        bearer_token = os.getenv("SURFSENSE_SERVICE_TOKEN") or os.getenv(
-            "SURFSENSE_BEARER_TOKEN"
-        )
+        bearer_token = os.getenv("SURFSENSE_SERVICE_TOKEN") or os.getenv("SURFSENSE_BEARER_TOKEN")
         return cls(
             base_url=cls._normalize_base_url(os.getenv("SURFSENSE_BASE_URL", "http://localhost:3004")),
             bearer_token=bearer_token,
@@ -91,6 +91,8 @@ class SurfSenseConfig(BaseModel):
             project_mapping=_parse_mapping(os.getenv("SURFSENSE_PROJECT_MAPPING")),
             timeout_seconds=float(os.getenv("SURFSENSE_TIMEOUT_SECONDS", "20")),
             reindex_timeout_seconds=float(os.getenv("SURFSENSE_REINDEX_TIMEOUT_SECONDS", "120")),
+            circuit_breaker_enabled=_parse_bool(os.getenv("SURFSENSE_CIRCUIT_BREAKER_ENABLED"), default=True),
+            fallback_url=os.getenv("SURFSENSE_FALLBACK_URL"),
         )
 
 

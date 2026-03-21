@@ -15,6 +15,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from src.core.resilience.circuit_breaker import CircuitOpenError
 from src.integrations.surfsense.client import SurfSenseClient
 from src.integrations.surfsense.config import resolve_surfsense_search_space_id
 
@@ -39,13 +40,21 @@ def _resolve_search_space(
 
 
 def _tool_error_payload(*, operation: str, error: Exception, search_space_id: int | None = None) -> dict[str, Any]:
+    """Create an error payload for tool responses.
+
+    Handles CircuitOpenError specially to indicate service degradation vs connection errors.
+    """
     status_code = error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
+    error_type = type(error).__name__
+
     return {
         "ok": False,
         "operation": operation,
         "search_space_id": search_space_id,
         "status_code": status_code,
+        "error_type": error_type,
         "error": str(error),
+        "degraded": isinstance(error, CircuitOpenError),
     }
 
 

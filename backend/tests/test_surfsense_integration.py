@@ -167,18 +167,19 @@ def test_create_or_resolve_langgraph_thread_replaces_non_uuid_id():
 
 def test_search_surfsense_degrades_when_service_unavailable():
     async def run():
-        with patch.object(
-            surfsense_router.SurfSenseClient,
-            "list_search_spaces",
-            new=AsyncMock(side_effect=httpx.ConnectError("boom")),
-        ), patch.object(
-            surfsense_router.SurfSenseClient,
-            "search_documents",
-            new=AsyncMock(side_effect=httpx.ConnectError("boom")),
+        with (
+            patch.object(
+                surfsense_router.SurfSenseClient,
+                "list_search_spaces",
+                new=AsyncMock(side_effect=httpx.ConnectError("boom")),
+            ),
+            patch.object(
+                surfsense_router.SurfSenseClient,
+                "search_documents",
+                new=AsyncMock(side_effect=httpx.ConnectError("boom")),
+            ),
         ):
-            return await surfsense_router.search_surfsense(
-                surfsense_router.SurfSenseSearchRequest(query="async python", search_space_id=2)
-            )
+            return await surfsense_router.search_surfsense(surfsense_router.SurfSenseSearchRequest(query="async python", search_space_id=2))
 
     result = asyncio.run(run())
 
@@ -209,17 +210,18 @@ def test_export_note_to_surfsense_skips_when_not_configured():
 
 def test_research_with_surfsense_context_degrades_when_langgraph_unavailable():
     async def run():
-        with patch.object(
-            surfsense_router,
-            "_create_or_resolve_langgraph_thread",
-            new=AsyncMock(return_value="123e4567-e89b-12d3-a456-426614174000"),
-        ), patch(
-            "langgraph_sdk.get_client",
-            side_effect=RuntimeError("langgraph offline"),
+        with (
+            patch.object(
+                surfsense_router,
+                "_create_or_resolve_langgraph_thread",
+                new=AsyncMock(return_value="123e4567-e89b-12d3-a456-426614174000"),
+            ),
+            patch(
+                "langgraph_sdk.get_client",
+                side_effect=RuntimeError("langgraph offline"),
+            ),
         ):
-            return await surfsense_router.research_with_surfsense_context(
-                surfsense_router.SurfSenseResearchRequest(question="What changed?")
-            )
+            return await surfsense_router.research_with_surfsense_context(surfsense_router.SurfSenseResearchRequest(question="What changed?"))
 
     result = asyncio.run(run())
 
@@ -244,9 +246,7 @@ def test_research_with_surfsense_context_degrades_when_thread_creation_fails():
                 new=AsyncMock(side_effect=RuntimeError("langgraph create offline")),
             ),
         ):
-            return await surfsense_router.research_with_surfsense_context(
-                surfsense_router.SurfSenseResearchRequest(question="What changed?")
-            )
+            return await surfsense_router.research_with_surfsense_context(surfsense_router.SurfSenseResearchRequest(question="What changed?"))
 
     result = asyncio.run(run())
 
@@ -299,3 +299,92 @@ def test_external_services_health_route_wraps_status_with_health_envelope():
     assert payload["health"]["healthy"] is True
     assert payload["error"] is None
     assert payload["services"][0]["service"] == "langgraph"
+
+
+def test_surfsense_client_with_circuit_breaker_disabled():
+    """Test that circuit breaker can be disabled for testing."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": [], "total": 0})
+
+    async def run():
+        client = SurfSenseClient(
+            transport=httpx.MockTransport(handler),
+            use_circuit_breaker=False,
+        )
+        result = await client.search_documents(query="test", search_space_id=1)
+        health = await client.get_pool_health()
+        return result, health
+
+    result, health = asyncio.run(run())
+    assert result["total"] == 0
+    assert health["circuit_state"] == "disabled"
+
+
+def test_surfsense_client_tracks_pool_health_metrics():
+    """Test that circuit breaker is available and tracks metrics."""
+
+    async def run():
+        # Circuit breaker is enabled by default
+        client = SurfSenseClient(use_circuit_breaker=True)
+        health = await client.get_pool_health()
+        return health
+
+    health = asyncio.run(run())
+    # Should have circuit breaker available when enabled
+    assert health["circuit_state"] in ["closed", "open", "half_open"]
+    assert "total_requests" in health
+    assert "successful_requests" in health
+    assert "failed_requests" in health
+
+
+def test_surfsense_client_fallback_url_configuration():
+    """Test that fallback URL can be configured."""
+    primary_called = {"called": False}
+    fallback_called = {"called": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Determine if this is primary or fallback based on base_url
+        if "fallback" in str(request.url):
+            fallback_called["called"] = True
+            return httpx.Response(200, json={"items": [], "total": 0, "source": "fallback"})
+        else:
+            primary_called["called"] = True
+            return httpx.Response(200, json={"items": [], "total": 0, "source": "primary"})
+
+    async def run():
+        client = SurfSenseClient(
+            transport=httpx.MockTransport(handler),
+            fallback_url="http://fallback.example.com/api/v1",
+            use_circuit_breaker=False,
+        )
+        result = await client.search_documents(query="test", search_space_id=1)
+        return result
+
+    result = asyncio.run(run())
+    # With disabled circuit breaker and mock transport, primary should be called
+    assert result["source"] == "primary"
+
+
+def test_surfsense_mcp_error_payload_includes_degraded_flag():
+    """Test that MCP error payloads correctly mark circuit breaker errors as degraded."""
+    from src.core.resilience.circuit_breaker import CircuitOpenError
+    from src.integrations.surfsense.mcp_server import _tool_error_payload
+
+    # Test CircuitOpenError is marked as degraded
+    error = CircuitOpenError("Circuit is open")
+    payload = _tool_error_payload(operation="test_op", error=error, search_space_id=1)
+
+    assert payload["ok"] is False
+    assert payload["degraded"] is True
+    assert payload["error_type"] == "CircuitOpenError"
+    assert payload["operation"] == "test_op"
+    assert payload["search_space_id"] == 1
+
+    # Test regular errors are not marked as degraded
+    regular_error = ValueError("Something went wrong")
+    payload = _tool_error_payload(operation="test_op", error=regular_error)
+
+    assert payload["ok"] is False
+    assert payload["degraded"] is False
+    assert payload["error_type"] == "ValueError"
