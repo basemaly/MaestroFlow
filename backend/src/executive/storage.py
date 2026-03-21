@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -12,9 +14,16 @@ from sqlite3 import Connection
 from contextlib import contextmanager
 import threading
 
+logger = logging.getLogger(__name__)
+
+# Connection pool configuration
+MAX_POOL_SIZE = int(os.getenv("EXECUTOR_DB_MAX_POOL_SIZE", "20"))
+POOL_IDLE_TIMEOUT_SECONDS = int(os.getenv("EXECUTOR_DB_POOL_IDLE_TIMEOUT", "300"))
+
 # Connection pool implementation
 _connection_pool = {}
 _pool_lock = threading.Lock()
+_pool_last_accessed = {}  # Track last access time per connection for idle timeout
 
 from src.executive.models import (
     ExecutiveActionPreview,
@@ -44,6 +53,30 @@ def _db_conn():
     conn_key = f"{db_path}_{thread_id}"
 
     with _pool_lock:
+        # Clean up idle connections (older than POOL_IDLE_TIMEOUT_SECONDS)
+        current_time = time.time()
+        idle_keys = [key for key, last_access in _pool_last_accessed.items() if current_time - last_access > POOL_IDLE_TIMEOUT_SECONDS]
+        for key in idle_keys:
+            if key in _connection_pool:
+                try:
+                    _connection_pool[key].close()
+                    logger.debug(f"Closed idle connection {key}")
+                except Exception as e:
+                    logger.warning(f"Error closing idle connection {key}: {e}")
+                del _connection_pool[key]
+                del _pool_last_accessed[key]
+
+        # Enforce max pool size (close oldest idle connection if at limit)
+        if conn_key not in _connection_pool and len(_connection_pool) >= MAX_POOL_SIZE:
+            oldest_key = min(_pool_last_accessed.items(), key=lambda x: x[1])[0]
+            try:
+                _connection_pool[oldest_key].close()
+                logger.debug(f"Evicted oldest idle connection {oldest_key} (pool at max size)")
+            except Exception as e:
+                logger.warning(f"Error evicting connection {oldest_key}: {e}")
+            del _connection_pool[oldest_key]
+            del _pool_last_accessed[oldest_key]
+
         if conn_key not in _connection_pool:
             # Create new connection with optimized settings
             conn = sqlite3.connect(
@@ -57,8 +90,10 @@ def _db_conn():
             conn.execute("PRAGMA temp_store=MEMORY")
             conn.row_factory = sqlite3.Row
             _connection_pool[conn_key] = conn
+            logger.debug(f"Created new DB connection (pool size: {len(_connection_pool)}/{MAX_POOL_SIZE})")
 
         conn = _connection_pool[conn_key]
+        _pool_last_accessed[conn_key] = time.time()
 
     _ensure_schema(conn)
     try:
@@ -72,9 +107,26 @@ def _db_conn():
 def _close_all_connections() -> None:
     """Close all connections in the pool. Use for application shutdown."""
     with _pool_lock:
-        for conn in _connection_pool.values():
-            conn.close()
+        num_connections = len(_connection_pool)
+        for key, conn in _connection_pool.items():
+            try:
+                conn.close()
+                logger.debug(f"Closed connection {key}")
+            except Exception as e:
+                logger.warning(f"Error closing connection {key}: {e}")
         _connection_pool.clear()
+        _pool_last_accessed.clear()
+        logger.info(f"Closed all {num_connections} database connections")
+
+
+def get_pool_metrics() -> dict:
+    """Get current pool metrics for monitoring/testing."""
+    with _pool_lock:
+        total_connections = (len(_connection_pool)) if _connection_pool else 0
+        return {
+            "pool_size": total_connections,
+            "max_pool_size": MAX_POOL_SIZE,
+        }
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:

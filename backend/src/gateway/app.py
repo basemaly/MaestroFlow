@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.config.app_config import get_app_config
+from src.executive.storage import _close_all_connections
 from src.gateway.application import configure_gateway_app
 from src.gateway.config import get_gateway_config
 from src.gateway.startup.channels import start_channels, stop_channels
@@ -66,6 +67,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("HTTP client manager cleanup complete during gateway shutdown")
     except Exception:
         logger.exception("Error during HTTP client manager cleanup")
+    # Cleanup database connections
+    try:
+        _close_all_connections()
+    except Exception:
+        logger.exception("Error closing database connections during shutdown")
     logger.info("Shutting down API Gateway")
 
 
