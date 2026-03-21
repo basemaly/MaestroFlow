@@ -199,7 +199,19 @@ This document outlines the implementation plan for adding circuit breakers and i
    - Comprehensive error handling and logging
    - Syntax verified and code tested
 
-- [ ] Add resource monitoring to track CPU and memory usage, adjusting pool size when system is under pressure
+- [x] Add resource monitoring to track CPU and memory usage, adjusting pool size when system is under pressure
+   - **Completed**: Resource monitoring and dynamic pool adjustment already implemented
+   - **Implementation Details**:
+     - `_adjust_pool_size_task()` (line 162) periodically monitors CPU and memory usage
+     - Uses psutil library for system metrics (gracefully degrades if unavailable)
+     - Adjusts pool size based on CPU > 80% (prevents scaling), > 90% (reduces pool)
+     - Adjusts pool size based on Memory > 85% (prevents scaling), > 95% (reduces pool)
+     - Adjustment interval: 30 seconds
+     - Pool size ranges: MIN=2, MAX=16 (started at 8)
+   - **Monitoring APIs**:
+     - `get_subagent_pool_metrics()` (line 855) - returns detailed pool and resource metrics
+     - `get_subagent_pool_size()` (line 884) - returns current pool size
+   - **Location**: `/Volumes/BA/DEV/MaestroFlow/backend/src/subagents/executor.py`
 
  - [x] Fix the issue on line 481 where task_id might be None - add proper null check before calling record_subagent_start
    - **Completed**: Fixed indentation and updated line 535 to use explicit None check
