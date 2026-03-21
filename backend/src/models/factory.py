@@ -12,17 +12,18 @@ from src.reflection import resolve_class
 
 logger = logging.getLogger(__name__)
 
+
 @lru_cache(maxsize=32)
 def get_model_capabilities(name: str) -> dict[str, bool]:
     """Get cached model capabilities for a given model name.
-    
+
     Returns a dict with keys: supports_thinking, supports_vision, supports_reasoning_effort
     """
     config = get_app_config()
     model_config = config.get_model_config(name)
     if model_config is None:
         raise ValueError(f"Model {name} not found in config") from None
-    
+
     return {
         "supports_thinking": model_config.supports_thinking,
         "supports_vision": model_config.supports_vision,
@@ -185,7 +186,22 @@ def _create_base_chat_model_cached(name: str, thinking_enabled: bool) -> BaseCha
         if disabled_settings:
             model_settings_from_config = _deep_merge_dicts(model_settings_from_config, disabled_settings)
 
-    # Create the base model instance
+    # If the model is OpenAI-compatible and a LiteLLM proxy is configured, prefer the proxy as the base_url.
+    # This ensures model SDKs use the local LiteLLM proxy when present (keeps traffic local and consistent
+    # with the HTTP client manager registration). Deeper routing through the HTTPClientManager (circuit
+    # breaker protection) is handled at the proxy/manager layer; setting the base_url keeps client libs
+    # pointed at the proxy rather than external endpoints.
+    from os import getenv
+
+    try:
+        if _is_openai_compatible_model(model_config.use):
+            litellm_base = getenv("LITELLM_PROXY_BASE_URL") or getenv("OPENAI_API_BASE")
+            if litellm_base and not model_settings_from_config.get("base_url"):
+                model_settings_from_config["base_url"] = litellm_base
+    except Exception:
+        # Be conservative: if anything goes wrong here, fall back to default behaviour
+        pass
+
     model_instance = model_class(**model_settings_from_config)
     model_instance = _maybe_attach_rate_limit_fallback(model_instance, name=name)
     logger.debug(f"Created cached base model instance for '{name}' (thinking_enabled={thinking_enabled})")
