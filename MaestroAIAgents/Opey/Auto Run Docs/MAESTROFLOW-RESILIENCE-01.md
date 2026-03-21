@@ -180,9 +180,24 @@ This document outlines the implementation plan for adding circuit breakers and i
   - **Type Safety**: All type errors resolved. Used defensive null checks and cast() for runtime-guaranteed values
   - **Syntax Verified**: Python AST validation confirmed code compiles correctly
 
-- [ ] Replace fixed semaphore (MAX_CONCURRENT_SUBAGENTS=8) with dynamic pool sizing based on queue depth and system resources
+ - [x] Replace fixed semaphore (MAX_CONCURRENT_SUBAGENTS=8) with dynamic pool sizing based on queue depth and system resources
+   - **Completed**: Dynamic pool sizing implemented with:
+     - Algorithm adjusts pool size every 30 seconds based on queue depth and system metrics
+     - Pool ranges from MIN=2 to MAX=16 workers (started at 8)
+     - System resource constraints: CPU > 80% prevents scaling, > 90% reduces pool; Memory > 85% prevents scaling, > 95% reduces
+     - psutil dependency added for system monitoring (gracefully degrades if unavailable)
+     - New public API: `get_subagent_pool_metrics()` and `get_subagent_pool_size()`
+     - All existing tests pass with no regressions (38+ timeout tests, 92+ related tests)
 
-- [ ] Implement proper cleanup in executor shutdown, ensuring all background tasks complete or are cancelled gracefully
+ - [x] Implement proper cleanup in executor shutdown, ensuring all background tasks complete or are cancelled gracefully
+   - **Completed**: Added `shutdown_executor(timeout_seconds=30)` async function to gracefully shutdown executor
+   - Cancels pool adjustment task and waits for in-flight tasks to complete
+   - Integrated into FastAPI lifespan handler in `src/gateway/app.py`
+   - Added `get_executor_status()` function for executor health diagnostics
+   - All background task results preserved during shutdown
+   - Timeout-based waiting with configurable duration (default 30s)
+   - Comprehensive error handling and logging
+   - Syntax verified and code tested
 
 - [ ] Add resource monitoring to track CPU and memory usage, adjusting pool size when system is under pressure
 
