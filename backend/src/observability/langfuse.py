@@ -146,7 +146,24 @@ def _get_client() -> Any | None:
         return _client
 
 
+def get_langfuse_queue_depth() -> int:
+    """Get the current number of queued observability events (for monitoring)."""
+    with _queue_lock:
+        return len(_event_queue)
+
+
+def get_langfuse_status() -> dict[str, Any]:
+    """Get current Langfuse health status including circuit breaker and queue depth."""
+    return {
+        "healthy": _get_client() is not None and not _is_langfuse_circuit_open(),
+        "circuit_open": _is_langfuse_circuit_open(),
+        "queue_depth": get_langfuse_queue_depth(),
+        "max_queue_capacity": _event_queue.maxlen,
+    }
+
+
 def reset_client() -> None:
+    # ---------------------------------------------------------------------------
     """Reset the Langfuse client singleton (useful for tests or config changes)."""
     global _client, _client_init_failed
     with _client_lock:
@@ -591,10 +608,19 @@ def score_trace_by_id(
     data_type: str | None = None,
     observation_id: str | None = None,
 ) -> None:
-    """Post a score to a specific trace by ID (fire-and-forget friendly)."""
+    """Post a score to a specific trace by ID (fire-and-forget friendly).
+
+    When Langfuse circuit is open, the scoring event is queued for later flushing.
+    """
     client = _get_client()
     if client is None:
         return
+
+    if _is_langfuse_circuit_open():
+        logger.debug(f"Langfuse circuit open, queueing score_trace_by_id for trace {trace_id}")
+        _queue_event("score_trace_by_id", trace_id=trace_id, name=name, value=value, comment=comment, data_type=data_type, observation_id=observation_id)
+        return
+
     try:
         client.create_score(
             trace_id=trace_id,
@@ -604,5 +630,8 @@ def score_trace_by_id(
             data_type=data_type,
             observation_id=observation_id,
         )
+    except CircuitOpenError:
+        logger.debug(f"Langfuse circuit open, queueing score_trace_by_id for trace {trace_id}")
+        _queue_event("score_trace_by_id", trace_id=trace_id, name=name, value=value, comment=comment, data_type=data_type, observation_id=observation_id)
     except Exception as exc:
         logger.debug("score_trace_by_id error for trace %s name %s: %s", trace_id, name, exc)

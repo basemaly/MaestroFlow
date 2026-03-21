@@ -14,6 +14,7 @@ from src.observability import langfuse as langfuse_module
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class FakePromptClient:
     def __init__(self, text: str) -> None:
         self.prompt = text
@@ -80,6 +81,7 @@ def _patch_client(monkeypatch, client=None):
 # Config tests
 # ---------------------------------------------------------------------------
 
+
 def test_langfuse_config_auto_enables_with_keys(monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
@@ -107,6 +109,7 @@ def test_langfuse_config_disabled_without_keys(monkeypatch):
 # is_langfuse_healthy / reset_client
 # ---------------------------------------------------------------------------
 
+
 def test_is_langfuse_healthy_false_when_no_client(monkeypatch):
     monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
     assert langfuse_module.is_langfuse_healthy() is False
@@ -131,6 +134,7 @@ def test_reset_client_clears_state(monkeypatch):
 # ---------------------------------------------------------------------------
 # Scoring helpers
 # ---------------------------------------------------------------------------
+
 
 def test_score_trace_by_id_calls_create_score(monkeypatch):
     fake = _patch_client(monkeypatch)
@@ -172,6 +176,7 @@ def test_score_current_trace_posts_score(monkeypatch):
 # get_current_trace_id / get_current_observation_id
 # ---------------------------------------------------------------------------
 
+
 def test_get_current_trace_id_delegates_to_client(monkeypatch):
     _patch_client(monkeypatch)
     assert langfuse_module.get_current_trace_id() == "trace-current"
@@ -190,6 +195,7 @@ def test_get_current_observation_id_returns_none_when_disabled(monkeypatch):
 # ---------------------------------------------------------------------------
 # observe_span
 # ---------------------------------------------------------------------------
+
 
 def test_observe_span_yields_noop_when_no_client(monkeypatch):
     monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
@@ -229,6 +235,7 @@ def test_observe_span_marks_error_on_exception(monkeypatch):
 # get_langfuse_callback_handler
 # ---------------------------------------------------------------------------
 
+
 def test_get_langfuse_callback_handler_returns_none_when_disabled(monkeypatch):
     monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
     assert langfuse_module.get_langfuse_callback_handler() is None
@@ -247,6 +254,7 @@ def test_get_langfuse_callback_handler_returns_handler_when_enabled(monkeypatch)
 # ---------------------------------------------------------------------------
 # Prompt Management
 # ---------------------------------------------------------------------------
+
 
 def test_get_managed_prompt_returns_formatted_fallback_when_no_client(monkeypatch):
     monkeypatch.setattr(langfuse_module, "_get_client", lambda: None)
@@ -305,6 +313,7 @@ def test_upsert_prompt_creates_prompt_in_langfuse(monkeypatch):
 # model factory integration
 # ---------------------------------------------------------------------------
 
+
 class _FakeChatModel:
     def __init__(self, **kwargs):
         self.callbacks: list = []
@@ -344,3 +353,161 @@ def test_create_chat_model_attaches_langfuse_callback(monkeypatch):
     model = factory_module.create_chat_model(name="test-model", trace_id="trace-abc")
 
     assert handler in model.callbacks
+
+
+# ---------------------------------------------------------------------------
+# Circuit Breaker Integration Tests
+# ---------------------------------------------------------------------------
+
+
+def test_langfuse_circuit_breaker_check_open_state(monkeypatch):
+    """Test checking if Langfuse circuit breaker is open."""
+    from src.observability import langfuse as langfuse_module
+    from src.core.http.client_manager import HTTPClientManager, ServiceName
+    from src.core.resilience.circuit_breaker import CircuitState
+
+    # Create a mock circuit breaker that reports OPEN state
+    mock_cb = MagicMock()
+    mock_cb.state = CircuitState.OPEN
+
+    mock_manager = MagicMock()
+    mock_manager.get_circuit_breaker.return_value = mock_cb
+
+    monkeypatch.setattr(HTTPClientManager, "get_instance", lambda: mock_manager)
+
+    assert langfuse_module._is_langfuse_circuit_open() is True
+
+
+def test_langfuse_circuit_breaker_check_closed_state(monkeypatch):
+    """Test checking if Langfuse circuit breaker is closed."""
+    from src.observability import langfuse as langfuse_module
+    from src.core.http.client_manager import HTTPClientManager, ServiceName
+    from src.core.resilience.circuit_breaker import CircuitState
+
+    # Create a mock circuit breaker that reports CLOSED state
+    mock_cb = MagicMock()
+    mock_cb.state = CircuitState.CLOSED
+
+    mock_manager = MagicMock()
+    mock_manager.get_circuit_breaker.return_value = mock_cb
+
+    monkeypatch.setattr(HTTPClientManager, "get_instance", lambda: mock_manager)
+
+    assert langfuse_module._is_langfuse_circuit_open() is False
+
+
+def test_langfuse_score_queues_event_when_circuit_open(monkeypatch):
+    """Test that score events are queued when circuit breaker is open."""
+    from src.observability import langfuse as langfuse_module
+    from src.core.resilience.circuit_breaker import CircuitState
+
+    # Setup mocks
+    fake_client = FakeLangfuseClient()
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: fake_client)
+
+    mock_cb = MagicMock()
+    mock_cb.state = CircuitState.OPEN
+
+    mock_manager = MagicMock()
+    mock_manager.get_circuit_breaker.return_value = mock_cb
+
+    monkeypatch.setattr(langfuse_module.HTTPClientManager, "get_instance", lambda: mock_manager)
+
+    # Clear queue
+    langfuse_module._event_queue.clear()
+
+    # Score a trace when circuit is open
+    langfuse_module.score_current_trace(name="test_score", value=0.8)
+
+    # Verify event was queued
+    assert len(langfuse_module._event_queue) == 1
+    event = langfuse_module._event_queue[0]
+    assert event["type"] == "score_current_trace"
+    assert event["name"] == "test_score"
+    assert event["value"] == 0.8
+
+
+def test_langfuse_score_executes_when_circuit_closed(monkeypatch):
+    """Test that score events execute normally when circuit breaker is closed."""
+    from src.observability import langfuse as langfuse_module
+    from src.core.resilience.circuit_breaker import CircuitState
+
+    # Setup mocks
+    fake_client = FakeLangfuseClient()
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: fake_client)
+
+    mock_cb = MagicMock()
+    mock_cb.state = CircuitState.CLOSED
+
+    mock_manager = MagicMock()
+    mock_manager.get_circuit_breaker.return_value = mock_cb
+
+    monkeypatch.setattr(langfuse_module.HTTPClientManager, "get_instance", lambda: mock_manager)
+
+    # Clear queue
+    langfuse_module._event_queue.clear()
+
+    # Score a trace when circuit is closed
+    langfuse_module.score_current_trace(name="test_score", value=0.8)
+
+    # Verify score was sent to client (not queued)
+    assert len(langfuse_module._event_queue) == 0
+    assert len(fake_client.scores) == 1
+    assert fake_client.scores[0]["name"] == "test_score"
+    assert fake_client.scores[0]["value"] == 0.8
+
+
+def test_langfuse_score_by_id_queues_when_circuit_open(monkeypatch):
+    """Test that score_trace_by_id events are queued when circuit is open."""
+    from src.observability import langfuse as langfuse_module
+    from src.core.resilience.circuit_breaker import CircuitState
+
+    # Setup mocks
+    fake_client = FakeLangfuseClient()
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: fake_client)
+
+    mock_cb = MagicMock()
+    mock_cb.state = CircuitState.OPEN
+
+    mock_manager = MagicMock()
+    mock_manager.get_circuit_breaker.return_value = mock_cb
+
+    monkeypatch.setattr(langfuse_module.HTTPClientManager, "get_instance", lambda: mock_manager)
+
+    # Clear queue
+    langfuse_module._event_queue.clear()
+
+    # Score a trace by ID when circuit is open
+    langfuse_module.score_trace_by_id("trace-123", name="quality", value=0.95)
+
+    # Verify event was queued
+    assert len(langfuse_module._event_queue) == 1
+    event = langfuse_module._event_queue[0]
+    assert event["type"] == "score_trace_by_id"
+    assert event["trace_id"] == "trace-123"
+    assert event["name"] == "quality"
+    assert event["value"] == 0.95
+
+
+def test_langfuse_flush_queued_events(monkeypatch):
+    """Test flushing queued observability events when circuit recovers."""
+    from src.observability import langfuse as langfuse_module
+
+    # Setup mocks
+    fake_client = FakeLangfuseClient()
+    fake_client.flush = MagicMock()
+    monkeypatch.setattr(langfuse_module, "_get_client", lambda: fake_client)
+
+    # Queue some events
+    langfuse_module._event_queue.clear()
+    langfuse_module._queue_event("score_current_trace", name="test1", value=0.8)
+    langfuse_module._queue_event("score_trace_by_id", trace_id="t1", name="test2", value=0.9)
+
+    assert len(langfuse_module._event_queue) == 2
+
+    # Flush events
+    langfuse_module._flush_queued_events()
+
+    # Verify flush was called and queue was cleared
+    fake_client.flush.assert_called_once()
+    assert len(langfuse_module._event_queue) == 0
