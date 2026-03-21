@@ -890,6 +890,82 @@ def get_subagent_pool_size() -> int:
     return _current_pool_size
 
 
+async def shutdown_executor(timeout_seconds: int = 30) -> None:
+    """Gracefully shutdown the subagent executor.
+
+    This function:
+    1. Cancels the pool adjustment task
+    2. Waits for in-flight tasks to complete (with timeout)
+    3. Stops accepting new tasks
+    4. Closes the event loop
+
+    Args:
+        timeout_seconds: Maximum time to wait for in-flight tasks (default: 30s)
+
+    Raises:
+        TimeoutError: If in-flight tasks don't complete within timeout
+    """
+    global _bg_loop, _adjustment_task, _execution_queue
+
+    logger.info("Starting subagent executor shutdown...")
+
+    # Step 1: Cancel the pool adjustment task
+    if _adjustment_task and not _adjustment_task.done():
+        _adjustment_task.cancel()
+        try:
+            await _adjustment_task
+        except asyncio.CancelledError:
+            logger.debug("Pool adjustment task cancelled")
+
+    # Step 2: Wait for in-flight tasks to complete
+    if _execution_queue:
+        queue_size = _execution_queue.qsize()
+        if queue_size > 0:
+            logger.info(f"Waiting for {queue_size} in-flight subagent tasks to complete (timeout: {timeout_seconds}s)...")
+            start_time = time.time()
+            while _execution_queue.qsize() > 0:
+                elapsed = time.time() - start_time
+                if elapsed > timeout_seconds:
+                    remaining = _execution_queue.qsize()
+                    logger.warning(f"Subagent executor shutdown timeout: {remaining} tasks still pending after {timeout_seconds}s")
+                    raise TimeoutError(f"Subagent executor shutdown: {remaining} tasks did not complete within {timeout_seconds}s")
+                await asyncio.sleep(0.1)
+            logger.info("All in-flight subagent tasks completed")
+
+    # Step 3: Allow the event loop to finish gracefully
+    logger.info("Subagent executor shutdown complete")
+
+
+def get_executor_status() -> dict[str, Any]:
+    """Get the current status of the executor for diagnostics.
+
+    Returns:
+        Dictionary with executor health information:
+        - bg_loop_running: Whether the background event loop is running
+        - adjustment_task_active: Whether the pool adjustment task is active
+        - pending_tasks: Number of tasks waiting in queue
+        - background_tasks_count: Total number of stored background task results
+        - pool_metrics: Current pool metrics
+    """
+    global _bg_loop, _adjustment_task, _execution_queue
+
+    bg_loop_running = False
+    if _bg_loop:
+        try:
+            bg_loop_running = _bg_loop.is_running()
+        except Exception:
+            # Handle case where loop is closed or in error state
+            bg_loop_running = False
+
+    return {
+        "bg_loop_running": bg_loop_running,
+        "adjustment_task_active": _adjustment_task is not None and not _adjustment_task.done(),
+        "pending_tasks": _execution_queue.qsize() if _execution_queue else 0,
+        "background_tasks_count": len(_background_tasks),
+        "pool_metrics": get_subagent_pool_metrics(),
+    }
+
+
 # Metrics integration: Periodic logging of subagent performance
 # This helps detect bottlenecks like thread pool saturation or model rate limiting.
 # Call log_metrics_summary() from your monitoring/observability layer to enable.

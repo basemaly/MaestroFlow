@@ -14,6 +14,7 @@ from src.gateway.startup.proxies import start_proxies, stop_proxies
 from src.core.http.initialization import initialize_http_client_manager
 from src.gateway.startup.scheduler import start_scheduler, stop_scheduler
 from src.logging_setup import setup_logging
+from src.subagents.executor import shutdown_executor
 
 setup_logging("gateway")
 
@@ -59,6 +60,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await stop_scheduler()
     await stop_channels()
     await stop_monitoring()
+
+    # Gracefully shutdown subagent executor
+    try:
+        await shutdown_executor(timeout_seconds=30)
+        logger.info("Subagent executor shutdown complete during gateway shutdown")
+    except TimeoutError as e:
+        logger.warning(f"Subagent executor shutdown timeout: {e}")
+    except Exception:
+        logger.exception("Error during subagent executor shutdown")
+
     # Cleanup HTTP client manager resources (close clients and pools)
     try:
         # manager is created during startup; call cleanup if available
