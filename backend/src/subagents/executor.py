@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents import create_agent
 from langchain.tools import BaseTool
@@ -311,12 +311,12 @@ class SubagentExecutor:
                             # Check by comparing message IDs if available, otherwise compare full dict
                             message_id = message_dict.get("id")
                             is_duplicate = False
-                            if message_id:
+                            if message_id and result.ai_messages:
                                 is_duplicate = any(msg.get("id") == message_id for msg in result.ai_messages)
-                            else:
+                            elif result.ai_messages:
                                 is_duplicate = message_dict in result.ai_messages
 
-                            if not is_duplicate:
+                            if not is_duplicate and result.ai_messages is not None:
                                 result.ai_messages.append(message_dict)
                                 if len(result.ai_messages) > MAX_AI_MESSAGES_PER_SUBAGENT:
                                     result.ai_messages.pop(0)
@@ -370,7 +370,7 @@ class SubagentExecutor:
                     output={
                         "status": result.status.value,
                         "result": result.result,
-                        "message_count": len(result.ai_messages),
+                        "message_count": len(result.ai_messages) if result.ai_messages is not None else 0,
                     }
                 )
 
@@ -461,6 +461,8 @@ class SubagentExecutor:
         if task_id is None:
             task_id = str(uuid.uuid4())[:8]
 
+        assert isinstance(task_id, str), "task_id must be a string"
+
         # Create initial pending result
         result = SubagentResult(
             task_id=task_id,
@@ -478,7 +480,7 @@ class SubagentExecutor:
         async def run_task():
             # Metrics for async execution
             metric = record_subagent_start(
-                task_id=task_id,
+                task_id=cast(str, task_id),
                 model_name=self.model_name or "inherit",
                 queue_wait_seconds=0.0,
             )
