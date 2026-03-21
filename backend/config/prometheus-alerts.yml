@@ -1,0 +1,214 @@
+groups:
+  - name: maestroflow_circuit_breaker
+    interval: 15s
+    rules:
+      # Circuit breaker is in OPEN state
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_state{service!=""} == 1
+        for: 1m
+        labels:
+          severity: warning
+          component: circuit-breaker
+        annotations:
+          summary: "Circuit breaker OPEN for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} circuit breaker is OPEN. Requests are being rejected."
+          dashboard: "http://grafana.local/d/maestroflow/services?var-service={{ $labels.service }}"
+
+      # Circuit breaker open for too long (> 5 minutes)
+      - alert: CircuitBreakerOpenTooLong
+        expr: |
+          (time() - circuit_breaker_state_changes_total offset 5m) > 300
+          and
+          circuit_breaker_state == 1
+        for: 5m
+        labels:
+          severity: critical
+          component: circuit-breaker
+        annotations:
+          summary: "Circuit breaker OPEN for >5 min for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} circuit breaker has been OPEN for more than 5 minutes. Manual intervention may be required."
+          runbook: "https://docs.maestroflow.com/runbooks/circuit-breaker-recovery"
+
+      # High failure rate for a service
+      - alert: HighCircuitBreakerFailureRate
+        expr: |
+          (
+            rate(circuit_breaker_failures_total[5m])
+            /
+            (rate(circuit_breaker_failures_total[5m]) + rate(circuit_breaker_successes_total[5m]) + 0.0001)
+          ) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+          component: circuit-breaker
+        annotations:
+          summary: "High failure rate for {{ $labels.service }}"
+          description: "Failure rate for {{ $labels.service }} is {{ $value | humanizePercentage }}. Circuit breaker may trigger soon."
+
+      # Excessive retries indicate service degradation
+      - alert: ExcessiveCircuitBreakerRetries
+        expr: rate(http_client_retries_total[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          component: circuit-breaker
+        annotations:
+          summary: "Excessive retries for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} is experiencing {{ $value | humanizeDuration }}s avg retry rate. Service may be slow or unstable."
+
+  - name: maestroflow_connection_pool
+    interval: 15s
+    rules:
+      # Connection pool utilization exceeds 90%
+      - alert: HighConnectionPoolUtilization
+        expr: http_client_pool_utilization{service!=""} > 0.9
+        for: 2m
+        labels:
+          severity: warning
+          component: connection-pool
+        annotations:
+          summary: "High connection pool utilization for {{ $labels.service }}"
+          description: "Connection pool for {{ $labels.service }} is {{ $value | humanizePercentage }} utilized. May cause connection timeouts."
+          dashboard: "http://grafana.local/d/maestroflow/http-clients"
+
+      # Connection pool is exhausted
+      - alert: ExhaustedConnectionPool
+        expr: http_client_pool_connections_active >= http_client_pool_connections_total
+        for: 1m
+        labels:
+          severity: critical
+          component: connection-pool
+        annotations:
+          summary: "Connection pool EXHAUSTED for {{ $labels.service }}"
+          description: "Connection pool for {{ $labels.service }} is fully utilized ({{ $value }} connections). New requests will block."
+          action: "Increase pool size or reduce concurrent requests to {{ $labels.service }}"
+
+      # High HTTP request latency
+      - alert: HighHttpRequestLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_client_request_duration_seconds_bucket{status="success"}[5m])
+          ) > 5
+        for: 2m
+        labels:
+          severity: warning
+          component: http-client
+        annotations:
+          summary: "High HTTP request latency for {{ $labels.service }}"
+          description: "p95 latency for {{ $labels.service }} is {{ $value | humanizeDuration }}. Service may be overloaded."
+          runbook: "https://docs.maestroflow.com/runbooks/service-latency"
+
+  - name: maestroflow_subagent_pool
+    interval: 15s
+    rules:
+      # Subagent pool health score is low
+      - alert: SubagentPoolHealthDegraded
+        expr: subagent_pool_health_score < 50
+        for: 2m
+        labels:
+          severity: warning
+          component: subagent-pool
+        annotations:
+          summary: "Subagent pool health degraded to {{ $value }}/100"
+          description: "Subagent pool is under pressure. Check system resources and task queue depth."
+          dashboard: "http://grafana.local/d/maestroflow/subagent-pool"
+          runbook: "https://docs.maestroflow.com/runbooks/subagent-pool-health"
+
+      # Subagent queue depth exceeds 100
+      - alert: SubagentQueueBacklog
+        expr: subagent_pool_queue_depth > 100
+        for: 2m
+        labels:
+          severity: warning
+          component: subagent-pool
+        annotations:
+          summary: "Subagent task queue backlog: {{ $value }} tasks pending"
+          description: "Queue depth is {{ $value }} tasks. Consider scaling pool or investigating slow tasks."
+          action: "Check /api/health/subagent-pool for pool metrics and consider manual scaling"
+          runbook: "https://docs.maestroflow.com/runbooks/subagent-pool-scaling"
+
+      # High subagent task failure rate
+      - alert: SubagentHighFailureRate
+        expr: |
+          (
+            rate(subagent_tasks_total{status="failure"}[5m])
+            /
+            (rate(subagent_tasks_total[5m]) + 0.0001)
+          ) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: subagent-pool
+        annotations:
+          summary: "High subagent task failure rate: {{ $value | humanizePercentage }}"
+          description: "Subagent failure rate is {{ $value | humanizePercentage }}. Investigate failing tasks."
+
+      # All subagent workers are active and queue is growing
+      - alert: SubagentPoolExhausted
+        expr: |
+          subagent_pool_active_workers >= subagent_pool_size
+          and
+          subagent_pool_pending_tasks > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: subagent-pool
+        annotations:
+          summary: "Subagent pool fully utilized ({{ $value }} workers active)"
+          description: "All {{ $value }} workers are active and there are pending tasks. Dynamic scaling should adjust pool size."
+          action: "Monitor pool adjustment; if stuck, check system resources"
+
+  - name: maestroflow_system_resources
+    interval: 15s
+    rules:
+      # High CPU utilization (warning)
+      - alert: HighCPUUtilization
+        expr: subagent_pool_cpu_utilization > 85
+        for: 3m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High system CPU utilization: {{ $value }}%"
+          description: "CPU utilization is {{ $value }}%. System capacity is constrained."
+          action: "Check for long-running tasks, consider reducing load or scaling infrastructure"
+          dashboard: "http://grafana.local/d/maestroflow/system-resources"
+
+      # Critical CPU utilization
+      - alert: CriticalCPUUtilization
+        expr: subagent_pool_cpu_utilization > 95
+        for: 1m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL system CPU utilization: {{ $value }}%"
+          description: "CPU utilization is {{ $value }}%. System is at capacity limit."
+          action: "Immediate action required: Check running processes, kill non-critical tasks, or scale infrastructure"
+          runbook: "https://docs.maestroflow.com/runbooks/high-cpu"
+
+      # High memory utilization (warning)
+      - alert: HighMemoryUtilization
+        expr: subagent_pool_memory_utilization > 85
+        for: 3m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High system memory utilization: {{ $value }}%"
+          description: "Memory utilization is {{ $value }}%. System memory is constrained."
+          action: "Check for memory leaks, consider reducing concurrency or scaling infrastructure"
+          dashboard: "http://grafana.local/d/maestroflow/system-resources"
+
+      # Critical memory utilization
+      - alert: CriticalMemoryUtilization
+        expr: subagent_pool_memory_utilization > 95
+        for: 1m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL system memory utilization: {{ $value }}%"
+          description: "Memory utilization is {{ $value }}%. System is at capacity limit."
+          action: "Immediate action required: Free memory or gracefully shutdown non-essential processes"
+          runbook: "https://docs.maestroflow.com/runbooks/high-memory"
