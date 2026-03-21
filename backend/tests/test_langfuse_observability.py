@@ -322,6 +322,14 @@ class _FakeChatModel:
     def _llm_type(self) -> str:
         return "fake"
 
+    def with_config(self, config=None, **kwargs):
+        """Mock with_config method."""
+        if config and "callbacks" in config:
+            self.callbacks.extend(config["callbacks"])
+        if "callbacks" in kwargs:
+            self.callbacks.extend(kwargs["callbacks"])
+        return self
+
 
 def test_create_chat_model_attaches_langfuse_callback(monkeypatch):
     from src.config.app_config import AppConfig

@@ -1,4 +1,7 @@
 import logging
+import signal
+import sys
+import atexit
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -6,6 +9,7 @@ from fastapi import FastAPI
 
 from src.config.app_config import get_app_config
 from src.executive.storage import _close_all_connections
+from src.gateway.app_state import initiate_shutdown, is_shutting_down
 from src.gateway.application import configure_gateway_app
 from src.gateway.config import get_gateway_config
 from src.gateway.startup.channels import start_channels, stop_channels
@@ -21,9 +25,60 @@ setup_logging("gateway")
 logger = logging.getLogger(__name__)
 
 
+def _atexit_handler() -> None:
+    """Atexit handler for cleanup if signal handlers don't fire.
+
+    This is a fallback mechanism to ensure critical resources are cleaned up
+    even if the normal shutdown sequence doesn't complete (e.g., process killed
+    or abnormal termination). Closes database connections and logs cleanup.
+    """
+    logger.info("atexit handler triggered - performing emergency cleanup...")
+    try:
+        _close_all_connections()
+        logger.info("Database connections closed by atexit handler")
+    except Exception:
+        logger.exception("Error in atexit handler during database cleanup")
+
+
+def _signal_handler(signum: int, frame) -> None:
+    """Handle shutdown signals gracefully (SIGINT, SIGTERM).
+
+    Logs the signal receipt and initiates application shutdown. This handler
+    ensures graceful cleanup even if Uvicorn's shutdown sequence doesn't trigger.
+    """
+    sig_name = signal.Signals(signum).name
+    if is_shutting_down():
+        logger.warning(f"Signal {sig_name} ({signum}) received again, forcing exit...")
+        sys.exit(1)
+
+    initiate_shutdown(f"Signal {sig_name} ({signum})")
+    logger.info(f"Received {sig_name} ({signum}), initiating graceful shutdown...")
+    # Uvicorn will trigger lifespan shutdown sequence on signal
+    # We just log here to ensure visibility into the shutdown trigger
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan handler."""
+    """Application lifespan handler.
+
+    Manages startup and shutdown of all gateway components including:
+    - Configuration validation
+    - Monitoring and channels
+    - Scheduler and proxies
+    - HTTP client manager (circuit breakers, connection pools)
+    - Subagent executor
+    - Signal handlers for graceful shutdown
+    - Atexit handler as backup cleanup mechanism
+    """
+
+    # Register atexit handler as backup cleanup mechanism
+    atexit.register(_atexit_handler)
+
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+    logger.info("Signal handlers registered (SIGINT, SIGTERM)")
+    logger.info("Atexit handler registered as backup cleanup mechanism")
 
     # Load config and check necessary environment variables at startup
     try:

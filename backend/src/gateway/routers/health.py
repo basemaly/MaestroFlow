@@ -5,6 +5,7 @@ from contextlib import suppress
 
 from fastapi import APIRouter, Response
 
+from src.gateway.app_state import get_shutdown_reason, is_shutting_down
 from src.gateway.contracts import build_health_envelope
 from src.gateway.services.external_services import get_external_services_status
 from src.subagents.executor import get_subagent_pool_metrics, get_subagent_pool_size
@@ -146,6 +147,42 @@ async def subagent_pool_health() -> dict:
                 "memory_usage": f"{metrics.get('memory_percent', 0):.1f}%",
             },
             metrics=metrics,
+        ),
+        "error": None,
+    }
+
+
+@router.get("/shutdown-status")
+async def shutdown_status() -> dict:
+    """
+    Shutdown status endpoint.
+
+    Returns the current shutdown state of the application. Useful for load
+    balancers and orchestrators to understand if the application is in a
+    graceful shutdown sequence.
+
+    Returns:
+        - shutting_down: Boolean indicating if shutdown is in progress
+        - shutdown_reason: Reason for shutdown (if initiated)
+        - recommendations: Guidance for handling requests during shutdown
+    """
+    shutting_down = is_shutting_down()
+    shutdown_reason = get_shutdown_reason()
+
+    return {
+        "shutting_down": shutting_down,
+        "shutdown_reason": shutdown_reason,
+        "recommendations": ("No new requests should be accepted. Drain existing connections." if shutting_down else "Normal operation. All systems ready."),
+        "health": build_health_envelope(
+            configured=True,
+            available=not shutting_down,
+            healthy=not shutting_down,
+            summary=(f"Application shutting down: {shutdown_reason}" if shutting_down else "Application running normally"),
+            details={
+                "shutting_down": shutting_down,
+                "shutdown_reason": shutdown_reason,
+            },
+            metrics={"shutting_down": shutting_down},
         ),
         "error": None,
     }

@@ -28,6 +28,7 @@ _MOCKED_MODULE_NAMES = [
     "src.sandbox",
     "src.sandbox.middleware",
     "src.models",
+    "src.models.routing",
 ]
 
 
@@ -685,9 +686,10 @@ class TestModelResolution:
 
         return importlib.reload(executor)
 
-    def test_get_model_name_inherit_passes_through_claude_parent(
-        self, executor_module, classes
-    ):
+    def test_get_model_name_inherit_passes_through_claude_parent(self, executor_module, classes):
+        # Configure mock to say model is NOT rate limited
+        executor_module.is_rate_limited_model.return_value = False
+
         # Claude is no longer rate-limited; "inherit" returns the parent model directly.
         config = classes["SubagentConfig"](
             name="test-agent",
@@ -821,9 +823,7 @@ class TestCleanupBackgroundTask:
         # Should not raise
         executor_module.cleanup_background_task("nonexistent-task")
 
-    def test_cleanup_removes_task_with_completed_at_even_if_running(
-        self, executor_module, classes
-    ):
+    def test_cleanup_removes_task_with_completed_at_even_if_running(self, executor_module, classes):
         """Test that cleanup removes task if completed_at is set, even if status is RUNNING.
 
         This is a safety net: if completed_at is set, the task is considered done
