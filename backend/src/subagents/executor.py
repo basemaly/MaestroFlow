@@ -532,7 +532,7 @@ class SubagentExecutor:
         # Record metrics for performance monitoring
         exec_start = datetime.now()
         metric = record_subagent_start(
-            task_id=result_holder.task_id if result_holder else str(uuid.uuid4())[:8],
+            task_id=result_holder.task_id if result_holder is not None else str(uuid.uuid4())[:8],
             model_name=self.model_name or "inherit",
             queue_wait_seconds=0.0,
         )
