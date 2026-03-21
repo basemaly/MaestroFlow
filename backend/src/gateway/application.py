@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.gateway.config import get_gateway_config
 from src.gateway.middleware import RequestLoggingMiddleware
+from src.observability.middleware import MetricsMiddleware
 from src.gateway.routers import (
     activepieces,
     agents,
@@ -175,6 +176,7 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(MetricsMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(models.router)

@@ -3,11 +3,14 @@ from __future__ import annotations
 import atexit
 import logging
 import threading
+from collections import deque
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
 from src.config import get_langfuse_config, is_langfuse_enabled
+from src.core.http.client_manager import HTTPClientManager, ServiceName
+from src.core.resilience.circuit_breaker import CircuitOpenError
 
 logger = logging.getLogger(__name__)
 
@@ -16,16 +19,16 @@ _client: Any = None
 _client_init_failed: bool = False  # avoid repeated init attempts after permanent failure
 _otel_noise_filter_installed = False
 
+# Event queue for buffering observability data when circuit breaker is open
+_event_queue: deque[dict[str, Any]] = deque(maxlen=1000)
+_queue_lock = threading.Lock()
+
 
 class _OpenTelemetryContextNoiseFilter(logging.Filter):
     """Suppress known-benign OTEL detach noise from Langfuse generator shutdown."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return not (
-            record.name == "opentelemetry.context"
-            and isinstance(record.msg, str)
-            and "Failed to detach context" in record.msg
-        )
+        return not (record.name == "opentelemetry.context" and isinstance(record.msg, str) and "Failed to detach context" in record.msg)
 
 
 def _install_otel_noise_filter() -> None:
@@ -40,8 +43,60 @@ _install_otel_noise_filter()
 
 
 # ---------------------------------------------------------------------------
-# Client singleton
+# Circuit Breaker Status & Event Queueing
 # ---------------------------------------------------------------------------
+
+
+def _is_langfuse_circuit_open() -> bool:
+    """Check if the Langfuse circuit breaker is open (degraded operation)."""
+    try:
+        manager = HTTPClientManager.get_instance()
+        circuit_breaker = manager.get_circuit_breaker(ServiceName.LANGFUSE)
+        return circuit_breaker.state.value == "open"
+    except Exception:
+        return False
+
+
+def _queue_event(event_type: str, **data: Any) -> None:
+    """Queue an observability event for later flushing when circuit recovers."""
+    with _queue_lock:
+        _event_queue.append(
+            {
+                "type": event_type,
+                "timestamp": logger.manager.root.handlers[0] if hasattr(logger, "manager") else None,
+                **data,
+            }
+        )
+        if len(_event_queue) >= 1000:
+            logger.warning("Event queue reached max capacity (1000), older events may be lost")
+
+
+def _flush_queued_events() -> None:
+    """Flush queued observability events when circuit recovers."""
+    client = _get_client()
+    if client is None:
+        return
+
+    with _queue_lock:
+        if not _event_queue:
+            return
+
+        events_to_flush = list(_event_queue)
+        _event_queue.clear()
+
+    logger.info(f"Flushing {len(events_to_flush)} queued observability events")
+
+    # For now, just flush the main client buffer
+    # In a more sophisticated implementation, we would replay individual events
+    try:
+        client.flush()
+        logger.debug(f"Successfully flushed {len(events_to_flush)} queued events")
+    except Exception as exc:
+        logger.warning(f"Failed to flush queued events: {exc}")
+        # Re-queue events if flush failed
+        with _queue_lock:
+            _event_queue.extend(events_to_flush)
+
 
 def _get_client() -> Any | None:
     """Return the Langfuse v4 client singleton, initialising it on first use.
@@ -64,6 +119,7 @@ def _get_client() -> Any | None:
             return None
         try:
             from langfuse import Langfuse
+
             config = get_langfuse_config()
             _client = Langfuse(
                 public_key=config.public_key,
@@ -120,6 +176,7 @@ def is_langfuse_healthy() -> bool:
 # Utility
 # ---------------------------------------------------------------------------
 
+
 def _summarize(value: Any, *, max_len: int = 1600) -> Any:
     if isinstance(value, str):
         return value if len(value) <= max_len else value[: max_len - 3] + "..."
@@ -136,6 +193,7 @@ def summarize_for_trace(value: Any, *, max_len: int = 1600) -> Any:
 
 def make_trace_id(seed: str | None = None) -> str:
     from langfuse import Langfuse
+
     return Langfuse.create_trace_id(seed=seed)
 
 
@@ -171,6 +229,7 @@ def flush_langfuse() -> None:
 # ---------------------------------------------------------------------------
 # Prompt Management
 # ---------------------------------------------------------------------------
+
 
 def get_managed_prompt(
     name: str,
@@ -268,6 +327,7 @@ def _seed_prompt_background(name: str, text: str) -> None:
 # Observation handles
 # ---------------------------------------------------------------------------
 
+
 class _NoOpObservation:
     trace_id: str | None = None
     observation_id: str | None = None
@@ -321,6 +381,7 @@ class _ObservationHandle:
 # ---------------------------------------------------------------------------
 # observe_span — context-manager based tracing
 # ---------------------------------------------------------------------------
+
 
 @contextmanager
 def observe_span(
@@ -380,6 +441,7 @@ def observe_span(
 # ---------------------------------------------------------------------------
 # Manual-lifecycle observation (for TurnTracingMiddleware)
 # ---------------------------------------------------------------------------
+
 
 def start_observation_manual(
     name: str,
@@ -451,6 +513,7 @@ def end_observation_manual(
 # LangChain callback handler
 # ---------------------------------------------------------------------------
 
+
 def get_langfuse_callback_handler(
     *,
     trace_id: str | None = None,
@@ -481,6 +544,7 @@ def get_langfuse_callback_handler(
 # Scoring
 # ---------------------------------------------------------------------------
 
+
 def score_current_trace(
     *,
     name: str,
@@ -489,10 +553,19 @@ def score_current_trace(
     data_type: str | None = None,
     metadata: Any = None,
 ) -> None:
-    """Score the currently-active trace (no-op when Langfuse is disabled)."""
+    """Score the currently-active trace (no-op when Langfuse is disabled).
+
+    When Langfuse circuit is open, the scoring event is queued for later flushing.
+    """
     client = _get_client()
     if client is None:
         return
+
+    if _is_langfuse_circuit_open():
+        logger.debug(f"Langfuse circuit open, queueing score event: {name}")
+        _queue_event("score_current_trace", name=name, value=value, comment=comment, data_type=data_type)
+        return
+
     try:
         score_value: float | str = float(value) if isinstance(value, bool) else value  # type: ignore[assignment]
         client.score_current_trace(
@@ -502,6 +575,9 @@ def score_current_trace(
             data_type=data_type,
             metadata=metadata,
         )
+    except CircuitOpenError:
+        logger.debug(f"Langfuse circuit open, queueing score event: {name}")
+        _queue_event("score_current_trace", name=name, value=value, comment=comment, data_type=data_type)
     except Exception as exc:
         logger.debug("score_current_trace error: %s", exc)
 

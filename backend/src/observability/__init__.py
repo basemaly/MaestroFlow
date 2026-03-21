@@ -15,8 +15,21 @@ from .langfuse import (
     summarize_for_trace,
     upsert_prompt,
 )
+from .metrics import (
+    measure_db_query_time,
+    measure_connection_wait_time,
+    measure_queue_processing_time,
+    measure_http_request,
+    record_cache_operation,
+    record_exception,
+    set_pool_metrics,
+    set_queue_depth,
+    set_memory_metrics,
+    set_health_score,
+)
 
 __all__ = [
+    # Langfuse
     "end_observation_manual",
     "flush_langfuse",
     "get_current_observation_id",
@@ -32,4 +45,15 @@ __all__ = [
     "start_observation_manual",
     "summarize_for_trace",
     "upsert_prompt",
+    # Metrics helpers
+    "measure_db_query_time",
+    "measure_connection_wait_time",
+    "measure_queue_processing_time",
+    "measure_http_request",
+    "record_cache_operation",
+    "record_exception",
+    "set_pool_metrics",
+    "set_queue_depth",
+    "set_memory_metrics",
+    "set_health_score",
 ]

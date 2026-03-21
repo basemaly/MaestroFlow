@@ -16,6 +16,71 @@ import threading
 
 logger = logging.getLogger(__name__)
 
+# Import metrics for pool monitoring
+try:
+    from src.observability.metrics import (
+        measure_connection_wait_time,
+        measure_db_query_time,
+        db_connections_active,
+        db_connections_total,
+        db_connections_reused,
+    )
+
+    METRICS_ENABLED = True
+except ImportError:
+    METRICS_ENABLED = False
+    logger.warning("Prometheus metrics not available; continuing without metrics")
+
+
+class _MetricsEnabledConnection:
+    """Wrapper around sqlite3.Connection to track query latency metrics.
+
+    Transparently wraps execute() and executemany() calls with timing measurement
+    when metrics are enabled. For all other operations, delegates to the underlying
+    connection.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def execute(self, sql: str, parameters: tuple | None = None):
+        """Execute SQL with latency tracking if metrics enabled."""
+        if not METRICS_ENABLED:
+            return self._conn.execute(sql, parameters) if parameters else self._conn.execute(sql)
+
+        with measure_db_query_time(query_type=self._get_query_type(sql)):
+            return self._conn.execute(sql, parameters) if parameters else self._conn.execute(sql)
+
+    def executemany(self, sql: str, seq):
+        """Execute SQL multiple times with latency tracking if metrics enabled."""
+        if not METRICS_ENABLED:
+            return self._conn.executemany(sql, seq)
+
+        with measure_db_query_time(query_type=self._get_query_type(sql)):
+            return self._conn.executemany(sql, seq)
+
+    @staticmethod
+    def _get_query_type(sql: str) -> str:
+        """Extract query type from SQL string."""
+        sql_upper = sql.strip().upper()
+        if sql_upper.startswith("SELECT"):
+            return "select"
+        elif sql_upper.startswith("INSERT"):
+            return "insert"
+        elif sql_upper.startswith("UPDATE"):
+            return "update"
+        elif sql_upper.startswith("DELETE"):
+            return "delete"
+        elif sql_upper.startswith("CREATE"):
+            return "create"
+        else:
+            return "other"
+
+    def __getattr__(self, name: str):
+        """Delegate all other attributes/methods to the underlying connection."""
+        return getattr(self._conn, name)
+
+
 # Connection pool configuration
 MAX_POOL_SIZE = int(os.getenv("EXECUTOR_DB_MAX_POOL_SIZE", "20"))
 POOL_IDLE_TIMEOUT_SECONDS = int(os.getenv("EXECUTOR_DB_POOL_IDLE_TIMEOUT", "300"))
@@ -95,9 +160,20 @@ def _db_conn():
         conn = _connection_pool[conn_key]
         _pool_last_accessed[conn_key] = time.time()
 
+        # Update metrics (only if metrics are available)
+        if METRICS_ENABLED:
+            try:
+                db_connections_active.labels(pool_name="executive").set(len(_connection_pool))
+            except Exception as e:
+                logger.warning(f"Failed to update metrics: {e}")
+
     _ensure_schema(conn)
+
+    # Wrap connection with metrics tracking
+    wrapped_conn = _MetricsEnabledConnection(conn) if METRICS_ENABLED else conn
+
     try:
-        yield conn
+        yield wrapped_conn
         conn.commit()
     except Exception:
         conn.rollback()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from contextlib import suppress
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from src.gateway.contracts import build_health_envelope
 from src.gateway.services.external_services import get_external_services_status
@@ -87,3 +87,26 @@ async def external_services_health() -> dict:
         ),
         "error": None,
     }
+
+
+@router.get("/metrics")
+async def prometheus_metrics() -> Response:
+    """
+    Prometheus metrics endpoint.
+
+    Returns metrics in Prometheus text exposition format (version 0.0.4).
+    """
+    try:
+        from prometheus_client import generate_latest, REGISTRY
+
+        metrics_output = generate_latest(REGISTRY)
+        return Response(
+            content=metrics_output,
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+    except ImportError:
+        return Response(
+            content="# Prometheus client not installed\n",
+            media_type="text/plain",
+            status_code=503,
+        )
