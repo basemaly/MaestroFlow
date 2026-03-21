@@ -1,0 +1,124 @@
+# Windsurf Rules — Shared-Context & Mengram Memory Integration
+
+You are an AI coding assistant operating in a multi-IDE shared-memory environment.
+
+## Memory System Setup
+
+This workspace uses two integrated memory systems:
+
+1. **Shared-Context Vault** (`/Volumes/BA/DEV/Shared-Context/`)
+   - Human-auditable source of truth for architecture, decisions, project state
+   - Git-synced every 15 min via launchd
+   - Tiered access: Hot (WORKSPACE.md, ARCHITECTURE.md, DECISIONS.md) → Warm (SYSTEM/) → Cold (archives)
+
+2. **Mengram Semantic Memory** (MCP-backed)
+   - Durable facts, preferences, procedures, project summaries
+   - Call `search_memory(query)` at session start with current task
+   - Use `add_memories(items)` to save any user decisions, preferences, or technical context
+
+## Session Startup Protocol
+
+**ALWAYS DO THIS FIRST:**
+
+1. Identify the current project (from user message or pwd)
+2. Call `search_memory(query="{project_name} architecture setup")` to load project facts
+3. If known project: Read `/Volumes/BA/DEV/Shared-Context/WORKSPACES/{project}/WORKSPACE.md`
+4. Then read: `ARCHITECTURE.md`, then `DECISIONS.md` (in order)
+5. Use retrieved context to inform all code changes
+
+**Example startup (MaestroFlow project):**
+```
+User: "Help me fix the MaestroFlow deployment bug"
+↓
+[Agent] Call: search_memory("MaestroFlow deployment architecture")
+↓
+[Agent] Read: /Volumes/BA/DEV/Shared-Context/WORKSPACES/MaestroFlow/WORKSPACE.md
+↓
+[Agent] Read: ARCHITECTURE.md (tech stack, API structure)
+↓
+[Agent] Read: DECISIONS.md (past bug fixes, deployment lessons)
+↓
+[Agent] → Now respond with full context
+```
+
+## Context Tiers
+
+**Hot (Load Always):**
+- `WORKSPACE.md` — Project summary, active state, promoted context
+- `ARCHITECTURE.md` — Stable structure, tech stack, naming conventions
+- `DECISIONS.md` — Major decisions with rationale (prevents repeating mistakes)
+
+**Warm (Load If Touching That Area):**
+- `/Shared-Context/SYSTEM/Context-Tiers.md` — How to use tiered retrieval
+- `/Shared-Context/SYSTEM/Agent-Startup-Protocol.md` — Cross-agent workflow rules
+
+**Cold (Load On Demand):**
+- Deeper project notes, old specs, archives
+- Request from user: "Tell me about past attempts to solve X"
+
+## Code Quality Standards
+
+- **Before writing code:** Search memory for existing implementations, established patterns, prior decisions
+- **After writing code:** Save decision to memory if it resolves ambiguity or affects future changes
+  ```
+  add_memories([{
+    type: "decision",
+    entity: "MaestroFlow",
+    content: "Chose PostgreSQL over SQLite for connection pooling in production"
+  }])
+  ```
+- **Use established patterns** from ARCHITECTURE.md over creating new conventions
+- **Reference memory facts** in your response: "Per MaestroFlow ARCHITECTURE.md, the API uses..."
+
+## Multi-IDE Coordination
+
+When work spans multiple IDEs (OpenCode, Claude Code, Cursor, Windsurf, Gemini):
+- All agents read same Shared-Context vault
+- All agents write to same Mengram memory
+- Use `procedure_id` to resume work started in another IDE
+
+Example: If OpenCode started fixing bug #42:
+```
+Windsurf: search_memory("bug 42 fix status")
+→ Retrieve: "Cursor analyzed issue, found root cause in auth.ts:145"
+→ Continue from there, don't restart analysis
+```
+
+## Handoff Between Sessions
+
+When ending a session or passing work to another agent:
+1. Update relevant `WORKSPACE.md` or `DECISIONS.md`
+2. Call `add_memories()` with session summary:
+   ```
+   add_memories([{
+     type: "handoff",
+     entity: "ProjectName",
+     content: "Completed X, next step is Y. See commit abc1234."
+   }])
+   ```
+3. Commit Shared-Context changes if you touched vault files
+
+## Key Directories
+
+- **Project root:** `/Volumes/BA/DEV`
+- **Shared-Context vault:** `/Volumes/BA/DEV/Shared-Context/` (read-only for code agents)
+- **Auto Run docs:** `/Volumes/BA/DEV/Auto Run Docs/` (shared playbooks)
+- **Individual projects:** `/Volumes/BA/DEV/WORKSPACE/{ProjectName}/` (writable)
+
+## Tools Available
+
+- `read` — Read vault files and project docs
+- `mengram_recall`, `mengram_search` — Query memory
+- `mengram_remember` — Save facts and decisions
+- `jcodemunch_search_symbols`, `CodeGraphContext_*` — Code indexing (read-only)
+- `bash` — Git, npm, docker, etc. (prefer in your project workspace)
+
+## When to Ask for Help
+
+- If a task requires decisions outside the current project scope → search memory first
+- If context conflicts with memory → update DECISIONS.md to resolve
+- If you need to modify Shared-Context (rare) → ask user before committing
+
+---
+
+**Status:** Memory system active. Ready to load project context on every session.
