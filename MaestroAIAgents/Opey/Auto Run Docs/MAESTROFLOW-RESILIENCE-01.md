@@ -290,11 +290,58 @@ This document outlines the implementation plan for adding circuit breakers and i
    - **Implementation Location**: `src/gateway/routers/health.py` lines 95-159
    - **Status**: Verified and syntax-checked ✓
 
-- [ ] Add Prometheus metrics for: circuit breaker state changes, connection pool utilization, subagent pool metrics, request success/failure rates
+- [x] Add Prometheus metrics for: circuit breaker state changes, connection pool utilization, subagent pool metrics, request success/failure rates
+  - **Completed**: Added comprehensive Prometheus metrics integration across all resilience components
+  - **Circuit Breaker Metrics**: `circuit_breaker_state`, `circuit_breaker_state_changes_total`, `circuit_breaker_failures_total`, `circuit_breaker_successes_total`, `circuit_breaker_open_duration_seconds`, `circuit_breaker_half_open_attempts_total`
+  - **HTTP Client Metrics**: `http_client_pool_connections_active`, `http_client_pool_connections_total`, `http_client_pool_utilization`, `http_client_request_duration_seconds`, `http_client_requests_total`, `http_client_retries_total`
+  - **Subagent Pool Metrics**: `subagent_pool_size`, `subagent_pool_active_workers`, `subagent_pool_pending_tasks`, `subagent_pool_queue_depth`, `subagent_task_duration_seconds`, `subagent_tasks_total`, `subagent_pool_size_adjustments_total`, `subagent_pool_cpu_utilization`, `subagent_pool_memory_utilization`, `subagent_pool_health_score`
+  - **Connection Pool Metrics**: `httpx_connection_pool_connections`, `httpx_connection_pool_timeouts_total`
+  - **Integration Points**:
+    - Circuit breaker now records state changes, successes, and failures via metric functions
+    - HTTP client manager records pool utilization and request metrics on all calls
+    - Subagent executor records task completion with status and duration, pool adjustments with direction
+    - Pool adjustment task records metrics every 30 seconds with calculated health scores
+  - **Documentation**: Created `/backend/docs/PROMETHEUS_METRICS.md` with full reference including alerting rules and Prometheus queries
+  - **Status**: Complete and verified ✓
 
-- [ ] Implement alerting thresholds: circuit open for > 5 minutes, connection pool > 90% utilized, subagent queue depth > 100, system resources > 85%
+- [x] Implement alerting thresholds: circuit open for > 5 minutes, connection pool > 90% utilized, subagent queue depth > 100, system resources > 85%
+  - **Completed**: Comprehensive alerting rules and procedures implemented
+  - **Alert Definitions** (14 rules total):
+    - **Circuit Breaker**: CircuitBreakerOpen, CircuitBreakerOpenTooLong (>5m), HighFailureRate (>20%), ExcessiveRetries
+    - **Connection Pool**: HighUtilization (>90%), Exhausted, HighLatency (p95 > 5s)
+    - **Subagent Pool**: HealthDegraded (<50), QueueBacklog (>100), HighFailureRate (>10%), PoolExhausted
+    - **System Resources**: HighCPU (>85%), CriticalCPU (>95%), HighMemory (>85%), CriticalMemory (>95%)
+  - **Files Created**:
+    - `/backend/docs/ALERTING_RULES.md` - Comprehensive alerting documentation with response procedures
+    - `/backend/config/prometheus-alerts.yml` - Production-ready Prometheus alert rules in YAML format
+  - **Alert Severity Levels**:
+    - Critical (P1): Page on-call engineer immediately (pool exhausted, circuit open >5m, critical resources)
+    - Warning (P2): Team lead review within 15 minutes (high utilization, failure rates, backlog)
+    - Informational (P3): Passive monitoring (trend analysis)
+  - **Runbook Integration**: All critical alerts include runbook links and escalation procedures
+  - **Status**: Complete and verified ✓
 
-- [ ] Add structured logging for all circuit breaker events and pool adjustments
+- [x] Add structured logging for all circuit breaker events and pool adjustments
+  - **Completed**: Comprehensive structured logging module implemented and integrated
+  - **New Module**: `src/observability/structured_logging.py` with event-based logging system
+  - **Event Types** (6 categories):
+    - **Circuit Breaker Events**: `circuit_opened()`, `circuit_closed()`, `circuit_half_open()`, `circuit_failure_recorded()`, `circuit_success_recorded()`, `circuit_rejected_request()`
+    - **HTTP Request Events**: `http_request_timeout()`, `http_request_retry()`, `http_request_failed()`, `http_request_success()`
+    - **Subagent Pool Events**: `pool_size_adjusted()`, `subagent_task_started()`, `subagent_task_completed()`, `subagent_queue_backlog()`, `pool_worker_started()`, `pool_worker_stopped()`
+    - **System Resource Events**: `high_cpu_usage()`, `high_memory_usage()`, `resource_constrained()`
+  - **Data Structure**: `ResilientEvent` dataclass with timestamp, event_id, category, severity, service, message, details, duration_ms, error, trace_id
+  - **Integration Points**:
+    - **Circuit Breaker** (`src/core/resilience/circuit_breaker.py`):
+      - State transitions logged with failure/success counts and duration calculations
+      - HTTP request success/timeout/failure/retry events logged in `call()` method with duration and status
+      - Circuit rejection logged when requests are blocked by open circuit
+      - Fixed duration calculation for CLOSED state by tracking `_last_open_time`
+    - **Subagent Executor** (`src/subagents/executor.py`):
+      - Pool size adjustments logged with old/new size, direction, and load/resource metrics
+      - Structured logger import added and integrated into dynamic pool sizing task
+  - **Error Handling**: All logging wrapped in try-except blocks to prevent metric/logging failures from breaking main logic
+  - **Backward Compatibility**: Works seamlessly with existing Prometheus metrics system
+  - **Status**: Complete and verified ✓
 
 ## Phase 10: Testing and Documentation
 
