@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 from threading import Lock
+import time
 
 import httpx
 
@@ -23,6 +24,11 @@ from src.core.resilience.circuit_breaker import (
     CircuitOpenError,
 )
 from src.config.resilience_config import get_resilience_config
+from src.observability.metrics import (
+    set_http_client_pool_metrics,
+    record_http_client_request,
+    record_http_client_retry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -222,20 +228,54 @@ class HTTPClientManager:
             response.raise_for_status()
             return response.json()
 
+        request_start = time.time()
         try:
-            return await circuit_breaker.call(_make_request)
+            result = await circuit_breaker.call(_make_request)
+            duration = time.time() - request_start
+            try:
+                record_http_client_request(
+                    service=service.value,
+                    status="success",
+                    duration_seconds=duration,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to record request metric: {e}")
+            return result
         except CircuitOpenError:
+            duration = time.time() - request_start
             logger.warning(f"Circuit breaker for {service.value} is OPEN")
             if use_fallback and config.fallback_url:
                 logger.info(f"Attempting fallback URL for {service.value}: {config.fallback_url}")
-                async with httpx.AsyncClient(
-                    base_url=config.fallback_url,
-                    headers=config.headers,
-                    timeout=config.timeout,
-                ) as fallback_client:
-                    response = await fallback_client.request(method, path, **kwargs)
-                    response.raise_for_status()
-                    return response.json()
+                try:
+                    async with httpx.AsyncClient(
+                        base_url=config.fallback_url,
+                        headers=config.headers,
+                        timeout=config.timeout,
+                    ) as fallback_client:
+                        response = await fallback_client.request(method, path, **kwargs)
+                        response.raise_for_status()
+                        fallback_duration = time.time() - request_start
+                        try:
+                            record_http_client_request(
+                                service=service.value,
+                                status="success",
+                                duration_seconds=fallback_duration,
+                            )
+                        except Exception as e:
+                            logger.debug(f"Failed to record fallback metric: {e}")
+                        return response.json()
+                except Exception as e:
+                    try:
+                        fallback_duration = time.time() - request_start
+                        record_http_client_request(
+                            service=service.value,
+                            status="failure",
+                            duration_seconds=fallback_duration,
+                        )
+                    except Exception as ex:
+                        logger.debug(f"Failed to record fallback failure metric: {ex}")
+                    raise
+            raise
             raise
 
     async def get_service_health(self, service: ServiceName) -> ClientHealth:

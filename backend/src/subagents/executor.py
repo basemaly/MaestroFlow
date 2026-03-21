@@ -24,6 +24,11 @@ from src.agents.thread_state import SandboxState, ThreadDataState, ThreadState
 from src.models import create_chat_model
 from src.models.routing import is_rate_limited_model, resolve_diverse_subagent_model, resolve_lightweight_fallback_model
 from src.observability import get_current_observation_id, make_trace_id, observe_span
+from src.observability.metrics import (
+    set_subagent_pool_metrics,
+    record_subagent_task,
+    record_subagent_pool_size_adjustment,
+)
 from src.subagents.config import SubagentConfig
 from src.subagents.monitoring import log_metrics_summary, record_subagent_completion, record_subagent_start
 
@@ -199,9 +204,11 @@ async def _adjust_pool_size_task():
                     if new_size > old_size:
                         # Add new semaphore slots
                         _execution_semaphore = asyncio.Semaphore(new_size)
+                        direction = "up"
                     else:
                         # Reduce semaphore slots (current tasks will complete naturally)
                         _execution_semaphore = asyncio.Semaphore(new_size)
+                        direction = "down"
 
                     _current_pool_size = new_size
 
@@ -209,7 +216,43 @@ async def _adjust_pool_size_task():
                         _pool_metrics["last_adjustment"] = datetime.now()
                         _pool_metrics["adjustment_history"].append((datetime.now(), old_size, new_size))
 
+                # Record Prometheus metrics
+                try:
+                    record_subagent_pool_size_adjustment(direction=direction)
+                except Exception as e:
+                    logger.debug(f"Failed to record pool adjustment metric: {e}")
+
                 logger.info(f"Adjusted subagent pool size: {old_size} -> {new_size} (queue_depth={queue_depth}, active={active}, cpu={cpu_percent:.1f}%, memory={memory_percent:.1f}%)")
+
+            # Record pool metrics
+            try:
+                # Calculate health score
+                health_score = 100.0
+                if cpu_percent > 90:
+                    health_score -= 20
+                elif cpu_percent > 80:
+                    health_score -= 10
+                if memory_percent > 95:
+                    health_score -= 20
+                elif memory_percent > 85:
+                    health_score -= 10
+                if queue_depth > (_current_pool_size * 2):
+                    health_score -= 15
+
+                health_score = max(0.0, health_score)
+
+                set_subagent_pool_metrics(
+                    pool_size=_current_pool_size,
+                    active_workers=active,
+                    pending_tasks=queue_depth,
+                    queue_depth=queue_depth,
+                    cpu_utilization=cpu_percent,
+                    memory_utilization=memory_percent,
+                    health_score=health_score,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to record pool metrics: {e}")
+
         except Exception as e:
             logger.error(f"Error adjusting pool size: {e}")
 
@@ -559,10 +602,27 @@ class SubagentExecutor:
             future = asyncio.run_coroutine_threadsafe(_run_sync(), _bg_loop)
             result = future.result()
             record_subagent_completion(metric, status=result.status.value)
+
+            # Record Prometheus metrics
+            try:
+                duration = (result.completed_at - exec_start).total_seconds() if result.completed_at else 0.0
+                status_str = "success" if result.status == SubagentStatus.COMPLETED else ("failure" if result.status == SubagentStatus.FAILED else "timeout" if result.status == SubagentStatus.TIMED_OUT else "cancelled")
+                record_subagent_task(status=status_str, duration_seconds=duration)
+            except Exception as e:
+                logger.debug(f"Failed to record subagent task metric: {e}")
+
             return result
         except Exception as e:
             logger.exception(f"[trace={self.trace_id}] Subagent {self.config.name} execution failed")
             record_subagent_completion(metric, status="failed")
+
+            # Record failure metric
+            try:
+                duration = (datetime.now() - exec_start).total_seconds()
+                record_subagent_task(status="failure", duration_seconds=duration)
+            except Exception as ex:
+                logger.debug(f"Failed to record task failure metric: {ex}")
+
             # Create a result with error if we don't have one
             if result_holder is not None:
                 result = result_holder

@@ -14,6 +14,16 @@ from enum import Enum
 from threading import Lock
 from typing import Any, Callable, Dict, Optional, TypeVar, Awaitable
 
+from observability.metrics import (
+    record_circuit_breaker_state_change,
+    record_circuit_breaker_failure,
+    record_circuit_breaker_success,
+    record_circuit_breaker_open_duration,
+    record_circuit_breaker_half_open_attempt,
+    record_http_client_request,
+    record_http_client_retry,
+)
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -33,9 +43,7 @@ class CircuitBreakerConfig:
 
     # Failure thresholds
     failure_threshold: int = 5  # Open circuit after N consecutive failures
-    success_threshold: int = (
-        2  # Close circuit after N consecutive successes in half-open
-    )
+    success_threshold: int = 2  # Close circuit after N consecutive successes in half-open
 
     # Timing
     timeout: float = 30.0  # Request timeout in seconds
@@ -179,9 +187,17 @@ class CircuitBreaker:
             }
         )
 
-        logger.info(
-            f"Circuit breaker '{self.name}' state changed: {old_state.value} -> {new_state.value}"
-        )
+        logger.info(f"Circuit breaker '{self.name}' state changed: {old_state.value} -> {new_state.value}")
+
+        # Record Prometheus metrics
+        try:
+            record_circuit_breaker_state_change(
+                service=self.name,
+                from_state=old_state.value.upper(),
+                to_state=new_state.value.upper(),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record circuit breaker state change metric: {e}")
 
         if self.on_state_change:
             self.on_state_change(old_state, new_state)
@@ -196,6 +212,12 @@ class CircuitBreaker:
             elif self._state == CircuitState.CLOSED:
                 self._failure_count = 0  # Reset failure count on success
 
+            # Record Prometheus metric
+            try:
+                record_circuit_breaker_success(service=self.name)
+            except Exception as e:
+                logger.warning(f"Failed to record circuit breaker success metric: {e}")
+
     def _record_failure(self) -> None:
         """Record a failed request."""
         with self._lock:
@@ -207,6 +229,12 @@ class CircuitBreaker:
                 self._failure_count += 1
                 if self._failure_count >= self.config.failure_threshold:
                     self._transition_to(CircuitState.OPEN)
+
+            # Record Prometheus metric
+            try:
+                record_circuit_breaker_failure(service=self.name)
+            except Exception as e:
+                logger.warning(f"Failed to record circuit breaker failure metric: {e}")
 
     async def call(self, func: Callable[..., Awaitable[T]], *args, **kwargs) -> T:
         """
@@ -228,6 +256,10 @@ class CircuitBreaker:
         # Check circuit state
         if self.state == CircuitState.OPEN:
             self.metrics.rejected_requests += 1
+            try:
+                record_http_client_request(service=self.name, status="open", duration_seconds=0.0)
+            except Exception as e:
+                logger.warning(f"Failed to record circuit breaker open metric: {e}")
             raise CircuitOpenError(f"Circuit breaker '{self.name}' is OPEN")
 
         start_time = time.time()
@@ -236,29 +268,41 @@ class CircuitBreaker:
         for attempt in range(self.config.max_retries):
             try:
                 # Add timeout to the call
-                result = await asyncio.wait_for(
-                    func(*args, **kwargs), timeout=self.config.timeout
-                )
+                result = await asyncio.wait_for(func(*args, **kwargs), timeout=self.config.timeout)
 
                 # Record success
                 duration = time.time() - start_time
                 self.metrics.record_request(duration, success=True)
                 self._record_success()
 
+                # Record Prometheus metric
+                try:
+                    record_http_client_request(service=self.name, status="success", duration_seconds=duration)
+                except Exception as e:
+                    logger.warning(f"Failed to record HTTP client request metric: {e}")
+
                 return result
 
             except asyncio.TimeoutError as e:
                 self.metrics.timeouts += 1
                 last_exception = e
-                logger.warning(
-                    f"Circuit breaker '{self.name}' timeout on attempt {attempt + 1}"
-                )
+                logger.warning(f"Circuit breaker '{self.name}' timeout on attempt {attempt + 1}")
+                # Record timeout metric
+                try:
+                    duration = time.time() - start_time
+                    record_http_client_request(service=self.name, status="timeout", duration_seconds=duration)
+                except Exception as ex:
+                    logger.warning(f"Failed to record timeout metric: {ex}")
 
             except Exception as e:
                 last_exception = e
-                logger.warning(
-                    f"Circuit breaker '{self.name}' error on attempt {attempt + 1}: {e}"
-                )
+                logger.warning(f"Circuit breaker '{self.name}' error on attempt {attempt + 1}: {e}")
+                # Record failure metric
+                try:
+                    duration = time.time() - start_time
+                    record_http_client_request(service=self.name, status="failure", duration_seconds=duration)
+                except Exception as ex:
+                    logger.warning(f"Failed to record failure metric: {ex}")
 
             # Calculate retry delay with exponential backoff
             if attempt < self.config.max_retries - 1:
@@ -273,6 +317,12 @@ class CircuitBreaker:
 
                     delay *= 0.5 + random.random()
 
+                # Record retry metric
+                try:
+                    record_http_client_retry(service=self.name)
+                except Exception as e:
+                    logger.warning(f"Failed to record retry metric: {e}")
+
                 await asyncio.sleep(delay)
 
         # All retries failed
@@ -280,9 +330,7 @@ class CircuitBreaker:
         self.metrics.record_request(duration, success=False)
         self._record_failure()
 
-        raise last_exception or Exception(
-            f"Circuit breaker '{self.name}' failed after {self.config.max_retries} retries"
-        )
+        raise last_exception or Exception(f"Circuit breaker '{self.name}' failed after {self.config.max_retries} retries")
 
     def get_health_status(self) -> Dict[str, Any]:
         """Get current health status and metrics."""
@@ -299,12 +347,8 @@ class CircuitBreaker:
                     "active_connections": self.metrics.active_connections,
                     "idle_connections": self.metrics.idle_connections,
                 },
-                "last_failure": self.metrics.last_failure_time.isoformat()
-                if self.metrics.last_failure_time
-                else None,
-                "last_success": self.metrics.last_success_time.isoformat()
-                if self.metrics.last_success_time
-                else None,
+                "last_failure": self.metrics.last_failure_time.isoformat() if self.metrics.last_failure_time else None,
+                "last_success": self.metrics.last_success_time.isoformat() if self.metrics.last_success_time else None,
             }
 
     def reset(self) -> None:
@@ -315,9 +359,7 @@ class CircuitBreaker:
             self._success_count = 0
             logger.info(f"Circuit breaker '{self.name}' manually reset")
 
-    def update_pool_metrics(
-        self, active: int, idle: int, pending: int, errors: int = 0
-    ) -> None:
+    def update_pool_metrics(self, active: int, idle: int, pending: int, errors: int = 0) -> None:
         """Update connection pool metrics."""
         if not self.config.monitor_pool:
             return
@@ -331,10 +373,7 @@ class CircuitBreaker:
             # Check pool health
             total_connections = active + idle
             if total_connections >= self.config.pool_max_connections * 0.9:
-                logger.warning(
-                    f"Connection pool for '{self.name}' near capacity: "
-                    f"{total_connections}/{self.config.pool_max_connections}"
-                )
+                logger.warning(f"Connection pool for '{self.name}' near capacity: {total_connections}/{self.config.pool_max_connections}")
 
 
 class CircuitOpenError(Exception):

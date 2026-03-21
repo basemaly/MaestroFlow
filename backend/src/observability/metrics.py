@@ -523,6 +523,271 @@ def set_health_score(overall_score: float, component_scores: dict[str, float] | 
 
 
 # ============================================================================
+# Circuit Breaker Metric Functions
+# ============================================================================
+
+
+def record_circuit_breaker_state_change(service: str, from_state: str, to_state: str) -> None:
+    """
+    Record a circuit breaker state change.
+
+    Args:
+        service: Service name
+        from_state: Previous state (CLOSED, OPEN, HALF_OPEN)
+        to_state: New state (CLOSED, OPEN, HALF_OPEN)
+
+    Usage:
+        record_circuit_breaker_state_change("surfsense", "CLOSED", "OPEN")
+    """
+    with _metrics_lock:
+        circuit_breaker_state_changes_total.labels(service=service, from_state=from_state, to_state=to_state).inc()
+        # Map state to numeric value
+        state_map = {"CLOSED": 0, "OPEN": 1, "HALF_OPEN": 2}
+        circuit_breaker_state.labels(service=service).set(state_map.get(to_state, 0))
+
+
+def record_circuit_breaker_failure(service: str) -> None:
+    """
+    Record a failure in circuit breaker.
+
+    Args:
+        service: Service name
+
+    Usage:
+        record_circuit_breaker_failure("litellm")
+    """
+    with _metrics_lock:
+        circuit_breaker_failures_total.labels(service=service).inc()
+
+
+def record_circuit_breaker_success(service: str) -> None:
+    """
+    Record a success in circuit breaker.
+
+    Args:
+        service: Service name
+
+    Usage:
+        record_circuit_breaker_success("langfuse")
+    """
+    with _metrics_lock:
+        circuit_breaker_successes_total.labels(service=service).inc()
+
+
+def record_circuit_breaker_open_duration(service: str, duration_seconds: float) -> None:
+    """
+    Record the duration circuit breaker was in OPEN state.
+
+    Args:
+        service: Service name
+        duration_seconds: Duration in seconds
+
+    Usage:
+        record_circuit_breaker_open_duration("surfsense", 45.5)
+    """
+    with _metrics_lock:
+        circuit_breaker_open_duration_seconds.labels(service=service).observe(duration_seconds)
+
+
+def record_circuit_breaker_half_open_attempt(service: str) -> None:
+    """
+    Record a half-open state attempt.
+
+    Args:
+        service: Service name
+
+    Usage:
+        record_circuit_breaker_half_open_attempt("openvking")
+    """
+    with _metrics_lock:
+        circuit_breaker_half_open_attempts_total.labels(service=service).inc()
+
+
+# ============================================================================
+# HTTP Client Manager Metric Functions
+# ============================================================================
+
+
+def set_http_client_pool_metrics(
+    service: str,
+    active_connections: int,
+    total_capacity: int,
+) -> None:
+    """
+    Update HTTP client pool metrics.
+
+    Args:
+        service: Service name
+        active_connections: Current active connections
+        total_capacity: Total pool capacity
+
+    Usage:
+        set_http_client_pool_metrics("surfsense", active_connections=3, total_capacity=10)
+    """
+    with _metrics_lock:
+        http_client_pool_connections_active.labels(service=service).set(active_connections)
+        http_client_pool_connections_total.labels(service=service).set(total_capacity)
+        if total_capacity > 0:
+            utilization = active_connections / total_capacity
+            http_client_pool_utilization.labels(service=service).set(utilization)
+
+
+def record_http_client_request(
+    service: str,
+    status: str,
+    duration_seconds: float,
+) -> None:
+    """
+    Record an HTTP client request via circuit breaker.
+
+    Args:
+        service: Service name
+        status: Request status (success, failure, timeout, open)
+        duration_seconds: Request duration in seconds
+
+    Usage:
+        record_http_client_request("litellm", "success", 0.45)
+    """
+    with _metrics_lock:
+        http_client_request_duration_seconds.labels(service=service, status=status).observe(duration_seconds)
+        http_client_requests_total.labels(service=service, status=status).inc()
+
+
+def record_http_client_retry(service: str) -> None:
+    """
+    Record an HTTP client retry attempt.
+
+    Args:
+        service: Service name
+
+    Usage:
+        record_http_client_retry("langfuse")
+    """
+    with _metrics_lock:
+        http_client_retries_total.labels(service=service).inc()
+
+
+# ============================================================================
+# Subagent Pool Metric Functions
+# ============================================================================
+
+
+def set_subagent_pool_metrics(
+    pool_size: int,
+    active_workers: int,
+    pending_tasks: int,
+    queue_depth: int,
+    cpu_utilization: float,
+    memory_utilization: float,
+    health_score: float,
+) -> None:
+    """
+    Update subagent pool metrics.
+
+    Args:
+        pool_size: Current pool size
+        active_workers: Current active workers
+        pending_tasks: Pending tasks count
+        queue_depth: Queue depth
+        cpu_utilization: CPU utilization (0-100)
+        memory_utilization: Memory utilization (0-100)
+        health_score: Overall health score (0-100)
+
+    Usage:
+        set_subagent_pool_metrics(
+            pool_size=8,
+            active_workers=5,
+            pending_tasks=12,
+            queue_depth=2,
+            cpu_utilization=45.5,
+            memory_utilization=62.3,
+            health_score=85.0,
+        )
+    """
+    with _metrics_lock:
+        subagent_pool_size.set(pool_size)
+        subagent_pool_active_workers.set(active_workers)
+        subagent_pool_pending_tasks.set(pending_tasks)
+        subagent_pool_queue_depth.set(queue_depth)
+        subagent_pool_cpu_utilization.set(cpu_utilization)
+        subagent_pool_memory_utilization.set(memory_utilization)
+        subagent_pool_health_score.set(health_score)
+
+
+def record_subagent_task(
+    status: str,
+    duration_seconds: float,
+) -> None:
+    """
+    Record a subagent task execution.
+
+    Args:
+        status: Task status (success, failure, timeout, cancelled)
+        duration_seconds: Task duration in seconds
+
+    Usage:
+        record_subagent_task("success", 2.45)
+    """
+    with _metrics_lock:
+        subagent_task_duration_seconds.labels(status=status).observe(duration_seconds)
+        subagent_tasks_total.labels(status=status).inc()
+
+
+def record_subagent_pool_size_adjustment(direction: str) -> None:
+    """
+    Record a subagent pool size adjustment.
+
+    Args:
+        direction: Adjustment direction (up, down, stable)
+
+    Usage:
+        record_subagent_pool_size_adjustment("up")
+    """
+    with _metrics_lock:
+        subagent_pool_size_adjustments_total.labels(direction=direction).inc()
+
+
+# ============================================================================
+# Connection Pool Health Metric Functions
+# ============================================================================
+
+
+def set_httpx_connection_pool_metrics(
+    pool_id: str,
+    idle_connections: int,
+    busy_connections: int,
+) -> None:
+    """
+    Update httpx connection pool metrics.
+
+    Args:
+        pool_id: Pool identifier
+        idle_connections: Number of idle connections
+        busy_connections: Number of busy connections
+
+    Usage:
+        set_httpx_connection_pool_metrics("surfsense_pool", idle_connections=5, busy_connections=2)
+    """
+    with _metrics_lock:
+        httpx_connection_pool_connections.labels(pool_id=pool_id, status="idle").set(idle_connections)
+        httpx_connection_pool_connections.labels(pool_id=pool_id, status="busy").set(busy_connections)
+
+
+def record_httpx_connection_pool_timeout(pool_id: str) -> None:
+    """
+    Record a connection pool timeout.
+
+    Args:
+        pool_id: Pool identifier
+
+    Usage:
+        record_httpx_connection_pool_timeout("surfsense_pool")
+    """
+    with _metrics_lock:
+        httpx_connection_pool_timeouts_total.labels(pool_id=pool_id).inc()
+
+
+# ============================================================================
 # LLM Operations Metrics
 # ============================================================================
 
@@ -550,4 +815,160 @@ llm_calls_total = Counter(
     "llm_calls_total",
     "Total number of LLM API calls",
     labelnames=["model", "status"],  # status: success, error, timeout
+)
+
+# ============================================================================
+# Circuit Breaker Metrics
+# ============================================================================
+
+circuit_breaker_state = Gauge(
+    "circuit_breaker_state",
+    "Circuit breaker state (0=CLOSED, 1=OPEN, 2=HALF_OPEN)",
+    labelnames=["service"],
+)
+
+circuit_breaker_state_changes_total = Counter(
+    "circuit_breaker_state_changes_total",
+    "Total number of circuit breaker state changes",
+    labelnames=["service", "from_state", "to_state"],
+)
+
+circuit_breaker_failures_total = Counter(
+    "circuit_breaker_failures_total",
+    "Total number of failures recorded by circuit breaker",
+    labelnames=["service"],
+)
+
+circuit_breaker_successes_total = Counter(
+    "circuit_breaker_successes_total",
+    "Total number of successes recorded by circuit breaker",
+    labelnames=["service"],
+)
+
+circuit_breaker_open_duration_seconds = Histogram(
+    "circuit_breaker_open_duration_seconds",
+    "Duration circuit breaker spent in OPEN state",
+    labelnames=["service"],
+    buckets=(1, 5, 10, 30, 60, 120, 300, 600),
+)
+
+circuit_breaker_half_open_attempts_total = Counter(
+    "circuit_breaker_half_open_attempts_total",
+    "Total number of attempts during HALF_OPEN state",
+    labelnames=["service"],
+)
+
+# ============================================================================
+# HTTP Client Manager Metrics
+# ============================================================================
+
+http_client_pool_connections_active = Gauge(
+    "http_client_pool_connections_active",
+    "Current number of active connections in HTTP client pool",
+    labelnames=["service"],
+)
+
+http_client_pool_connections_total = Gauge(
+    "http_client_pool_connections_total",
+    "Total capacity of HTTP client pool",
+    labelnames=["service"],
+)
+
+http_client_pool_utilization = Gauge(
+    "http_client_pool_utilization",
+    "HTTP client pool utilization (0-1)",
+    labelnames=["service"],
+)
+
+http_client_request_duration_seconds = Histogram(
+    "http_client_request_duration_seconds",
+    "HTTP client request duration via circuit breaker",
+    labelnames=["service", "status"],  # status: success, failure, timeout, open
+    buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0),
+)
+
+http_client_requests_total = Counter(
+    "http_client_requests_total",
+    "Total number of HTTP requests via circuit breaker",
+    labelnames=["service", "status"],
+)
+
+http_client_retries_total = Counter(
+    "http_client_retries_total",
+    "Total number of retry attempts",
+    labelnames=["service"],
+)
+
+# ============================================================================
+# Subagent Pool Metrics
+# ============================================================================
+
+subagent_pool_size = Gauge(
+    "subagent_pool_size",
+    "Current size of subagent worker pool",
+)
+
+subagent_pool_active_workers = Gauge(
+    "subagent_pool_active_workers",
+    "Current number of active subagent workers",
+)
+
+subagent_pool_pending_tasks = Gauge(
+    "subagent_pool_pending_tasks",
+    "Current number of pending subagent tasks in queue",
+)
+
+subagent_pool_queue_depth = Gauge(
+    "subagent_pool_queue_depth",
+    "Current depth of subagent task queue",
+)
+
+subagent_task_duration_seconds = Histogram(
+    "subagent_task_duration_seconds",
+    "Subagent task execution duration",
+    labelnames=["status"],  # success, failure, timeout, cancelled
+    buckets=(0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0),
+)
+
+subagent_tasks_total = Counter(
+    "subagent_tasks_total",
+    "Total number of subagent tasks executed",
+    labelnames=["status"],
+)
+
+subagent_pool_size_adjustments_total = Counter(
+    "subagent_pool_size_adjustments_total",
+    "Total number of pool size adjustments",
+    labelnames=["direction"],  # up, down, stable
+)
+
+subagent_pool_cpu_utilization = Gauge(
+    "subagent_pool_cpu_utilization",
+    "System CPU utilization monitored by pool",
+)
+
+subagent_pool_memory_utilization = Gauge(
+    "subagent_pool_memory_utilization",
+    "System memory utilization monitored by pool",
+)
+
+subagent_pool_health_score = Gauge(
+    "subagent_pool_health_score",
+    "Overall health score of subagent pool (0-100)",
+)
+
+# ============================================================================
+# Connection Pool Health Metrics (httpx)
+# ============================================================================
+
+httpx_connection_pool_connections = Gauge(
+    "httpx_connection_pool_connections",
+    "Number of connections in httpx connection pool",
+    labelnames=["pool_id", "status"],  # status: idle, busy
+)
+
+httpx_connection_pool_timeouts_total = Counter(
+    "httpx_connection_pool_timeouts_total",
+    "Total number of connection pool timeout errors",
+    labelnames=["pool_id"],
 )
