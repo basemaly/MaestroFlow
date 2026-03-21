@@ -84,17 +84,145 @@ BACKGROUND_TASK_TTL_SECONDS = 900  # Default TTL: 15 minutes
 SWEEP_INTERVAL_SECONDS = 300  # Background sweep interval: 5 minutes
 _SWEEP_ALERT_THRESHOLD = 3  # Consecutive failures before ERROR escalation
 
-# Dynamic async queue and semaphore for graceful backpressure
-MAX_CONCURRENT_SUBAGENTS = 8
+# Dynamic pool sizing for graceful backpressure
+MIN_CONCURRENT_SUBAGENTS = 2
+INITIAL_CONCURRENT_SUBAGENTS = 8
+MAX_CONCURRENT_SUBAGENTS = 16
 MAX_AI_MESSAGES_PER_SUBAGENT = 200
+POOL_ADJUSTMENT_INTERVAL = 30.0  # Seconds between pool size adjustments
+
+# Pool state and metrics
 _bg_loop = asyncio.new_event_loop()
 _execution_semaphore: asyncio.Semaphore | None = None
+_execution_queue: asyncio.Queue | None = None
+_current_pool_size = INITIAL_CONCURRENT_SUBAGENTS
+_pool_lock = threading.Lock()
+_pool_metrics = {
+    "total_tasks_submitted": 0,
+    "current_active": 0,
+    "current_pending": 0,
+    "cpu_percent": 0.0,
+    "memory_percent": 0.0,
+    "last_adjustment": None,
+    "adjustment_history": [],  # List of (time, old_size, new_size)
+}
+_metrics_lock = threading.Lock()
+_adjustment_task: asyncio.Task | None = None
+
+
+def _calculate_optimal_pool_size(
+    queue_depth: int,
+    active_workers: int,
+    cpu_percent: float = 0.0,
+    memory_percent: float = 0.0,
+) -> int:
+    """Calculate optimal pool size based on load and system resources.
+
+    Args:
+        queue_depth: Number of tasks waiting in queue
+        active_workers: Number of currently active workers
+        cpu_percent: CPU utilization percentage (0-100)
+        memory_percent: Memory utilization percentage (0-100)
+
+    Returns:
+        Recommended pool size
+    """
+    current_size = _current_pool_size
+    desired = current_size
+
+    # Adjust based on queue pressure
+    if queue_depth > current_size * 2:
+        # Queue is backing up significantly, need more workers
+        desired = min(current_size + 2, MAX_CONCURRENT_SUBAGENTS)
+    elif queue_depth > current_size:
+        # Queue has some backlog, add one worker
+        desired = min(current_size + 1, MAX_CONCURRENT_SUBAGENTS)
+    elif queue_depth == 0 and active_workers < current_size / 2:
+        # Underutilized pool, can reduce
+        desired = max(current_size - 1, MIN_CONCURRENT_SUBAGENTS)
+
+    # Apply system resource constraints
+    if cpu_percent > 80:
+        # High CPU, don't increase
+        desired = min(desired, current_size)
+        if cpu_percent > 90:
+            # Very high CPU, reduce pool
+            desired = max(desired - 1, MIN_CONCURRENT_SUBAGENTS)
+
+    if memory_percent > 85:
+        # High memory, don't increase
+        desired = min(desired, current_size)
+        if memory_percent > 95:
+            # Very high memory, reduce pool
+            desired = max(desired - 1, MIN_CONCURRENT_SUBAGENTS)
+
+    return desired
+
+
+async def _adjust_pool_size_task():
+    """Periodically adjust pool size based on load and system resources."""
+    global _execution_semaphore, _execution_queue, _current_pool_size
+
+    while True:
+        try:
+            await asyncio.sleep(POOL_ADJUSTMENT_INTERVAL)
+
+            # Get current metrics
+            with _metrics_lock:
+                queue_depth = _execution_queue.qsize() if _execution_queue else 0
+                active = _pool_metrics.get("current_active", 0)
+
+                # Get system resources
+                cpu_percent = 0.0
+                memory_percent = 0.0
+                if psutil:
+                    try:
+                        cpu_percent = psutil.cpu_percent(interval=0.1)
+                        memory_percent = psutil.virtual_memory().percent
+                        _pool_metrics["cpu_percent"] = cpu_percent
+                        _pool_metrics["memory_percent"] = memory_percent
+                    except Exception as e:
+                        logger.debug(f"Could not get system metrics: {e}")
+
+            # Calculate desired pool size
+            old_size = _current_pool_size
+            new_size = _calculate_optimal_pool_size(
+                queue_depth=queue_depth,
+                active_workers=active,
+                cpu_percent=cpu_percent,
+                memory_percent=memory_percent,
+            )
+
+            # Adjust if needed
+            if new_size != old_size:
+                with _pool_lock:
+                    if new_size > old_size:
+                        # Add new semaphore slots
+                        _execution_semaphore = asyncio.Semaphore(new_size)
+                    else:
+                        # Reduce semaphore slots (current tasks will complete naturally)
+                        _execution_semaphore = asyncio.Semaphore(new_size)
+
+                    _current_pool_size = new_size
+
+                    with _metrics_lock:
+                        _pool_metrics["last_adjustment"] = datetime.now()
+                        _pool_metrics["adjustment_history"].append((datetime.now(), old_size, new_size))
+
+                logger.info(f"Adjusted subagent pool size: {old_size} -> {new_size} (queue_depth={queue_depth}, active={active}, cpu={cpu_percent:.1f}%, memory={memory_percent:.1f}%)")
+        except Exception as e:
+            logger.error(f"Error adjusting pool size: {e}")
 
 
 def _start_bg_loop():
-    global _execution_semaphore
+    global _execution_semaphore, _execution_queue, _adjustment_task
     asyncio.set_event_loop(_bg_loop)
-    _execution_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SUBAGENTS)
+    _execution_semaphore = asyncio.Semaphore(INITIAL_CONCURRENT_SUBAGENTS)
+    _execution_queue = asyncio.Queue()
+
+    # Create and schedule the pool adjustment task
+    _adjustment_task = _bg_loop.create_task(_adjust_pool_size_task())
+
     _bg_loop.run_forever()
 
 
@@ -491,6 +619,11 @@ class SubagentExecutor:
             )
             wait_start = time.time()
 
+            # Update metrics: track this as pending
+            with _metrics_lock:
+                _pool_metrics["total_tasks_submitted"] += 1
+                _pool_metrics["current_pending"] = _execution_queue.qsize() if _execution_queue else 0
+
             with _background_tasks_lock:
                 if task_id not in _background_tasks:
                     # Task was evicted before it could start
@@ -499,6 +632,11 @@ class SubagentExecutor:
                 _background_tasks[task_id].status = SubagentStatus.RUNNING
                 _background_tasks[task_id].started_at = datetime.now()
                 result_holder = _background_tasks[task_id]
+
+            # Update metrics: track as active
+            with _metrics_lock:
+                _pool_metrics["current_active"] += 1
+                _pool_metrics["current_pending"] -= 1
 
             if _execution_semaphore is not None:
                 await _execution_semaphore.acquire()
@@ -530,6 +668,10 @@ class SubagentExecutor:
                         _background_tasks[task_id].error = str(e)
                         _background_tasks[task_id].completed_at = datetime.now()
             finally:
+                # Update metrics: track as completed
+                with _metrics_lock:
+                    _pool_metrics["current_active"] = max(0, _pool_metrics["current_active"] - 1)
+
                 if _execution_semaphore is not None:
                     _execution_semaphore.release()
 
@@ -708,6 +850,44 @@ def _ensure_sweeper_started():
 
 # Start sweeper on first eviction check (lazy init to avoid circular imports)
 # The sweeper will be started when _evict_expired_tasks() or _evict_fifo_if_needed() is first called
+
+
+def get_subagent_pool_metrics() -> dict[str, Any]:
+    """Get current subagent pool metrics for monitoring.
+
+    Returns:
+        Dictionary with pool health and performance data:
+        - pool_size: Current number of worker slots
+        - total_tasks_submitted: Total tasks submitted since startup
+        - current_active: Currently executing tasks
+        - current_pending: Tasks waiting in queue
+        - cpu_percent: Current system CPU usage (if psutil available)
+        - memory_percent: Current system memory usage (if psutil available)
+        - last_adjustment: Datetime of last pool size adjustment
+        - adjustment_history: List of (timestamp, old_size, new_size) tuples
+    """
+    with _metrics_lock:
+        return {
+            "pool_size": _current_pool_size,
+            "min_size": MIN_CONCURRENT_SUBAGENTS,
+            "max_size": MAX_CONCURRENT_SUBAGENTS,
+            "total_tasks_submitted": _pool_metrics.get("total_tasks_submitted", 0),
+            "current_active": _pool_metrics.get("current_active", 0),
+            "current_pending": _pool_metrics.get("current_pending", 0),
+            "cpu_percent": _pool_metrics.get("cpu_percent", 0.0),
+            "memory_percent": _pool_metrics.get("memory_percent", 0.0),
+            "last_adjustment": _pool_metrics.get("last_adjustment"),
+            "adjustment_count": len(_pool_metrics.get("adjustment_history", [])),
+        }
+
+
+def get_subagent_pool_size() -> int:
+    """Get the current subagent pool size.
+
+    Returns:
+        Number of concurrent subagent slots currently available.
+    """
+    return _current_pool_size
 
 
 # Metrics integration: Periodic logging of subagent performance
