@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import threading
+import time
 from typing import Any
 
 from cachetools import LRUCache, TTLCache
@@ -23,16 +24,68 @@ from src.tools.builtins import (
 
 logger = logging.getLogger(__name__)
 
+# Tool caching configuration
 _TOOL_CACHE_MAXSIZE = 256
+_TOOL_CACHE_TTL_SECONDS = 3600  # 1 hour TTL for tool results
 _TOOL_LOCK_MAXSIZE = 256
 _TOOL_LOCK_TTL_SECONDS = 300
 
-_tool_cache: LRUCache[str, Any] = LRUCache(maxsize=_TOOL_CACHE_MAXSIZE)
+_tool_cache: TTLCache[str, Any] = TTLCache(maxsize=_TOOL_CACHE_MAXSIZE, ttl=_TOOL_CACHE_TTL_SECONDS)
 _tool_async_locks: TTLCache[str, asyncio.Lock] = TTLCache(maxsize=_TOOL_LOCK_MAXSIZE, ttl=_TOOL_LOCK_TTL_SECONDS)
 _tool_sync_locks: TTLCache[str, threading.Lock] = TTLCache(maxsize=_TOOL_LOCK_MAXSIZE, ttl=_TOOL_LOCK_TTL_SECONDS)
 _tool_locks_init_lock = threading.Lock()
 
+# Cache metrics tracking
+_cache_metrics = {
+    "hits": 0,
+    "misses": 0,
+    "evictions": 0,
+    "last_reset": time.time(),
+}
+_metrics_lock = threading.Lock()
+
 CACHEABLE_TOOLS_KEYWORDS = {"search", "read", "get", "preview", "view", "fetch", "list", "mcp_"}
+
+
+def get_cache_metrics() -> dict[str, Any]:
+    """Get tool cache metrics for monitoring.
+
+    Returns:
+        Dictionary containing cache statistics:
+        - hits: Total cache hits
+        - misses: Total cache misses
+        - evictions: Total LRU evictions
+        - hit_rate: Percentage of hits (0-100)
+        - cache_size: Current number of cached items
+        - last_reset: Timestamp of last reset
+    """
+    with _metrics_lock:
+        total_requests = _cache_metrics["hits"] + _cache_metrics["misses"]
+        hit_rate = (_cache_metrics["hits"] / total_requests * 100) if total_requests > 0 else 0
+        return {
+            "hits": _cache_metrics["hits"],
+            "misses": _cache_metrics["misses"],
+            "hit_rate": round(hit_rate, 2),
+            "evictions": _cache_metrics["evictions"],
+            "cache_size": len(_tool_cache),
+            "cache_max_size": _TOOL_CACHE_MAXSIZE,
+            "last_reset": _cache_metrics["last_reset"],
+        }
+
+
+def reset_cache_metrics() -> None:
+    """Reset cache metrics counters."""
+    with _metrics_lock:
+        _cache_metrics["hits"] = 0
+        _cache_metrics["misses"] = 0
+        _cache_metrics["evictions"] = 0
+        _cache_metrics["last_reset"] = time.time()
+
+
+def clear_tool_cache() -> None:
+    """Clear all cached tool results. Useful for testing or manual cache invalidation."""
+    _tool_cache.clear()
+    reset_cache_metrics()
 
 
 def _is_cacheable(tool_name: str) -> bool:
@@ -107,8 +160,13 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
 
         cache_key = _get_cache_key(tool_name, input)
         if cache_key in _tool_cache:
+            with _metrics_lock:
+                _cache_metrics["hits"] += 1
             logger.debug("Sync cache hit for tool %s (size=%d)", tool_name, len(_tool_cache))
             return _tool_cache[cache_key]
+
+        with _metrics_lock:
+            _cache_metrics["misses"] += 1
 
         lock = _get_sync_lock(cache_key)
         with lock:
@@ -119,6 +177,8 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
             result = _do_invoke()
             if len(_tool_cache) >= _TOOL_CACHE_MAXSIZE:
                 logger.debug("Tool cache at capacity (%d), evicting LRU entry for %s", len(_tool_cache), tool_name)
+                with _metrics_lock:
+                    _cache_metrics["evictions"] += 1
             _tool_cache[cache_key] = result
             return result
 
@@ -136,8 +196,13 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
 
         cache_key = _get_cache_key(tool_name, input)
         if cache_key in _tool_cache:
+            with _metrics_lock:
+                _cache_metrics["hits"] += 1
             logger.debug("Async cache hit for tool %s (size=%d)", tool_name, len(_tool_cache))
             return _tool_cache[cache_key]
+
+        with _metrics_lock:
+            _cache_metrics["misses"] += 1
 
         lock = _get_async_lock(cache_key)
         async with lock:
@@ -148,6 +213,8 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
             result = await _do_ainvoke()
             if len(_tool_cache) >= _TOOL_CACHE_MAXSIZE:
                 logger.debug("Tool cache at capacity (%d), evicting LRU entry for %s", len(_tool_cache), tool_name)
+                with _metrics_lock:
+                    _cache_metrics["evictions"] += 1
             _tool_cache[cache_key] = result
             return result
 

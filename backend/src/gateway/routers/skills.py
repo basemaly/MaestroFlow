@@ -6,6 +6,7 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import yaml
 from fastapi import APIRouter, HTTPException
@@ -19,15 +20,73 @@ from src.skills.loader import get_skills_root_path
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["skills"])
 
-# Global cache for skills list
-_skills_cache: tuple['SkillsListResponse', float] | None = None
-_CACHE_TTL_SECONDS = 60
+# Global cache for skills list with TTL-based invalidation
+_skills_cache: tuple["SkillsListResponse", float] | None = None
+_CACHE_TTL_SECONDS = 60  # Skills list cache expires after 60 seconds
+
+# Cache metrics
+_cache_metrics = {
+    "hits": 0,
+    "misses": 0,
+    "last_reset": time.time(),
+}
 
 
 def _clear_skills_cache() -> None:
     """Clear the global skills list cache."""
     global _skills_cache
     _skills_cache = None
+
+
+def _is_cache_valid(cached_timestamp: float) -> bool:
+    """Check if cached data is still valid based on TTL.
+
+    Args:
+        cached_timestamp: Timestamp when data was cached
+
+    Returns:
+        True if cache is still valid (within TTL), False otherwise
+    """
+    return (time.time() - cached_timestamp) < _CACHE_TTL_SECONDS
+
+
+def get_skills_cache_metrics() -> dict[str, Any]:
+    """Get skills cache metrics for monitoring.
+
+    Returns:
+        Dictionary containing cache statistics:
+        - hits: Total cache hits
+        - misses: Total cache misses
+        - hit_rate: Percentage of hits
+        - is_cached: Whether skills list is currently cached
+        - cache_age_seconds: Age of current cache (null if not cached)
+    """
+    cache_age = None
+    is_cached = False
+
+    if _skills_cache is not None:
+        _, cached_at = _skills_cache
+        cache_age = time.time() - cached_at
+        is_cached = _is_cache_valid(cached_at)
+
+    total_requests = _cache_metrics["hits"] + _cache_metrics["misses"]
+    hit_rate = (_cache_metrics["hits"] / total_requests * 100) if total_requests > 0 else 0
+
+    return {
+        "hits": _cache_metrics["hits"],
+        "misses": _cache_metrics["misses"],
+        "hit_rate": round(hit_rate, 2),
+        "is_cached": is_cached,
+        "cache_age_seconds": round(cache_age, 2) if cache_age is not None else None,
+        "cache_ttl_seconds": _CACHE_TTL_SECONDS,
+    }
+
+
+def reset_skills_cache_metrics() -> None:
+    """Reset cache metrics counters."""
+    _cache_metrics["hits"] = 0
+    _cache_metrics["misses"] = 0
+    _cache_metrics["last_reset"] = time.time()
 
 
 class SkillResponse(BaseModel):
@@ -170,21 +229,23 @@ async def list_skills() -> SkillsListResponse:
         A list of all skills with their metadata.
     """
     global _skills_cache
-    now = time.time()
 
-    # Return cached response if valid
+    # Return cached response if valid (TTL-based invalidation)
     if _skills_cache is not None:
         cached_response, cached_at = _skills_cache
-        if now - cached_at < _CACHE_TTL_SECONDS:
+        if _is_cache_valid(cached_at):
+            _cache_metrics["hits"] += 1
             return cached_response
+
+    _cache_metrics["misses"] += 1
 
     try:
         # Load all skills (including disabled ones)
         skills = load_skills(enabled_only=False)
         response = SkillsListResponse(skills=[_skill_to_response(skill) for skill in skills])
 
-        # Update cache
-        _skills_cache = (response, now)
+        # Update cache with current timestamp
+        _skills_cache = (response, time.time())
         return response
     except Exception as e:
         logger.error(f"Failed to load skills: {e}", exc_info=True)
@@ -446,3 +507,17 @@ async def install_skill(request: SkillInstallRequest) -> SkillInstallResponse:
     except Exception as e:
         logger.error(f"Failed to install skill: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to install skill: {str(e)}")
+
+
+@router.get(
+    "/skills/metrics/cache",
+    summary="Get Skills Cache Metrics",
+    description="Retrieve cache performance metrics for the skills listing endpoint.",
+)
+async def get_skills_cache_metrics_endpoint() -> dict:
+    """Get skills cache metrics for monitoring and debugging.
+
+    Returns:
+        Cache metrics including hit rate, current cache state, and age.
+    """
+    return get_skills_cache_metrics()

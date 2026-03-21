@@ -425,7 +425,8 @@ export function GraphComposerShell({
     });
   }, []);
 
-  function addSection() {
+  // useCallback-wrapped handlers to prevent unnecessary re-renders of child components
+  const handleAddSection = useCallback(() => {
     mutateGraph((current) => {
       const nextIndex = current.section_frames.length + 1;
       const frameId = nextId("section");
@@ -443,7 +444,190 @@ export function GraphComposerShell({
         ],
       };
     });
-  }
+  }, [mutateGraph]);
+
+  const handleAddNode = useCallback((kind: GraphNodeKind, sectionId?: string | null) => {
+    mutateGraph((current) => {
+      const selectedNode = current.nodes.find((node) => node.id === selectedNodeId);
+      const targetSection = current.section_frames.find((frame) => frame.id === (sectionId ?? selectedNode?.sectionId))
+        ?? current.section_frames[0];
+      const sectionNodeCount = current.nodes.filter((node) => node.sectionId === targetSection?.id).length;
+      const nodeId = nextId("node");
+      const nextNode: GraphComposerNode = {
+        id: nodeId,
+        kind,
+        title: kind === "section" ? `Section ${current.section_frames.length + 1}` : NODE_LABELS[kind],
+        content: getDefaultNodeContent(kind),
+        position: {
+          x: (targetSection?.position.x ?? 0) + 22,
+          y: 96 + (sectionNodeCount * 148),
+        },
+        sectionId: targetSection?.id ?? null,
+        source: kind === "source" ? "manual" : null,
+      };
+      return {
+        ...current,
+        nodes: [...current.nodes, nextNode],
+      };
+    });
+  }, [mutateGraph, selectedNodeId]);
+
+  const handleImportBlock = useCallback((blockId: string) => {
+    const block = blocks.find((candidate) => candidate.id === blockId);
+    if (!block) {
+      return;
+    }
+    mutateGraph((current) => {
+      const targetSection = current.section_frames[0];
+      const nodeCount = current.nodes.filter((node) => node.sectionId === targetSection?.id).length;
+      const sourceNode = convertBlockToSourceNode(block, targetSection?.id ?? null, nodeCount);
+      sourceNode.position = {
+        x: (targetSection?.position.x ?? 0) + 22,
+        y: 96 + (nodeCount * 148),
+      };
+      return {
+        ...current,
+        nodes: [...current.nodes, sourceNode],
+      };
+    });
+    toast.success("Imported into graph");
+  }, [mutateGraph, blocks]);
+
+  const handleImportAllFromSource = useCallback((source: BlockSource) => {
+    const alreadyImported = new Set(
+      graph.nodes
+        .filter((node) => node.kind === "source" && node.source === source)
+        .map((node) => node.title),
+    );
+    const matching = blocks.filter((block) => block.source === source && !alreadyImported.has(block.title));
+    if (matching.length === 0) {
+      toast.message(`No new ${source} clips to import`);
+      return;
+    }
+    mutateGraph((current) => {
+      const targetSection = current.section_frames[0];
+      const existingCount = current.nodes.filter((node) => node.sectionId === targetSection?.id).length;
+      const importedNodes = matching.map((block, index) => {
+        const node = convertBlockToSourceNode(block, targetSection?.id ?? null, existingCount + index);
+        node.position = {
+          x: (targetSection?.position.x ?? 0) + 22,
+          y: 96 + ((existingCount + index) * 148),
+        };
+        return node;
+      });
+      return {
+        ...current,
+        nodes: [...current.nodes, ...importedNodes],
+      };
+    });
+    toast.success(`Imported ${matching.length} ${source} clip${matching.length === 1 ? "" : "s"}`);
+  }, [mutateGraph, graph.nodes, blocks]);
+
+  const handleAddStarterPattern = useCallback((pattern: "claim-evidence" | "quote-turn" | "rewrite-branch") => {
+    mutateGraph((current) => {
+      const targetSection = current.section_frames[0];
+      const sectionNodes = current.nodes.filter((node) => node.sectionId === targetSection?.id).length;
+      const baseY = 96 + (sectionNodes * 148);
+      const additions: GraphComposerNode[] = [];
+      if (pattern === "claim-evidence") {
+        additions.push(
+          {
+            id: nextId("node"),
+            kind: "paragraph",
+            title: "Claim",
+            content: "State the central point clearly and concretely.",
+            position: { x: (targetSection?.position.x ?? 0) + 22, y: baseY },
+            sectionId: targetSection?.id ?? null,
+            source: null,
+          },
+          {
+            id: nextId("node"),
+            kind: "evidence",
+            title: "Evidence",
+            content: "- Add a grounded fact\n- Add a concrete example",
+            position: { x: (targetSection?.position.x ?? 0) + 22, y: baseY + 148 },
+            sectionId: targetSection?.id ?? null,
+            source: null,
+          },
+        );
+      } else if (pattern === "quote-turn") {
+        additions.push(
+          {
+            id: nextId("node"),
+            kind: "quote",
+            title: "Quote",
+            content: "Drop in a sourced line or excerpt here.",
+            position: { x: (targetSection?.position.x ?? 0) + 22, y: baseY },
+            sectionId: targetSection?.id ?? null,
+            source: null,
+          },
+          {
+            id: nextId("node"),
+            kind: "transition",
+            title: "Turn",
+            content: "Explain what the quote changes, proves, or complicates.",
+            position: { x: (targetSection?.position.x ?? 0) + 22, y: baseY + 148 },
+            sectionId: targetSection?.id ?? null,
+            source: null,
+          },
+        );
+      } else {
+        const anchorId = selectedNode?.id ?? null;
+        const rewriteNode: GraphComposerNode = {
+          id: nextId("node"),
+          kind: "rewrite",
+          title: "Alternate branch",
+          content: "Write a sharper alternate version of the selected idea.",
+          position: { x: (targetSection?.position.x ?? 0) + 32, y: baseY },
+          sectionId: targetSection?.id ?? null,
+          source: null,
+        };
+        additions.push(rewriteNode);
+        return {
+          ...current,
+          nodes: [...current.nodes, ...additions],
+          edges: anchorId
+            ? [...current.edges, { id: nextId("edge"), source: anchorId, target: rewriteNode.id, kind: "rewrite-of" }]
+            : current.edges,
+        };
+      }
+      return {
+        ...current,
+        nodes: [...current.nodes, ...additions],
+      };
+    });
+  }, [mutateGraph, selectedNode?.id]);
+
+  const handleConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) {
+      return;
+    }
+    mutateGraph((current) => ({
+      ...current,
+      edges: [
+        ...current.edges,
+        {
+          id: nextId("edge"),
+          source: connection.source,
+          target: connection.target,
+          kind: edgeKind,
+        } satisfies GraphComposerEdge,
+      ],
+    }));
+  }, [mutateGraph, edgeKind]);
+
+  const handleFocusSection = useCallback((sectionId: string) => {
+    setSelectedNodeId(null);
+    setActiveSectionId(sectionId);
+  }, []);
+
+  const handleSetEdgeKind = useCallback((kind: GraphEdgeKind) => {
+    setEdgeKind(kind);
+  }, []);
+
+  const handleSetSourceFilter = useCallback((filter: "all" | BlockSource) => {
+    setSourceFilter(filter);
+  }, []);
 
   function addNode(kind: GraphNodeKind, sectionId?: string | null) {
     mutateGraph((current) => {
@@ -901,7 +1085,7 @@ export function GraphComposerShell({
                 <button
                   key={section.id}
                   type="button"
-                  onClick={() => focusSection(section.id)}
+                  onClick={() => handleFocusSection(section.id)}
                   className={cn(
                     "flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition",
                     activeSectionId === section.id
@@ -949,7 +1133,7 @@ export function GraphComposerShell({
                   size="sm"
                   variant="outline"
                   className="justify-start rounded-xl border-stone-700/15 bg-white/70 text-xs text-stone-700"
-                  onClick={() => addNode(kind)}
+                  onClick={() => handleAddNode(kind)}
                 >
                   <PlusIcon className="size-3.5" />
                   {NODE_LABELS[kind]}
@@ -970,15 +1154,15 @@ export function GraphComposerShell({
                 <div className="space-y-2">
             <div className="text-[11px] uppercase tracking-[0.22em] text-stone-500">Starter Patterns</div>
             <div className="grid grid-cols-1 gap-2">
-              <Button size="sm" variant="outline" className="justify-start rounded-xl border-stone-700/15 bg-white/70 text-xs text-stone-700" onClick={() => addStarterPattern("claim-evidence")}>
+              <Button size="sm" variant="outline" className="justify-start rounded-xl border-stone-700/15 bg-white/70 text-xs text-stone-700" onClick={() => handleAddStarterPattern("claim-evidence")}>
                 <BookMarkedIcon className="size-3.5" />
                 Claim + evidence
               </Button>
-              <Button size="sm" variant="outline" className="justify-start rounded-xl border-stone-700/15 bg-white/70 text-xs text-stone-700" onClick={() => addStarterPattern("quote-turn")}>
+              <Button size="sm" variant="outline" className="justify-start rounded-xl border-stone-700/15 bg-white/70 text-xs text-stone-700" onClick={() => handleAddStarterPattern("quote-turn")}>
                 <ScrollTextIcon className="size-3.5" />
                 Quote + turn
               </Button>
-              <Button size="sm" variant="outline" className="justify-start rounded-xl border-stone-700/15 bg-white/70 text-xs text-stone-700" onClick={() => addStarterPattern("rewrite-branch")}>
+              <Button size="sm" variant="outline" className="justify-start rounded-xl border-stone-700/15 bg-white/70 text-xs text-stone-700" onClick={() => handleAddStarterPattern("rewrite-branch")}>
                 <ArrowRightLeftIcon className="size-3.5" />
                 Rewrite branch
               </Button>
@@ -994,7 +1178,7 @@ export function GraphComposerShell({
                   size="sm"
                   variant={edgeKind === kind ? "default" : "outline"}
                   className="rounded-xl text-xs"
-                  onClick={() => setEdgeKind(kind)}
+                  onClick={() => handleSetEdgeKind(kind)}
                 >
                   <SplinePointerIcon className="size-3.5" />
                   {kind}
@@ -1035,7 +1219,7 @@ export function GraphComposerShell({
                       key={source}
                       type="button"
                       className="rounded-2xl border border-stone-700/10 bg-white px-3 py-2 text-left transition hover:-translate-y-0.5 hover:border-stone-700/20"
-                      onClick={() => importAllFromSource(source)}
+                      onClick={() => handleImportAllFromSource(source)}
                       disabled={!sourceCounts[source]}
                     >
                       <div className="text-[11px] uppercase tracking-[0.18em] text-stone-500">{SOURCE_DISPLAY_LABEL[source]}</div>
@@ -1052,7 +1236,7 @@ export function GraphComposerShell({
                   size="sm"
                   variant={sourceFilter === "all" ? "default" : "outline"}
                   className="h-7 rounded-full px-2.5 text-[10px]"
-                  onClick={() => setSourceFilter("all")}
+                  onClick={() => handleSetSourceFilter("all")}
                 >
                   all · {blocks.length}
                 </Button>
@@ -1062,7 +1246,7 @@ export function GraphComposerShell({
                     size="sm"
                     variant={sourceFilter === source ? "default" : "outline"}
                     className="h-7 rounded-full px-2.5 text-[10px]"
-                    onClick={() => setSourceFilter(source)}
+                    onClick={() => handleSetSourceFilter(source)}
                     disabled={!sourceCounts[source]}
                   >
                     {source} · {sourceCounts[source] ?? 0}
@@ -1082,7 +1266,7 @@ export function GraphComposerShell({
                       key={block.id}
                       type="button"
                       className="w-full rounded-2xl border border-stone-700/10 bg-white/70 p-3 text-left transition hover:-translate-y-0.5 hover:bg-white"
-                      onClick={() => importBlock(block.id)}
+                      onClick={() => handleImportBlock(block.id)}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
