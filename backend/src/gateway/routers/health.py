@@ -5,6 +5,7 @@ from contextlib import suppress
 
 from fastapi import APIRouter, Response
 
+from src.core.http.client_manager import get_http_client_manager
 from src.gateway.app_state import get_shutdown_reason, is_shutting_down
 from src.gateway.contracts import build_health_envelope
 from src.gateway.services.external_services import get_external_services_status
@@ -89,6 +90,79 @@ async def external_services_health() -> dict:
         ),
         "error": None,
     }
+
+
+@router.get("/services")
+async def services_health() -> dict:
+    """
+    Services health dashboard endpoint.
+
+    Aggregates circuit breaker health status from all registered external services.
+    Provides a consolidated view of service availability and degradation status
+    for monitoring and alerting.
+
+    Returns:
+        Aggregated health status with per-service circuit breaker states and metrics.
+    """
+    try:
+        manager = get_http_client_manager()
+        all_health = await manager.get_all_health()
+
+        services = all_health.get("services", [])
+        is_degraded = bool(all_health.get("degraded", False))
+        overall_healthy = not is_degraded
+
+        # Count services by circuit state for summary
+        open_count = sum(1 for s in services if s.get("degraded"))
+        total_count = len(services)
+
+        return {
+            "healthy": overall_healthy,
+            "degraded": is_degraded,
+            "services": services,
+            "summary": {
+                "total_services": total_count,
+                "healthy_services": total_count - open_count,
+                "degraded_services": open_count,
+                "healthy_percentage": (100 * (total_count - open_count) / total_count) if total_count > 0 else 100,
+            },
+            "health": build_health_envelope(
+                configured=True,
+                available=overall_healthy,
+                healthy=overall_healthy,
+                summary=(f"{open_count} of {total_count} services degraded (circuits open)" if is_degraded else f"All {total_count} services healthy (circuits closed)"),
+                details={
+                    "total_services": total_count,
+                    "degraded_services": open_count,
+                },
+                metrics={
+                    "total_services": total_count,
+                    "healthy_services": total_count - open_count,
+                    "degraded_services": open_count,
+                    "healthy_percentage": (100 * (total_count - open_count) / total_count) if total_count > 0 else 100,
+                },
+            ),
+            "error": None,
+        }
+    except Exception as e:
+        return {
+            "healthy": False,
+            "degraded": True,
+            "services": [],
+            "summary": {
+                "total_services": 0,
+                "healthy_services": 0,
+                "degraded_services": 0,
+                "healthy_percentage": 0,
+            },
+            "health": build_health_envelope(
+                configured=False,
+                available=False,
+                healthy=False,
+                summary=f"Failed to retrieve service health: {str(e)}",
+            ),
+            "error": str(e),
+        }
 
 
 @router.get("/metrics")
