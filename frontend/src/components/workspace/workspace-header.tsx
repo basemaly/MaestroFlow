@@ -12,6 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { DevRuntimeBadge } from "@/components/workspace/dev-runtime-badge";
+import { ExecutiveDrawerTrigger } from "@/components/workspace/executive-drawer";
 import { useI18n } from "@/core/i18n/hooks";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
@@ -57,6 +58,9 @@ export function WorkspaceHeader({ className }: { className?: string }) {
         )}
       </div>
       <SidebarMenu>
+        <SidebarMenuItem>
+          <ExecutiveDrawerTrigger isSidebarOpen={state !== "collapsed"} variant="sidebar" />
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
             isActive={pathname === "/workspace/chats/new"}

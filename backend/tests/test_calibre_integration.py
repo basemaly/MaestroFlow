@@ -88,9 +88,7 @@ def test_calibre_search_tool_formats_hits():
             "query_calibre",
             new=AsyncMock(side_effect=fake_query_calibre),
         ):
-            return await calibre_library_search.ainvoke(
-                {"query": "postman technology", "top_k": 3, "author": "Neil Postman"}
-            )
+            return await calibre_library_search.ainvoke({"query": "postman technology", "top_k": 3, "author": "Neil Postman"})
 
     output = asyncio.run(run())
     assert "Technopoly" in output
@@ -115,10 +113,10 @@ def test_calibre_status_route_forwards_collection():
 
 
 def test_calibre_sync_invalidates_status_and_health_cache():
-    calibre_router._status_cache.clear()
-    calibre_router._health_cache.clear()
-    calibre_router._status_cache["Knowledge Management"] = ({"cached": True}, 9999999999.0)
-    calibre_router._health_cache["Knowledge Management"] = ({"cached": True}, 9999999999.0)
+    calibre_router._STATUS_CACHE.clear()
+    calibre_router._HEALTH_CACHE.clear()
+    calibre_router._STATUS_CACHE["Knowledge Management"] = {"cached": True}
+    calibre_router._HEALTH_CACHE["Knowledge Management"] = {"cached": True}
 
     async def run() -> dict:
         with patch.object(
@@ -130,8 +128,8 @@ def test_calibre_sync_invalidates_status_and_health_cache():
 
     payload = asyncio.run(run())
     assert payload["available"] is True
-    assert "Knowledge Management" not in calibre_router._status_cache
-    assert "Knowledge Management" not in calibre_router._health_cache
+    assert "Knowledge Management" not in calibre_router._STATUS_CACHE
+    assert "Knowledge Management" not in calibre_router._HEALTH_CACHE
 
 
 def test_calibre_query_uses_non_empty_http_error_message():
@@ -142,9 +140,7 @@ def test_calibre_query_uses_non_empty_http_error_message():
             "query_calibre",
             new=AsyncMock(side_effect=httpx.ReadTimeout("", request=request)),
         ):
-            return await calibre_router.query_calibre(
-                calibre_router.CalibreQueryRequest(query="test", top_k=3)
-            )
+            return await calibre_router.query_calibre(calibre_router.CalibreQueryRequest(query="test", top_k=3))
 
     payload = asyncio.run(run())
     assert payload["total"] == 0
@@ -284,9 +280,7 @@ def test_preview_calibre_books_tool_returns_candidate_ids_and_reasons():
             "src.tools.builtins.calibre_preview_tool.CalibreServerClient.discover_books",
             new=AsyncMock(return_value=fake_books),
         ):
-            return await preview_calibre_books_for_search_space.ainvoke(
-                {"search_space_id": 3, "query": "working dogs", "tag": "dog"}
-            )
+            return await preview_calibre_books_for_search_space.ainvoke({"search_space_id": 3, "query": "working dogs", "tag": "dog"})
 
     output = asyncio.run(run())
     assert "Preview for search space 3" in output
@@ -309,16 +303,20 @@ def test_ingest_calibre_books_tool_upserts_to_requested_search_space():
     ]
 
     async def run() -> str:
-        with patch(
-            "src.tools.builtins.calibre_ingest_tool.CalibreServerClient.discover_books",
-            new=AsyncMock(return_value=fake_books),
-        ), patch(
-            "src.tools.builtins.calibre_ingest_tool.SurfSenseClient.list_notes",
-            new=AsyncMock(return_value={"items": []}),
-        ), patch(
-            "src.tools.builtins.calibre_ingest_tool.SurfSenseClient.create_note",
-            new=AsyncMock(return_value={"id": 555}),
-        ) as create_note:
+        with (
+            patch(
+                "src.tools.builtins.calibre_ingest_tool.CalibreServerClient.discover_books",
+                new=AsyncMock(return_value=fake_books),
+            ),
+            patch(
+                "src.tools.builtins.calibre_ingest_tool.SurfSenseClient.list_notes",
+                new=AsyncMock(return_value={"items": []}),
+            ),
+            patch(
+                "src.tools.builtins.calibre_ingest_tool.SurfSenseClient.create_note",
+                new=AsyncMock(return_value={"id": 555}),
+            ) as create_note,
+        ):
             output = await ingest_calibre_books_to_search_space.ainvoke(
                 {
                     "search_space_id": 3,

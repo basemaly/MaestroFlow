@@ -20,6 +20,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSkeleton,
 } from "@/components/ui/sidebar";
 import { useDocEditRuns } from "@/core/doc-editing/hooks";
 import { useDocuments } from "@/core/documents/hooks";
@@ -156,7 +157,25 @@ export function RecentActivityList() {
       .slice(0, 8);
   }, [approvalsQuery.data?.approvals, auditQuery.data?.entries, documentsData?.documents, runsData?.runs, threads]);
 
-  if (!hydrated || activities.length === 0) {
+  if (!hydrated) {
+    // Show skeleton while loading
+    return (
+      <SidebarGroup>
+        <SidebarGroupLabel>{t.sidebar.activity}</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SidebarMenuItem key={i}>
+                <SidebarMenuSkeleton showIcon index={i} />
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  if (activities.length === 0) {
     return null;
   }
 

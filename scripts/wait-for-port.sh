@@ -2,6 +2,7 @@
 #
 # wait-for-port.sh - Wait for a TCP port to become available
 #
+set -euo pipefail
 # Usage: ./scripts/wait-for-port.sh <port> [timeout_seconds] [service_name]
 #
 # Arguments:

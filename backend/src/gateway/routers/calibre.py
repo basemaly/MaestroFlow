@@ -2,47 +2,40 @@
 
 from __future__ import annotations
 
-import asyncio
+import logging
+import threading
 import time
-from functools import lru_cache
 
 import httpx
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from cachetools import TTLCache
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from src.gateway.contracts import build_error_envelope, build_health_envelope
 from src.integrations.surfsense.calibre import SurfSenseCalibreClient
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/calibre", tags=["calibre"])
 
-# Cache for status/health responses (60 second TTL)
-_status_cache: dict[str | None, tuple[dict, float]] = {}
-_health_cache: dict[str | None, tuple[dict, float]] = {}
+# TTLCache: maxsize=20 collections, items expire after 60s automatically
+_STATUS_CACHE = TTLCache(maxsize=20, ttl=60)
+_HEALTH_CACHE = TTLCache(maxsize=20, ttl=60)
 _CACHE_TTL_SECONDS = 60
-_active_connections: list[tuple[WebSocket, str | None]] = []
 
-async def _broadcast_status(collection: str | None = None) -> None:
-    if not _active_connections:
-        return
-    status = await get_calibre_status(collection)
-    disconnected = []
-    for ws, col in _active_connections:
-        if col == collection or col is None:
-            try:
-                await ws.send_json(status)
-            except Exception:
-                disconnected.append((ws, col))
-    for entry in disconnected:
-        if entry in _active_connections:
-            _active_connections.remove(entry)
+# Lazy-init sweeper to avoid circular imports
+_sweeper_started = False
+_sweeper_lock = threading.Lock()
+_SWEEP_INTERVAL_SECONDS = 300  # 5 minutes
+_SWEEP_ALERT_THRESHOLD = 3  # Consecutive failures before ERROR escalation
+
 
 def _invalidate_calibre_cache(collection: str | None = None) -> None:
     """Invalidate status and health cache entries affected by a sync or reindex."""
     for key in {collection, None}:
-        _status_cache.pop(key, None)
-        _health_cache.pop(key, None)
-    if _active_connections:
-        asyncio.create_task(_broadcast_status(collection))
+        _STATUS_CACHE.pop(key, None)
+        _HEALTH_CACHE.pop(key, None)
+    logger.debug("Calibre cache invalidated for collection=%s", collection)
 
 
 def _http_error_message(exc: httpx.HTTPError) -> str:
@@ -67,16 +60,15 @@ class CalibreQueryRequest(BaseModel):
 
 @router.get("/status")
 async def get_calibre_status(collection: str | None = None) -> dict:
-    """Get Calibre status with 60-second caching to reduce backend load."""
+    """Get Calibre status — TTLCache handles 60-second expiry automatically."""
+    _ensure_sweeper_started()
     cache_key = collection
-    now = time.time()
 
-    # Check cache
-    if cache_key in _status_cache:
-        cached_response, cached_at = _status_cache[cache_key]
-        if now - cached_at < _CACHE_TTL_SECONDS:
-            return cached_response
+    if cache_key in _STATUS_CACHE:
+        logger.debug("Calibre status cache HIT for collection=%s", collection)
+        return _STATUS_CACHE[cache_key]
 
+    logger.debug("Calibre status cache MISS for collection=%s", collection)
     try:
         payload = await SurfSenseCalibreClient().get_calibre_status(collection=collection)
         response = {
@@ -119,8 +111,12 @@ async def get_calibre_status(collection: str | None = None) -> dict:
             ),
         }
 
-    # Cache the response
-    _status_cache[cache_key] = (response, now)
+    _STATUS_CACHE[cache_key] = response
+    logger.info(
+        "Calibre status cached for collection=%s (cache_size=%d)",
+        collection,
+        len(_STATUS_CACHE),
+    )
     return response
 
 
@@ -202,16 +198,15 @@ async def reindex_calibre(collection: str | None = None) -> dict:
 
 @router.get("/health")
 async def get_calibre_health(collection: str | None = None) -> dict:
-    """Get Calibre health status with 60-second caching to reduce backend load."""
+    """Get Calibre health status — TTLCache handles 60-second expiry automatically."""
+    _ensure_sweeper_started()
     cache_key = collection
-    now = time.time()
 
-    # Check cache
-    if cache_key in _health_cache:
-        cached_response, cached_at = _health_cache[cache_key]
-        if now - cached_at < _CACHE_TTL_SECONDS:
-            return cached_response
+    if cache_key in _HEALTH_CACHE:
+        logger.debug("Calibre health cache HIT for collection=%s", collection)
+        return _HEALTH_CACHE[cache_key]
 
+    logger.debug("Calibre health cache MISS for collection=%s", collection)
     try:
         payload = await SurfSenseCalibreClient().get_calibre_health(collection=collection)
         response = {
@@ -254,8 +249,12 @@ async def get_calibre_health(collection: str | None = None) -> dict:
             ),
         }
 
-    # Cache the response
-    _health_cache[cache_key] = (response, now)
+    _HEALTH_CACHE[cache_key] = response
+    logger.info(
+        "Calibre health cached for collection=%s (cache_size=%d)",
+        collection,
+        len(_HEALTH_CACHE),
+    )
     return response
 
 
@@ -302,3 +301,46 @@ async def query_calibre(req: CalibreQueryRequest) -> dict:
                 details={"collection": req.collection, "query": resolved_query},
             ),
         }
+
+
+def _start_cache_sweep() -> None:
+    """Periodic sweep that logs cache statistics every 5 minutes."""
+    consecutive_failures = 0
+    while True:
+        time.sleep(_SWEEP_INTERVAL_SECONDS)
+        try:
+            logger.info(
+                "Calibre cache sweep: status=%d, health=%d (maxsize=%d, ttl=%ds)",
+                len(_STATUS_CACHE),
+                len(_HEALTH_CACHE),
+                20,
+                _CACHE_TTL_SECONDS,
+            )
+            if consecutive_failures > 0:
+                logger.info("Calibre cache sweep recovered after %d consecutive failures", consecutive_failures)
+                consecutive_failures = 0
+        except Exception:
+            consecutive_failures += 1
+            if consecutive_failures >= _SWEEP_ALERT_THRESHOLD:
+                logger.error(
+                    "Calibre cache sweep failed for %d consecutive cycles — cache eviction stalled",
+                    consecutive_failures,
+                )
+            else:
+                logger.warning("Calibre cache sweep failed (consecutive_failures=%d)", consecutive_failures)
+
+
+def _ensure_sweeper_started() -> None:
+    """Start the cache sweeper thread (idempotent, thread-safe)."""
+    global _sweeper_started
+    if _sweeper_started:
+        return
+    with _sweeper_lock:
+        if _sweeper_started:
+            return
+        threading.Thread(
+            target=_start_cache_sweep,
+            daemon=True,
+            name="calibre-cache-sweeper",
+        ).start()
+        _sweeper_started = True

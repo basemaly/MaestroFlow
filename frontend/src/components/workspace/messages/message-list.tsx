@@ -1,6 +1,23 @@
 import type { BaseStream } from "@langchain/langgraph-sdk/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+// Simple debounce hook to limit scroll handler frequency
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 import {
   Conversation,
   ConversationContent,
@@ -79,6 +96,14 @@ export function MessageList({
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const groupElementsRef = useRef(new Map<string, HTMLDivElement>());
 
+  // Cleanup effect for groupElementsRef map to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      // Clear the map when component unmounts
+      groupElementsRef.current.clear();
+    };
+  }, []);
+
   // Virtualization state
   const [containerHeight, setContainerHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
@@ -114,16 +139,18 @@ export function MessageList({
     return () => wrapper.removeEventListener("scroll", update, { capture: true });
   }, []);
 
-  // Virtualization: Calculate visible range
+  // Virtualization: Calculate visible range with debounced scroll handling
+  const debouncedScrollTop = useDebounce(scrollTop, 50);
+  
   const { visibleRange, totalHeight, startOffset } = useMemo(() => {
     if (grouped.length === 0) {
       return { visibleRange: { start: 0, end: 0 }, totalHeight: 0, startOffset: 0 };
     }
 
-    const startIndex = Math.max(0, Math.floor(scrollTop / ESTIMATED_ITEM_HEIGHT) - VIRTUAL_BUFFER_SIZE);
+    const startIndex = Math.max(0, Math.floor(debouncedScrollTop / ESTIMATED_ITEM_HEIGHT) - VIRTUAL_BUFFER_SIZE);
     const endIndex = Math.min(
       grouped.length - 1,
-      Math.ceil((scrollTop + containerHeight) / ESTIMATED_ITEM_HEIGHT) + VIRTUAL_BUFFER_SIZE
+      Math.ceil((debouncedScrollTop + containerHeight) / ESTIMATED_ITEM_HEIGHT) + VIRTUAL_BUFFER_SIZE
     );
 
     let currentOffset = 0;
@@ -146,7 +173,7 @@ export function MessageList({
       totalHeight,
       startOffset: currentOffset,
     };
-  }, [grouped, scrollTop, containerHeight, itemHeights]);
+  }, [grouped, debouncedScrollTop, containerHeight, itemHeights]);
 
   // Virtualization: Update item heights when elements are rendered
   const updateItemHeight = useCallback((groupKey: string, height: number) => {
@@ -232,14 +259,13 @@ export function MessageList({
             const actualIndex = visibleRange.start + virtualIndex;
             const groupKey = group.id ?? `group-${group.type}-${group.messages[0]?.id ?? "unknown"}`;
 
-            // Calculate absolute position for this item
-            let currentOffset = 0;
-            for (let i = 0; i < actualIndex; i++) {
+            // Calculate absolute position for this item using cached height values
+            const currentOffset = Array.from({ length: actualIndex }, (_, i) => {
               const group = grouped[i];
-              if (!group) continue;
+              if (!group) return 0;
               const key = group.id ?? `group-${group.type}-${group.messages?.[0]?.id ?? "unknown"}`;
-              currentOffset += itemHeights.get(key) ?? ESTIMATED_ITEM_HEIGHT;
-            }
+              return itemHeights.get(key) ?? ESTIMATED_ITEM_HEIGHT;
+            }).reduce((sum, height) => sum + height, 0);
 
             const setGroupElement = (node: HTMLDivElement | null) => {
               if (node) {
@@ -259,14 +285,13 @@ export function MessageList({
             if (group.type === "human" || group.type === "assistant") {
               content = (
                 <div className="space-y-0">
-                  {group.messages.map((msg) => (
+                  {group.messages.map((msg, msgIndex) => (
                     <MessageListItem
                       key={`${group.id}/${msg.id}`}
                       message={msg}
-                      isLoading={thread.isLoading}
+                      isLoading={thread.isLoading && actualIndex === grouped.length - 1 && msgIndex === group.messages.length - 1}
                     />
-                  ))}
-                </div>
+                  ))}                </div>
               );
             } else if (group.type === "assistant:clarification") {
               const message = group.messages[0];
@@ -274,8 +299,8 @@ export function MessageList({
                 content = (
                   <MarkdownContent
                     content={extractContentFromMessage(message)}
-                    isLoading={thread.isLoading}
-                    rehypePlugins={rehypePlugins}
+                    isLoading={thread.isLoading && actualIndex === grouped.length - 1}
+                    rehypePlugins={thread.isLoading && actualIndex === grouped.length - 1 ? rehypePlugins : []}
                   />
                 );
               }
@@ -292,15 +317,14 @@ export function MessageList({
                   {group.messages[0] && hasContent(group.messages[0]) && (
                     <MarkdownContent
                       content={extractContentFromMessage(group.messages[0])}
-                      isLoading={thread.isLoading}
-                      rehypePlugins={rehypePlugins}
+                      isLoading={thread.isLoading && actualIndex === grouped.length - 1}
+                      rehypePlugins={thread.isLoading && actualIndex === grouped.length - 1 ? rehypePlugins : []}
                       className="mb-4"
                     />
                   )}
                   <ArtifactFileList files={files} threadId={threadId} />
                 </div>
-              );
-            } else if (group.type === "assistant:subagent") {
+              );            } else if (group.type === "assistant:subagent") {
               const tasks = new Set<Subtask>();
               for (const message of group.messages) {
                 if (message.type === "ai") {
@@ -363,7 +387,7 @@ export function MessageList({
                     <MessageGroup
                       key={"thinking-group-" + message.id}
                       messages={[message]}
-                      isLoading={thread.isLoading}
+                      isLoading={thread.isLoading && actualIndex === grouped.length - 1}
                     />,
                   );
                 }
@@ -383,7 +407,7 @@ export function MessageList({
                     <SubtaskCard
                       key={"task-group-" + taskId}
                       taskId={taskId!}
-                      isLoading={thread.isLoading}
+                      isLoading={thread.isLoading && actualIndex === grouped.length - 1}
                     />,
                   );
                 }
@@ -397,7 +421,7 @@ export function MessageList({
               content = (
                 <MessageGroup
                   messages={group.messages}
-                  isLoading={thread.isLoading}
+                  isLoading={thread.isLoading && actualIndex === grouped.length - 1}
                 />
               );
             }
@@ -421,7 +445,7 @@ export function MessageList({
         {/* Fallback for small lists - render all items normally */}
         {grouped.length <= VIRTUAL_BUFFER_SIZE * 2 && (
           <div className="hidden">
-            {grouped.map((group) => {
+            {grouped.map((group, index) => {
               const groupKey = group.id ?? `group-${group.type}-${group.messages[0]?.id ?? "unknown"}`;
               const setGroupElement = (node: HTMLDivElement | null) => {
                 if (node) {
@@ -434,11 +458,11 @@ export function MessageList({
               if (group.type === "human" || group.type === "assistant") {
                 return (
                   <div key={`fallback-${groupKey}`} ref={setGroupElement} className="space-y-0">
-                    {group.messages.map((msg) => (
+                    {group.messages.map((msg, msgIndex) => (
                       <MessageListItem
                         key={`${group.id}/${msg.id}`}
                         message={msg}
-                        isLoading={thread.isLoading}
+                        isLoading={thread.isLoading && index === grouped.length - 1 && msgIndex === group.messages.length - 1}
                       />
                     ))}
                   </div>
@@ -470,8 +494,8 @@ export function MessageList({
                     {group.messages[0] && hasContent(group.messages[0]) && (
                       <MarkdownContent
                         content={extractContentFromMessage(group.messages[0])}
-                        isLoading={thread.isLoading}
-                        rehypePlugins={rehypePlugins}
+                        isLoading={thread.isLoading && index === grouped.length - 1}
+                        rehypePlugins={thread.isLoading && index === grouped.length - 1 ? rehypePlugins : []}
                         className="mb-4"
                       />
                     )}
@@ -541,7 +565,7 @@ export function MessageList({
                       <MessageGroup
                         key={"thinking-fallback-" + message.id}
                         messages={[message]}
-                        isLoading={thread.isLoading}
+                        isLoading={thread.isLoading && index === grouped.length - 1}
                       />,
                     );
                   }
@@ -561,7 +585,7 @@ export function MessageList({
                       <SubtaskCard
                         key={"task-fallback-" + taskId}
                         taskId={taskId!}
-                        isLoading={thread.isLoading}
+                        isLoading={thread.isLoading && index === grouped.length - 1}
                       />,
                     );
                   }

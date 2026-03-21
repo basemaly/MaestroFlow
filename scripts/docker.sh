@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -115,6 +115,21 @@ init() {
 start() {
     local sandbox_mode
     local services
+
+    # Check Docker daemon first
+    if ! command -v docker >/dev/null 2>&1; then
+        echo -e "${YELLOW}✗ Docker is not installed.${NC}"
+        echo "  Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
+        exit 1
+    fi
+    
+    if ! docker info >/dev/null 2>&1; then
+        echo -e "${YELLOW}✗ Docker daemon is not running.${NC}"
+        echo "  Please start Docker Desktop and try again."
+        echo "  On macOS: open -a Docker"
+        echo "  On Linux: sudo systemctl start docker"
+        exit 1
+    fi
 
     echo "=========================================="
     echo "  Starting DeerFlow Docker Development"
@@ -257,7 +272,7 @@ help() {
 
 main() {
     # Main command dispatcher
-    case "$1" in
+    case "${1:-}" in
         init)
             init
             ;;
@@ -268,7 +283,7 @@ main() {
             restart
             ;;
         logs)
-            logs "$2"
+            logs "${2:-}"
             ;;
         stop)
             stop

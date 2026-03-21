@@ -12,6 +12,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_MAX_ENTRY_AGE_DAYS = 90
+
 
 class ChannelStore:
     """JSON-file-backed store that maps IM conversations to DeerFlow threads.
@@ -42,6 +44,27 @@ class ChannelStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._data: dict[str, dict[str, Any]] = self._load()
         self._lock = threading.Lock()
+        self._sweep_stale_entries()
+
+    def _sweep_stale_entries(self) -> int:
+        """Remove entries older than MAX_ENTRY_AGE_DAYS. Returns count removed."""
+        cutoff = time.time() - (_MAX_ENTRY_AGE_DAYS * 86400)
+        removed = 0
+        with self._lock:
+            stale_keys = [k for k, v in self._data.items() if v.get("updated_at", 0) < cutoff]
+            for k in stale_keys:
+                del self._data[k]
+                removed += 1
+            if stale_keys:
+                self._save()
+        if removed:
+            logger.info(
+                "ChannelStore: swept %d stale entries (age > %d days), remaining=%d",
+                removed,
+                _MAX_ENTRY_AGE_DAYS,
+                len(self._data),
+            )
+        return removed
 
     # -- persistence -------------------------------------------------------
 
@@ -64,10 +87,10 @@ class ChannelStore:
             json.dump(self._data, fd, indent=2)
             fd.close()
             Path(fd.name).replace(self._path)
-        except BaseException:
+        except (OSError, RuntimeError) as exc:
             fd.close()
             Path(fd.name).unlink(missing_ok=True)
-            raise
+            raise RuntimeError(f"Failed to save channel store: {exc}") from exc
 
     # -- key helpers -------------------------------------------------------
 

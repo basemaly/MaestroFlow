@@ -47,6 +47,7 @@ dependencies = [
     "langfuse>=4.0.0",
     "croniter>=2.0.0",
     "aiofiles>=24.1.0",
+    "cachetools>=5.5.0",
 ]
 
 [dependency-groups]

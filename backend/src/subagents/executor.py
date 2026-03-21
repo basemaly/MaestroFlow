@@ -3,8 +3,9 @@
 import asyncio
 import logging
 import threading
+import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -47,6 +48,8 @@ class SubagentResult:
         started_at: When execution started.
         completed_at: When execution completed.
         ai_messages: List of complete AI messages (as dicts) generated during execution.
+        created_at: When this result entry was created (for TTL eviction).
+        ttl_seconds: Time-to-live in seconds before automatic eviction (default: 15 min).
     """
 
     task_id: str
@@ -57,27 +60,38 @@ class SubagentResult:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     ai_messages: list[dict[str, Any]] | None = None
+    created_at: datetime = None  # type: ignore[assignment]
+    ttl_seconds: int = 900
 
     def __post_init__(self):
         """Initialize mutable defaults."""
         if self.ai_messages is None:
             self.ai_messages = []
+        if self.created_at is None:
+            self.created_at = datetime.now()
 
 
 # Global storage for background task results
 _background_tasks: dict[str, SubagentResult] = {}
 _background_tasks_lock = threading.Lock()
+MAX_BACKGROUND_TASKS = 1000  # Max entries before FIFO eviction
+BACKGROUND_TASK_TTL_SECONDS = 900  # Default TTL: 15 minutes
+SWEEP_INTERVAL_SECONDS = 300  # Background sweep interval: 5 minutes
+_SWEEP_ALERT_THRESHOLD = 3  # Consecutive failures before ERROR escalation
 
 # Dynamic async queue and semaphore for graceful backpressure
 MAX_CONCURRENT_SUBAGENTS = 8
+MAX_AI_MESSAGES_PER_SUBAGENT = 200
 _bg_loop = asyncio.new_event_loop()
 _execution_semaphore: asyncio.Semaphore | None = None
+
 
 def _start_bg_loop():
     global _execution_semaphore
     asyncio.set_event_loop(_bg_loop)
     _execution_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SUBAGENTS)
     _bg_loop.run_forever()
+
 
 threading.Thread(target=_start_bg_loop, daemon=True, name="subagent-bg-loop").start()
 
@@ -304,6 +318,8 @@ class SubagentExecutor:
 
                             if not is_duplicate:
                                 result.ai_messages.append(message_dict)
+                                if len(result.ai_messages) > MAX_AI_MESSAGES_PER_SUBAGENT:
+                                    result.ai_messages.pop(0)
                                 logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} captured AI message #{len(result.ai_messages)}")
 
                 logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} completed async execution")
@@ -398,9 +414,12 @@ class SubagentExecutor:
         # an async context where an event loop already exists). Subagent execution
         # errors are handled within _aexecute() and returned as FAILED status.
         try:
+
             async def _run_sync():
                 if _execution_semaphore is not None:
+                    wait_start = time.time()
                     async with _execution_semaphore:
+                        metric.queue_wait_seconds = time.time() - wait_start
                         return await self._aexecute(task, result_holder)
                 return await self._aexecute(task, result_holder)
 
@@ -435,6 +454,9 @@ class SubagentExecutor:
         Returns:
             Task ID that can be used to check status later.
         """
+        # Ensure the sweeper is running
+        _ensure_sweeper_started()
+
         # Use provided task_id or generate a new one
         if task_id is None:
             task_id = str(uuid.uuid4())[:8]
@@ -450,9 +472,23 @@ class SubagentExecutor:
 
         with _background_tasks_lock:
             _background_tasks[task_id] = result
+            # FIFO eviction if over capacity
+            _evict_fifo_if_needed()
 
         async def run_task():
+            # Metrics for async execution
+            metric = record_subagent_start(
+                task_id=task_id,
+                model_name=self.model_name or "inherit",
+                queue_wait_seconds=0.0,
+            )
+            wait_start = time.time()
+
             with _background_tasks_lock:
+                if task_id not in _background_tasks:
+                    # Task was evicted before it could start
+                    record_subagent_completion(metric, status="evicted")
+                    return
                 _background_tasks[task_id].status = SubagentStatus.RUNNING
                 _background_tasks[task_id].started_at = datetime.now()
                 result_holder = _background_tasks[task_id]
@@ -461,25 +497,31 @@ class SubagentExecutor:
                 await _execution_semaphore.acquire()
 
             try:
+                metric.queue_wait_seconds = time.time() - wait_start
                 # Execute with timeout
-                await asyncio.wait_for(
-                    self._aexecute(task, result_holder),
-                    timeout=self.config.timeout_seconds
-                )
+                await asyncio.wait_for(self._aexecute(task, result_holder), timeout=self.config.timeout_seconds)
                 with _background_tasks_lock:
-                    _background_tasks[task_id].completed_at = datetime.now()
+                    if task_id in _background_tasks:
+                        _background_tasks[task_id].completed_at = datetime.now()
+                        record_subagent_completion(metric, status=_background_tasks[task_id].status.value)
+                    else:
+                        record_subagent_completion(metric, status="evicted")
             except asyncio.TimeoutError:
                 logger.error(f"[trace={self.trace_id}] Subagent {self.config.name} execution timed out after {self.config.timeout_seconds}s")
+                record_subagent_completion(metric, status="timed_out")
                 with _background_tasks_lock:
-                    _background_tasks[task_id].status = SubagentStatus.TIMED_OUT
-                    _background_tasks[task_id].error = f"Execution timed out after {self.config.timeout_seconds} seconds"
-                    _background_tasks[task_id].completed_at = datetime.now()
+                    if task_id in _background_tasks:
+                        _background_tasks[task_id].status = SubagentStatus.TIMED_OUT
+                        _background_tasks[task_id].error = f"Execution timed out after {self.config.timeout_seconds} seconds"
+                        _background_tasks[task_id].completed_at = datetime.now()
             except Exception as e:
                 logger.exception(f"[trace={self.trace_id}] Subagent {self.config.name} async execution failed")
+                record_subagent_completion(metric, status="failed")
                 with _background_tasks_lock:
-                    _background_tasks[task_id].status = SubagentStatus.FAILED
-                    _background_tasks[task_id].error = str(e)
-                    _background_tasks[task_id].completed_at = datetime.now()
+                    if task_id in _background_tasks:
+                        _background_tasks[task_id].status = SubagentStatus.FAILED
+                        _background_tasks[task_id].error = str(e)
+                        _background_tasks[task_id].completed_at = datetime.now()
             finally:
                 if _execution_semaphore is not None:
                     _execution_semaphore.release()
@@ -546,6 +588,119 @@ def cleanup_background_task(task_id: str) -> None:
                 task_id,
                 result.status.value if hasattr(result.status, "value") else result.status,
             )
+
+
+def _evict_expired_tasks() -> int:
+    """Remove tasks that have exceeded their TTL.
+
+    Called periodically by the background sweeper thread and on capacity pressure.
+    On first call, starts the background sweeper thread.
+
+    Returns:
+        Number of tasks evicted.
+    """
+    _ensure_sweeper_started()
+    now = datetime.now()
+    evicted = 0
+    with _background_tasks_lock:
+        expired_ids = [task_id for task_id, result in _background_tasks.items() if (now - result.created_at).total_seconds() > result.ttl_seconds]
+        for task_id in expired_ids:
+            result = _background_tasks[task_id]
+            age_seconds = (now - result.created_at).total_seconds()
+            is_terminal = result.status in {
+                SubagentStatus.COMPLETED,
+                SubagentStatus.FAILED,
+                SubagentStatus.TIMED_OUT,
+            }
+            if not is_terminal:
+                logger.warning(
+                    "TTL-evicted non-terminal background task: %s (age=%ds, status=%s) - indicates task_tool polling failure",
+                    task_id,
+                    int(age_seconds),
+                    result.status.value,
+                )
+            else:
+                logger.debug(
+                    "TTL-evicted expired background task: %s (age=%ds, status=%s)",
+                    task_id,
+                    int(age_seconds),
+                    result.status.value,
+                )
+            del _background_tasks[task_id]
+            evicted += 1
+    return evicted
+
+
+def _evict_fifo_if_needed() -> int:
+    """Evict oldest tasks if we exceed MAX_BACKGROUND_TASKS capacity.
+
+    Returns:
+        Number of tasks evicted.
+    """
+    evicted = 0
+    with _background_tasks_lock:
+        if len(_background_tasks) > MAX_BACKGROUND_TASKS:
+            # Sort by created_at, remove oldest entries
+            excess_count = len(_background_tasks) - MAX_BACKGROUND_TASKS
+            oldest_ids = sorted(_background_tasks.keys(), key=lambda k: _background_tasks[k].created_at)[:excess_count]
+            for old_id in oldest_ids:
+                result = _background_tasks[old_id]
+                age_seconds = (datetime.now() - result.created_at).total_seconds()
+                logger.warning(
+                    "FIFO-evicted background task: %s (age=%ds, status=%s) - capacity exceeded (%d > %d)",
+                    old_id,
+                    int(age_seconds),
+                    result.status.value,
+                    len(_background_tasks),
+                    MAX_BACKGROUND_TASKS,
+                )
+                del _background_tasks[old_id]
+                evicted += 1
+    return evicted
+
+
+def _start_background_sweep():
+    """Periodic TTL sweep running every 5 minutes."""
+    consecutive_failures = 0
+    while True:
+        time.sleep(SWEEP_INTERVAL_SECONDS)
+        try:
+            evicted = _evict_expired_tasks()
+            if evicted:
+                logger.info("Background sweep evicted %d expired tasks", evicted)
+            if consecutive_failures > 0:
+                logger.info("Background sweep recovered after %d consecutive failures", consecutive_failures)
+                consecutive_failures = 0
+        except Exception:
+            consecutive_failures += 1
+            if consecutive_failures >= _SWEEP_ALERT_THRESHOLD:
+                logger.error(
+                    "Background sweep failed for %d consecutive cycles — cache eviction stalled (memory may grow unbounded)",
+                    consecutive_failures,
+                )
+            else:
+                logger.warning("Background sweep failed (consecutive_failures=%d)", consecutive_failures)
+
+
+# Lazy sweeper thread initialization to avoid circular imports
+_sweeper_started = False
+_sweeper_lock = threading.Lock()
+
+
+def _ensure_sweeper_started():
+    """Ensure sweeper thread is started (idempotent, thread-safe)."""
+    global _sweeper_started
+    if _sweeper_started:
+        return
+    with _sweeper_lock:
+        if _sweeper_started:
+            return
+        threading.Thread(target=_start_background_sweep, daemon=True, name="subagent-task-sweeper").start()
+        _sweeper_started = True
+
+
+# Start sweeper on first eviction check (lazy init to avoid circular imports)
+# The sweeper will be started when _evict_expired_tasks() or _evict_fifo_if_needed() is first called
 
 
 # Metrics integration: Periodic logging of subagent performance

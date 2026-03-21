@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from src.executive.agent import run_executive_chat
 from src.executive.blueprints import (
@@ -146,6 +150,12 @@ async def executive_preview(request: ExecutiveActionRequestModel) -> dict:
         return preview_action_payload(request.action_id, request.component_id, request.input)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("executive_preview failed for action=%s", request.action_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error previewing action '{request.action_id}': {type(exc).__name__}",
+        ) from exc
 
 
 @router.post("/actions/execute")
@@ -154,6 +164,12 @@ async def executive_execute(request: ExecutiveActionRequestModel) -> dict:
         return await execute_action_payload(request.action_id, request.component_id, request.input, requested_by=request.requested_by)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("executive_execute failed for action=%s", request.action_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error executing action '{request.action_id}': {type(exc).__name__}",
+        ) from exc
 
 
 @router.get("/approvals")
@@ -167,6 +183,26 @@ async def executive_confirm(approval_id: str, requested_by: str = "user") -> dic
         return await confirm_approval_payload(approval_id, requested_by=requested_by)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("executive_confirm failed for approval=%s", approval_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error confirming approval '{approval_id}': {type(exc).__name__}",
+        ) from exc
+
+
+@router.post("/approvals/{approval_id}/reject")
+async def executive_reject(approval_id: str, requested_by: str = "user") -> dict:
+    try:
+        return await reject_approval_payload(approval_id, requested_by=requested_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("executive_reject failed for approval=%s", approval_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error rejecting approval '{approval_id}': {type(exc).__name__}",
+        ) from exc
 
 
 @router.post("/approvals/{approval_id}/reject")
@@ -206,7 +242,16 @@ def executive_update_settings(request: ExecutiveSettingsUpdateRequest) -> dict:
 
 @router.post("/chat")
 async def executive_chat(request: ExecutiveChatRequest, http_request: Request) -> dict:
-    return await run_executive_chat(request.messages, trace_id=getattr(http_request.state, "trace_id", None))
+    try:
+        return await run_executive_chat(request.messages, trace_id=getattr(http_request.state, "trace_id", None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("executive_chat failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error in executive chat: {type(exc).__name__}",
+        ) from exc
 
 
 @router.post("/agent-runs")
@@ -223,6 +268,12 @@ async def executive_agent_run(request: ExecutiveAgentRunRequest, http_request: R
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("executive_agent_run failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error running agent: {type(exc).__name__}",
+        ) from exc
 
 
 @router.get("/autoresearch/registry")
@@ -356,10 +407,7 @@ async def projects_create(request: CreateProjectRequest) -> dict:
         )
         return {
             **project.summary_dict(),
-            "stages": [
-                {"stage_id": s.stage_id, "title": s.title, "kind": s.kind.value, "status": s.status.value}
-                for s in project.stages
-            ],
+            "stages": [{"stage_id": s.stage_id, "title": s.title, "kind": s.kind.value, "status": s.status.value} for s in project.stages],
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -378,23 +426,22 @@ async def projects_get(project_id: str) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     stages_info = []
     for s in project.stages:
-        stages_info.append({
-            "stage_id": s.stage_id,
-            "title": s.title,
-            "kind": s.kind.value,
-            "status": s.status.value,
-            "iteration_count": s.iteration_count,
-            "max_iterations": s.iteration_policy.max_iterations,
-            "output_preview": (s.current_output or "")[:500] if s.current_output else None,
-            "current_output": s.current_output,
-            "outputs": [
-                {"iteration": o.iteration, "output": o.output, "quality_score": o.quality_score, "created_at": o.created_at.isoformat()}
-                for o in s.outputs
-            ],
-            "error": s.error,
-            "started_at": s.started_at.isoformat() if s.started_at else None,
-            "completed_at": s.completed_at.isoformat() if s.completed_at else None,
-        })
+        stages_info.append(
+            {
+                "stage_id": s.stage_id,
+                "title": s.title,
+                "kind": s.kind.value,
+                "status": s.status.value,
+                "iteration_count": s.iteration_count,
+                "max_iterations": s.iteration_policy.max_iterations,
+                "output_preview": (s.current_output or "")[:500] if s.current_output else None,
+                "current_output": s.current_output,
+                "outputs": [{"iteration": o.iteration, "output": o.output, "quality_score": o.quality_score, "created_at": o.created_at.isoformat()} for o in s.outputs],
+                "error": s.error,
+                "started_at": s.started_at.isoformat() if s.started_at else None,
+                "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+            }
+        )
     checkpoints = [
         {
             "checkpoint_id": cp.checkpoint_id,

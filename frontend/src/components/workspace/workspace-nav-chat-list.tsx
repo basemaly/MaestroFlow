@@ -1,10 +1,10 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ActivityIcon, BookOpenTextIcon, BotIcon, FlaskConicalIcon, FilePenLineIcon, MessagesSquare } from "lucide-react";
+import { ActivityIcon, BookOpenTextIcon, BotIcon, FlaskConicalIcon, FilePenLineIcon, Loader2Icon, MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import {
   SidebarGroup,
@@ -37,13 +37,27 @@ function NavItem({
   iconClassName?: string;
   isMusicalIcon?: boolean;
 }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const pathname = usePathname();
+
+  // Clear loading state when navigation completes
+  useEffect(() => {
+    setIsLoading(false);
+  }, [pathname]);
+
   return (
     <SidebarMenuItem>
       <Tooltip>
         <TooltipTrigger asChild>
           <SidebarMenuButton isActive={isActive} asChild>
-            <Link className="text-muted-foreground" href={href}>
-              {isMusicalIcon ? (
+            <Link
+              className="text-muted-foreground"
+              href={href}
+              onClick={() => setIsLoading(true)}
+            >
+              {isLoading ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : isMusicalIcon ? (
                 <Icon size="lg" className={iconClassName} />
               ) : (
                 <Icon className={iconClassName} />

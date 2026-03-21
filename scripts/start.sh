@@ -4,7 +4,7 @@
 #
 # Must be run from the repo root directory.
 
-set -e
+set -euo pipefail
 trap '' HUP
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,7 +26,12 @@ free_port() {
     local pids
     pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
     if [ -n "$pids" ]; then
-        echo "$pids" | xargs kill -9 2>/dev/null || true
+        echo "$pids" | xargs kill -15 2>/dev/null || true
+        sleep 0.5
+        pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            echo "$pids" | xargs kill -9 2>/dev/null || true
+        fi
         # Wait up to 3s for the port to actually release
         local i=0
         while lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1 && [ $i -lt 30 ]; do
@@ -48,6 +53,9 @@ stop_nginx() {
         rm -f "$NGINX_PID_FILE"
     fi
     # Kill any remaining nginx master/workers regardless
+    pkill -15 -f "nginx.*nginx.local.conf" 2>/dev/null || true
+    pkill -15 nginx 2>/dev/null || true
+    sleep 0.5
     pkill -9 -f "nginx.*nginx.local.conf" 2>/dev/null || true
     pkill -9 nginx 2>/dev/null || true
     free_port "$MAESTROFLOW_PUBLIC_PORT"
@@ -56,13 +64,19 @@ stop_nginx() {
 # Kill all locally managed services and free their ports
 stop_all_services() {
     # Gateway
-    pkill -f "uvicorn src.gateway.app:app" 2>/dev/null || true
+    pkill -15 -f "uvicorn src.gateway.app:app" 2>/dev/null || true
+    sleep 0.2
+    pkill -9 -f "uvicorn src.gateway.app:app" 2>/dev/null || true
     free_port "$MAESTROFLOW_GATEWAY_PORT"
 
     # Frontend (matches pnpm/next processes on the canonical local port)
-    pkill -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
-    pkill -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
-    pkill -f "pnpm.*next dev" 2>/dev/null || true
+    pkill -15 -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -15 -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -15 -f "pnpm.*next dev" 2>/dev/null || true
+    sleep 0.2
+    pkill -9 -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -9 -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -9 -f "pnpm.*next dev" 2>/dev/null || true
     free_port "$MAESTROFLOW_FRONTEND_PORT"
 
     # Nginx
@@ -74,7 +88,7 @@ stop_all_services() {
 
 stop_langgraph_runtime() {
     if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-        "${DOCKER_COMPOSE_CMD[@]}" stop langgraph langgraph-redis langgraph-postgres >/dev/null 2>&1 || true
+        "${DOCKER_COMPOSE_CMD[@]}" stop langgraph langgraph-redis langgraph-postgres openviking activepieces >/dev/null 2>&1 || true
     fi
 }
 
@@ -91,6 +105,40 @@ prewarm_routes() {
     done
 }
 
+# Check if Docker daemon is running (fails fast with helpful message)
+check_docker_daemon() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "✗ Docker is not installed."
+        echo "  Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
+        exit 1
+    fi
+    
+    if ! docker info >/dev/null 2>&1; then
+        echo "✗ Docker daemon is not running."
+        echo "  Please start Docker Desktop and try again."
+        echo "  On macOS: open -a Docker"
+        echo "  On Linux: sudo systemctl start docker"
+        exit 1
+    fi
+}
+
+# Check if Docker daemon is running (fails fast with helpful message)
+check_docker_daemon() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "✗ Docker is not installed."
+        echo "  Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
+        exit 1
+    fi
+    
+    if ! docker info >/dev/null 2>&1; then
+        echo "✗ Docker daemon is not running."
+        echo "  Please start Docker Desktop and try again."
+        echo "  On macOS: open -a Docker"
+        echo "  On Linux: sudo systemctl start docker"
+        exit 1
+    fi
+}
+
 # Wait for Docker daemon to be ready (up to $1 seconds)
 wait_for_docker() {
     local max="${1:-30}"
@@ -100,6 +148,8 @@ wait_for_docker() {
         if [ $i -ge "$max" ]; then
             echo ""
             echo "✗ Docker daemon not ready after ${max}s. Is Docker Desktop running?"
+            echo "  On macOS: open -a Docker"
+            echo "  On Linux: sudo systemctl start docker"
             exit 1
         fi
         printf "."
@@ -110,11 +160,7 @@ wait_for_docker() {
 }
 
 ensure_langgraph_runtime() {
-    if ! command -v docker >/dev/null 2>&1; then
-        echo "✗ Docker is required for the optimized LangGraph runtime."
-        exit 1
-    fi
-
+    check_docker_daemon
     wait_for_docker 30
 
     export LANGGRAPH_CHECKPOINTER_URL="${LANGGRAPH_CHECKPOINTER_URL:-$LANGGRAPH_POSTGRES_URL_DEFAULT}"
@@ -126,7 +172,7 @@ ensure_langgraph_runtime() {
     docker exec deer-flow-langgraph-postgres psql -U postgres -tc \
         "SELECT 1 FROM pg_database WHERE datname = 'maestroflow_langgraph_v2'" | grep -q 1 \
         || docker exec deer-flow-langgraph-postgres createdb -U postgres maestroflow_langgraph_v2
-    "${DOCKER_COMPOSE_CMD[@]}" up -d langgraph >/dev/null
+    "${DOCKER_COMPOSE_CMD[@]}" up -d langgraph openviking activepieces >/dev/null
 }
 
 # ── Stop existing services ────────────────────────────────────────────────────
@@ -140,7 +186,7 @@ sleep 1
 # ── Config check ─────────────────────────────────────────────────────────────
 
 if ! { \
-        [ -n "$DEER_FLOW_CONFIG_PATH" ] && [ -f "$DEER_FLOW_CONFIG_PATH" ] || \
+        [ -n "${DEER_FLOW_CONFIG_PATH:-}" ] && [ -f "${DEER_FLOW_CONFIG_PATH:-}" ] || \
         [ -f backend/config.yaml ] || \
         [ -f config.yaml ]; \
     }; then
@@ -205,6 +251,7 @@ export LANGGRAPH_CHECKPOINTER_URL="${LANGGRAPH_CHECKPOINTER_URL:-$LANGGRAPH_POST
 export BG_JOB_ISOLATED_LOOPS="${BG_JOB_ISOLATED_LOOPS:-true}"
 
 echo "Starting LangGraph server..."
+check_docker_daemon
 ensure_langgraph_runtime
 ./scripts/wait-for-port.sh "$MAESTROFLOW_LANGGRAPH_PORT" 60 "LangGraph" || {
     echo "  See logs/langgraph.log for details"
@@ -226,7 +273,8 @@ GATEWAY_PID=$!
 echo "✓ Gateway API started on localhost:$MAESTROFLOW_GATEWAY_PORT"
 
 echo "Starting Frontend..."
-(cd frontend && exec pnpm exec next dev --turbopack --hostname "$MAESTROFLOW_FRONTEND_HOST" --port "$MAESTROFLOW_FRONTEND_PORT" > ../logs/frontend.log 2>&1) &
+(cd frontend && nohup pnpm exec next dev --turbopack --hostname "$MAESTROFLOW_FRONTEND_HOST" --port "$MAESTROFLOW_FRONTEND_PORT" > ../logs/frontend.log 2>&1 &)
+# Get the PID of the backgrounded Next.js process
 FRONTEND_PID=$!
 ./scripts/wait-for-port.sh "$MAESTROFLOW_FRONTEND_PORT" 120 "Frontend" || {
     echo "  See logs/frontend.log for details"

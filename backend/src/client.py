@@ -99,6 +99,8 @@ class DeerFlowClient:
         print(client.list_skills())
     """
 
+    _MAX_SEEN_IDS = 10000
+
     def __init__(
         self,
         config_path: str | None = None,
@@ -330,6 +332,13 @@ class DeerFlowClient:
                     continue
                 if msg_id:
                     seen_ids.add(msg_id)
+                    if len(seen_ids) > self._MAX_SEEN_IDS:
+                        logger.warning(
+                            "seen_ids set exceeded %d in thread %s — clearing oldest entries",
+                            self._MAX_SEEN_IDS,
+                            thread_id,
+                        )
+                        seen_ids.clear()
 
                 if isinstance(msg, AIMessage):
                     if msg.tool_calls:
@@ -426,6 +435,13 @@ class DeerFlowClient:
                     continue
                 if msg_id:
                     seen_ids.add(msg_id)
+                    if len(seen_ids) > self._MAX_SEEN_IDS:
+                        logger.warning(
+                            "seen_ids set exceeded %d in async thread %s — clearing oldest entries",
+                            self._MAX_SEEN_IDS,
+                            thread_id,
+                        )
+                        seen_ids.clear()
 
                 if isinstance(msg, AIMessage):
                     if msg.tool_calls:

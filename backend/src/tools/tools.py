@@ -5,6 +5,7 @@ import logging
 import threading
 from typing import Any
 
+from cachetools import LRUCache, TTLCache
 from langchain.tools import BaseTool
 
 from src.config import get_app_config, is_langfuse_enabled
@@ -22,18 +23,22 @@ from src.tools.builtins import (
 
 logger = logging.getLogger(__name__)
 
+_TOOL_CACHE_MAXSIZE = 256
+_TOOL_LOCK_MAXSIZE = 256
+_TOOL_LOCK_TTL_SECONDS = 300
 
-_tool_cache = {}
-_tool_async_locks = {}
-_tool_sync_locks = {}
-_tool_async_locks_lock = threading.Lock()
-_tool_sync_locks_lock = threading.Lock()
+_tool_cache: LRUCache[str, Any] = LRUCache(maxsize=_TOOL_CACHE_MAXSIZE)
+_tool_async_locks: TTLCache[str, asyncio.Lock] = TTLCache(maxsize=_TOOL_LOCK_MAXSIZE, ttl=_TOOL_LOCK_TTL_SECONDS)
+_tool_sync_locks: TTLCache[str, threading.Lock] = TTLCache(maxsize=_TOOL_LOCK_MAXSIZE, ttl=_TOOL_LOCK_TTL_SECONDS)
+_tool_locks_init_lock = threading.Lock()
 
 CACHEABLE_TOOLS_KEYWORDS = {"search", "read", "get", "preview", "view", "fetch", "list", "mcp_"}
+
 
 def _is_cacheable(tool_name: str) -> bool:
     name = tool_name.lower()
     return any(k in name for k in CACHEABLE_TOOLS_KEYWORDS) and "task" not in name and "bash" not in name and "write" not in name
+
 
 def _get_cache_key(tool_name: str, input_args: Any) -> str:
     try:
@@ -45,17 +50,32 @@ def _get_cache_key(tool_name: str, input_args: Any) -> str:
     except Exception:
         return f"{tool_name}:{str(input_args)}"
 
+
 def _get_sync_lock(key: str) -> threading.Lock:
-    with _tool_sync_locks_lock:
-        if key not in _tool_sync_locks:
-            _tool_sync_locks[key] = threading.Lock()
+    try:
         return _tool_sync_locks[key]
+    except KeyError:
+        pass
+    with _tool_locks_init_lock:
+        try:
+            return _tool_sync_locks[key]
+        except KeyError:
+            _tool_sync_locks[key] = threading.Lock()
+            return _tool_sync_locks[key]
+
 
 def _get_async_lock(key: str) -> asyncio.Lock:
-    with _tool_async_locks_lock:
-        if key not in _tool_async_locks:
-            _tool_async_locks[key] = asyncio.Lock()
+    try:
         return _tool_async_locks[key]
+    except KeyError:
+        pass
+    with _tool_locks_init_lock:
+        try:
+            return _tool_async_locks[key]
+        except KeyError:
+            _tool_async_locks[key] = asyncio.Lock()
+            return _tool_async_locks[key]
+
 
 def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> BaseTool:
     """Monkey-patch invoke/ainvoke to add deduplication and optional Langfuse tool span.
@@ -77,6 +97,7 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
         def _do_invoke():
             if trace_enabled:
                 from src.observability import observe_span
+
                 with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
                     return original_invoke(input, config, **kwargs)
             return original_invoke(input, config, **kwargs)
@@ -86,16 +107,18 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
 
         cache_key = _get_cache_key(tool_name, input)
         if cache_key in _tool_cache:
-            logger.info(f"Sync cache hit for tool {tool_name}")
+            logger.debug("Sync cache hit for tool %s (size=%d)", tool_name, len(_tool_cache))
             return _tool_cache[cache_key]
 
         lock = _get_sync_lock(cache_key)
         with lock:
             if cache_key in _tool_cache:
-                logger.info(f"Sync cache hit for tool {tool_name} (after lock)")
+                logger.debug("Sync cache hit for tool %s (after lock, size=%d)", tool_name, len(_tool_cache))
                 return _tool_cache[cache_key]
-            
+
             result = _do_invoke()
+            if len(_tool_cache) >= _TOOL_CACHE_MAXSIZE:
+                logger.debug("Tool cache at capacity (%d), evicting LRU entry for %s", len(_tool_cache), tool_name)
             _tool_cache[cache_key] = result
             return result
 
@@ -103,6 +126,7 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
         async def _do_ainvoke():
             if trace_enabled:
                 from src.observability import observe_span
+
                 with observe_span(f"tool.{tool_name}", as_type="tool", input=input):
                     return await original_ainvoke(input, config, **kwargs)
             return await original_ainvoke(input, config, **kwargs)
@@ -112,16 +136,18 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
 
         cache_key = _get_cache_key(tool_name, input)
         if cache_key in _tool_cache:
-            logger.info(f"Async cache hit for tool {tool_name}")
+            logger.debug("Async cache hit for tool %s (size=%d)", tool_name, len(_tool_cache))
             return _tool_cache[cache_key]
 
         lock = _get_async_lock(cache_key)
         async with lock:
             if cache_key in _tool_cache:
-                logger.info(f"Async cache hit for tool {tool_name} (after lock)")
+                logger.debug("Async cache hit for tool %s (after lock, size=%d)", tool_name, len(_tool_cache))
                 return _tool_cache[cache_key]
-            
+
             result = await _do_ainvoke()
+            if len(_tool_cache) >= _TOOL_CACHE_MAXSIZE:
+                logger.debug("Tool cache at capacity (%d), evicting LRU entry for %s", len(_tool_cache), tool_name)
             _tool_cache[cache_key] = result
             return result
 
@@ -129,6 +155,7 @@ def _wrap_tool_with_caching_and_tracing(t: BaseTool, trace_enabled: bool) -> Bas
     object.__setattr__(t, "ainvoke", traced_ainvoke)
     object.__setattr__(t, "_langfuse_traced", True)
     return t
+
 
 BUILTIN_TOOLS = [
     present_file_tool,

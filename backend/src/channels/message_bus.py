@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+
+class QueueFullError(Exception):
+    """Raised when the message queue is full and cannot accept more messages."""
+
+    pass
+
 
 logger = logging.getLogger(__name__)
 
@@ -115,33 +123,74 @@ OutboundCallback = Callable[[OutboundMessage], Coroutine[Any, Any, None]]
 
 
 class MessageBus:
-    """Async pub/sub hub connecting channels and the agent dispatcher.
+    """Async pub/sub hub connecting channels and the agent dispatcher with backpressure and dead letter queue support.
 
     Channels publish inbound messages; the dispatcher consumes them.
-    The dispatcher publishes outbound messages; channels receive them
-    via registered callbacks.
+    Implements bounded queue with configurable max size, backpressure handling,
+    and dead letter queue for failed messages to prevent memory exhaustion.
+
+    Attributes:
+        max_queue_size: Maximum number of messages the inbound queue can hold
+        _dead_letter_queue: Queue for messages that couldn't be processed after retries
     """
 
-    def __init__(self) -> None:
-        self._inbound_queue: asyncio.Queue[InboundMessage] = asyncio.Queue()
+    def __init__(self, max_queue_size: int = 1000) -> None:
+        self._inbound_queue: asyncio.Queue[InboundMessage] = asyncio.Queue(maxsize=max_queue_size)
+        self._dead_letter_queue: asyncio.Queue[tuple[InboundMessage, Exception]] = asyncio.Queue()
+        self._max_queue_size = max_queue_size
         self._outbound_listeners: list[OutboundCallback] = []
+        self._listeners_lock = threading.Lock()
 
     # -- inbound -----------------------------------------------------------
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
-        """Enqueue an inbound message from a channel."""
-        await self._inbound_queue.put(msg)
-        logger.info(
-            "[Bus] inbound enqueued: channel=%s, chat_id=%s, type=%s, queue_size=%d",
-            msg.channel_name,
-            msg.chat_id,
-            msg.msg_type.value,
-            self._inbound_queue.qsize(),
-        )
+        """Enqueue an inbound message from a channel with backpressure handling."""
+        try:
+            await asyncio.wait_for(self._inbound_queue.put(msg), timeout=5.0)
+            logger.info(
+                "[Bus] inbound enqueued: channel=%s, chat_id=%s, type=%s, queue_size=%d",
+                msg.channel_name,
+                msg.chat_id,
+                msg.msg_type.value,
+                self._inbound_queue.qsize(),
+            )
+        except asyncio.TimeoutError:
+            # Queue is full, implement backpressure by rejecting the message
+            logger.warning(
+                "[Bus] inbound queue full, rejecting message: channel=%s, chat_id=%s, type=%s",
+                msg.channel_name,
+                msg.chat_id,
+                msg.msg_type.value,
+            )
+            raise QueueFullError(f"Inbound message queue is full (max {self._max_queue_size}). Rejecting message from {msg.channel_name}/{msg.chat_id}")
+
+    async def publish_inbound_with_retry(self, msg: InboundMessage, max_retries: int = 3) -> None:
+        """Enqueue an inbound message with retry logic and dead letter queue on failure."""
+        for attempt in range(max_retries + 1):
+            try:
+                await self.publish_inbound(msg)
+                return
+            except QueueFullError:
+                if attempt < max_retries:
+                    # Exponential backoff
+                    await asyncio.sleep(2**attempt)
+                    continue
+                # After max retries, move to dead letter queue
+                await self._dead_letter_queue.put((msg, QueueFullError(f"Failed after {max_retries} retries")))
+                logger.error(
+                    "[Bus] moved message to dead letter queue after failed retries: channel=%s, chat_id=%s, type=%s",
+                    msg.channel_name,
+                    msg.chat_id,
+                    msg.msg_type.value,
+                )
+                raise
 
     async def get_inbound(self) -> InboundMessage:
         """Block until the next inbound message is available."""
-        return await self._inbound_queue.get()
+        msg = await self._inbound_queue.get()
+        # Task done must be called to prevent memory leaks in asyncio.Queue
+        self._inbound_queue.task_done()
+        return msg
 
     @property
     def inbound_queue(self) -> asyncio.Queue[InboundMessage]:
@@ -151,22 +200,27 @@ class MessageBus:
 
     def subscribe_outbound(self, callback: OutboundCallback) -> None:
         """Register an async callback for outbound messages."""
-        self._outbound_listeners.append(callback)
+        with self._listeners_lock:
+            if callback not in self._outbound_listeners:
+                self._outbound_listeners.append(callback)
 
     def unsubscribe_outbound(self, callback: OutboundCallback) -> None:
         """Remove a previously registered outbound callback."""
-        self._outbound_listeners = [cb for cb in self._outbound_listeners if cb is not callback]
+        with self._listeners_lock:
+            self._outbound_listeners = [cb for cb in self._outbound_listeners if cb is not callback]
 
     async def publish_outbound(self, msg: OutboundMessage) -> None:
         """Dispatch an outbound message to all registered listeners."""
+        with self._listeners_lock:
+            listeners = list(self._outbound_listeners)
         logger.info(
             "[Bus] outbound dispatching: channel=%s, chat_id=%s, listeners=%d, text_len=%d",
             msg.channel_name,
             msg.chat_id,
-            len(self._outbound_listeners),
+            len(listeners),
             len(msg.text),
         )
-        for callback in self._outbound_listeners:
+        for callback in listeners:
             try:
                 await callback(msg)
             except Exception:

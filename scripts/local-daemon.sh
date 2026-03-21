@@ -94,6 +94,19 @@ prewarm_local_routes() {
 }
 
 start_langgraph_runtime() {
+  # Check Docker daemon first
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "✗ Docker is not installed." >>"$SUPERVISOR_LOG"
+    echo "  Install Docker Desktop: https://www.docker.com/products/docker-desktop/" >>"$SUPERVISOR_LOG"
+    return 1
+  fi
+  
+  if ! docker info >/dev/null 2>&1; then
+    echo "✗ Docker daemon is not running." >>"$SUPERVISOR_LOG"
+    echo "  Please start Docker Desktop and try again." >>"$SUPERVISOR_LOG"
+    return 1
+  fi
+  
   export LANGGRAPH_CHECKPOINTER_URL="${LANGGRAPH_CHECKPOINTER_URL:-$LANGGRAPH_POSTGRES_URL_DEFAULT}"
   export BG_JOB_ISOLATED_LOOPS="${BG_JOB_ISOLATED_LOOPS:-true}"
   "${DOCKER_COMPOSE_CMD[@]}" up -d langgraph-postgres langgraph-redis >/dev/null
@@ -124,11 +137,17 @@ stop_pid_process() {
   remove_pid "$name"
 
   if [ "$name" = "frontend" ]; then
-    pkill -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
-    pkill -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
-    pkill -f "pnpm.*next dev" 2>/dev/null || true
+    pkill -15 -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -15 -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -15 -f "pnpm.*next dev" 2>/dev/null || true
+    sleep 0.2
+    pkill -9 -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -9 -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -9 -f "pnpm.*next dev" 2>/dev/null || true
   elif [ "$name" = "gateway" ]; then
-    pkill -f "uvicorn src.gateway.app:app" 2>/dev/null || true
+    pkill -15 -f "uvicorn src.gateway.app:app" 2>/dev/null || true
+    sleep 0.2
+    pkill -9 -f "uvicorn src.gateway.app:app" 2>/dev/null || true
   fi
 }
 
@@ -137,6 +156,9 @@ stop_nginx() {
     nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
     sleep 1
   fi
+  pkill -15 -f "nginx.*nginx.local.conf" 2>/dev/null || true
+  pkill -15 nginx 2>/dev/null || true
+  sleep 0.5
   pkill -9 -f "nginx.*nginx.local.conf" 2>/dev/null || true
   pkill -9 nginx 2>/dev/null || true
   rm -f "$REPO_ROOT/logs/nginx.pid"

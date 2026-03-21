@@ -28,21 +28,21 @@ class LocalSandbox(Sandbox):
     def _validate_path_security(self, resolved_path: str) -> None:
         """
         Validate that the resolved path is within allowed directories.
-        
+
         Args:
             resolved_path: The resolved local path to validate
-            
+
         Raises:
             ValueError: If path is outside allowed directories or contains traversal
         """
         path = Path(resolved_path).resolve()
-        
+
         # Check for path traversal (../ components)
         try:
             path.relative_to(path)  # This will fail if path contains ..
         except ValueError:
             raise ValueError(f"Path traversal not allowed: {resolved_path}")
-        
+
         # Check that path is within allowed roots
         allowed = False
         for root in self._allowed_roots:
@@ -52,7 +52,7 @@ class LocalSandbox(Sandbox):
                 break
             except ValueError:
                 continue
-        
+
         if not allowed:
             raise ValueError(f"Access denied: path {resolved_path} is outside allowed directories")
 
@@ -247,5 +247,15 @@ class LocalSandbox(Sandbox):
             with open(resolved_path, "wb") as f:
                 f.write(content)
         except OSError as e:
-            # Re-raise with the original path for clearer error messages, hiding internal resolved paths
+            raise type(e)(e.errno, e.strerror, path) from None
+
+    def update_file_streaming(self, path: str, source_path: Path, chunk_size: int = 65536) -> None:
+        resolved_path = self._resolve_path(path)
+        try:
+            dir_path = os.path.dirname(resolved_path)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
+            with open(source_path, "rb") as src, open(resolved_path, "wb") as dst:
+                shutil.copyfileobj(src, dst, length=chunk_size)
+        except OSError as e:
             raise type(e)(e.errno, e.strerror, path) from None

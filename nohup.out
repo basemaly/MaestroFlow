@@ -1,0 +1,80 @@
+Stopping existing services if any...
+Cleaning up sandbox containers with prefix: deer-flow-sandbox
+Checking Docker containers... [0;32mnone found[0m
+Apple Container not found, skipping...
+[0;32m✓ Container cleanup complete[0m
+
+==========================================
+  Starting MaestroFlow Development Server
+==========================================
+
+Preflight topology:
+Mode           : stopped
+Public app     : http://127.0.0.1:2027
+Frontend direct: http://127.0.0.1:3010
+Gateway direct : http://127.0.0.1:8001
+LangGraph      : http://127.0.0.1:2024
+Listeners:
+  public       : :2027 (stopped)
+  frontend     : :3010 (stopped)
+  gateway      : :8001 (stopped)
+  langgraph    : :2024 (stopped)
+
+Services starting up...
+  → Backend: LangGraph + Gateway
+  → Frontend: Next.js
+  → Nginx: Reverse Proxy
+
+Starting LangGraph server...
+  Waiting for Docker daemon...                                                               Container deer-flow-langgraph-postgres Starting 
+ Container deer-flow-langgraph-redis Starting 
+ Container deer-flow-langgraph-redis Started 
+ Container deer-flow-langgraph-postgres Started 
+ Container deer-flow-langgraph-redis Running 
+ Container deer-flow-langgraph-postgres Running 
+ Container deer-flow-openviking Starting 
+ Container deer-flow-langgraph-postgres Waiting 
+ Container deer-flow-langgraph-postgres Waiting 
+ Container deer-flow-openviking Started 
+ Container deer-flow-langgraph-postgres Healthy 
+ Container deer-flow-langgraph-postgres Healthy 
+ Container deer-flow-activepieces Starting 
+ Container deer-flow-langgraph Starting 
+ Container deer-flow-activepieces Started 
+ Container deer-flow-langgraph Started 
+                                                              ✓ LangGraph server started on localhost:2024 (Docker)
+Starting Gateway API...
+                                                              ✓ Gateway API started on localhost:8001
+Starting Frontend...
+  Waiting for Frontend on port 3010... 0s                                                              ✓ Frontend started on 127.0.0.1:3010
+Starting Nginx reverse proxy...
+                                                              ✓ Nginx started on localhost:2027
+
+==========================================
+  MaestroFlow is ready!
+==========================================
+
+  🌐 Application: http://localhost:2027
+  📡 API Gateway: http://localhost:2027/api/*
+  🤖 LangGraph:   http://localhost:2027/api/langgraph/*
+
+Mode           : foreground-local
+Public app     : http://127.0.0.1:2027
+Frontend direct: http://127.0.0.1:3010
+Gateway direct : http://127.0.0.1:8001
+LangGraph      : http://127.0.0.1:2024
+Listeners:
+  public       : :2027 (nginx: master process nginx -g daemon off; pid /Volumes/BA/DEV/MaestroFlow/logs/nginx.pid; -c /Volumes/BA/DEV/MaestroFlow/docker/nginx/nginx.local.conf -p /Volumes/BA/DEV/MaestroFlow      )
+  frontend     : :3010 (next-server (v16.1.6) )
+  gateway      : :8001 (/Volumes/BA/DEV/MaestroFlow/backend/.venv/bin/python /Volumes/BA/DEV/MaestroFlow/backend/.venv/bin/uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001)
+  langgraph    : :2024 (/Applications/Docker.app/Contents/MacOS/com.docker.backend services)
+
+  📋 Logs:
+     - LangGraph: logs/langgraph.log
+     - Gateway:   logs/gateway.log
+     - Frontend:  logs/frontend.log
+     - Nginx:     logs/nginx.log
+
+Prewarming key routes...
+Press Ctrl+C to stop all services
+

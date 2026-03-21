@@ -1,3 +1,4 @@
+import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -17,9 +18,14 @@ class ModelResponse(BaseModel):
 
 
 class ModelsListResponse(BaseModel):
-    """Response model for listing all models."""
+    """Response model for a list of models."""
 
-    models: list[ModelResponse]
+    models: list[ModelResponse] = Field(..., description="List of available models")
+
+
+# Global cache for models list
+_models_cache: tuple[ModelsListResponse, float] | None = None
+_CACHE_TTL_SECONDS = 60
 
 
 @router.get(
@@ -36,27 +42,16 @@ async def list_models() -> ModelsListResponse:
 
     Returns:
         A list of all configured models with their metadata.
-
-    Example Response:
-        ```json
-        {
-            "models": [
-                {
-                    "name": "gpt-4",
-                    "display_name": "GPT-4",
-                    "description": "OpenAI GPT-4 model",
-                    "supports_thinking": false
-                },
-                {
-                    "name": "claude-3-opus",
-                    "display_name": "Claude 3 Opus",
-                    "description": "Anthropic Claude 3 Opus model",
-                    "supports_thinking": true
-                }
-            ]
-        }
-        ```
     """
+    global _models_cache
+    now = time.time()
+
+    # Return cached response if valid
+    if _models_cache is not None:
+        cached_response, cached_at = _models_cache
+        if now - cached_at < _CACHE_TTL_SECONDS:
+            return cached_response
+
     config = get_app_config()
     models = [
         ModelResponse(
@@ -68,7 +63,11 @@ async def list_models() -> ModelsListResponse:
         )
         for model in config.models
     ]
-    return ModelsListResponse(models=models)
+    response = ModelsListResponse(models=models)
+
+    # Update cache
+    _models_cache = (response, now)
+    return response
 
 
 @router.get(

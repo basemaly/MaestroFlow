@@ -3,6 +3,7 @@ import logging
 import re
 import shutil
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -17,6 +18,16 @@ from src.skills.loader import get_skills_root_path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["skills"])
+
+# Global cache for skills list
+_skills_cache: tuple['SkillsListResponse', float] | None = None
+_CACHE_TTL_SECONDS = 60
+
+
+def _clear_skills_cache() -> None:
+    """Clear the global skills list cache."""
+    global _skills_cache
+    _skills_cache = None
 
 
 class SkillResponse(BaseModel):
@@ -157,33 +168,24 @@ async def list_skills() -> SkillsListResponse:
 
     Returns:
         A list of all skills with their metadata.
-
-    Example Response:
-        ```json
-        {
-            "skills": [
-                {
-                    "name": "PDF Processing",
-                    "description": "Extract and analyze PDF content",
-                    "license": "MIT",
-                    "category": "public",
-                    "enabled": true
-                },
-                {
-                    "name": "Frontend Design",
-                    "description": "Generate frontend designs and components",
-                    "license": null,
-                    "category": "custom",
-                    "enabled": false
-                }
-            ]
-        }
-        ```
     """
+    global _skills_cache
+    now = time.time()
+
+    # Return cached response if valid
+    if _skills_cache is not None:
+        cached_response, cached_at = _skills_cache
+        if now - cached_at < _CACHE_TTL_SECONDS:
+            return cached_response
+
     try:
         # Load all skills (including disabled ones)
         skills = load_skills(enabled_only=False)
-        return SkillsListResponse(skills=[_skill_to_response(skill) for skill in skills])
+        response = SkillsListResponse(skills=[_skill_to_response(skill) for skill in skills])
+
+        # Update cache
+        _skills_cache = (response, now)
+        return response
     except Exception as e:
         logger.error(f"Failed to load skills: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to load skills: {str(e)}")
@@ -309,6 +311,9 @@ async def update_skill(skill_name: str, request: SkillUpdateRequest) -> SkillRes
         # Reload the extensions config to update the global cache
         reload_extensions_config()
 
+        # Clear cache after update
+        _clear_skills_cache()
+
         # Reload the skills to get the updated status (for API response)
         skills = load_skills(enabled_only=False)
         updated_skill = next((s for s in skills if s.name == skill_name), None)
@@ -433,6 +438,7 @@ async def install_skill(request: SkillInstallRequest) -> SkillInstallResponse:
             shutil.copytree(skill_dir, target_dir)
 
         logger.info(f"Skill '{skill_name}' installed successfully to {target_dir}")
+        _clear_skills_cache()
         return SkillInstallResponse(success=True, skill_name=skill_name, message=f"Skill '{skill_name}' installed successfully")
 
     except HTTPException:

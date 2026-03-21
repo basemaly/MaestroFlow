@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -9,6 +11,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 from src.langgraph.catalog_store import _is_uuid, get_thread_catalog_store
 from src.langgraph.catalog_sync import (
@@ -18,9 +22,12 @@ from src.langgraph.catalog_sync import (
 )
 
 DEFAULT_LANGGRAPH_INTERNAL_URL = os.getenv("LANGGRAPH_BASE_URL", "http://langgraph:8000")
-THREAD_SNAPSHOT_TTL_SECONDS = float(
-    os.getenv("LANGGRAPH_THREAD_SNAPSHOT_TTL_SECONDS", "2.0")
-)
+THREAD_SNAPSHOT_TTL_SECONDS = float(os.getenv("LANGGRAPH_THREAD_SNAPSHOT_TTL_SECONDS", "2.0"))
+_THREAD_CACHE_SWEEP_INTERVAL = 300  # 5 minutes
+_SWEEP_ALERT_THRESHOLD = 3  # Consecutive failures before ERROR escalation
+
+_thread_cache_sweeper_started = False
+_thread_cache_sweeper_lock = threading.Lock()
 
 router = APIRouter(prefix="/api/langgraph", tags=["langgraph"])
 
@@ -154,14 +161,14 @@ def _normalize_query_params(request: Request) -> dict[str, Any]:
 
 def _invalidate_thread_snapshot(thread_id: str) -> None:
     _thread_snapshot_cache.pop(thread_id, None)
+    logger.debug("Thread snapshot cache invalidated: thread_id=%s", thread_id)
 
 
 async def _upsert_native_threads(threads: list[dict[str, Any]]) -> None:
     if not threads:
         return
-    valid_threads = [
-        thread for thread in threads if isinstance(thread.get("thread_id"), str) and _is_uuid(thread["thread_id"])
-    ]
+    _ensure_thread_cache_sweeper_started()
+    valid_threads = [thread for thread in threads if isinstance(thread.get("thread_id"), str) and _is_uuid(thread["thread_id"])]
     if valid_threads:
         get_thread_catalog_store().upsert_threads(valid_threads)
         await record_native_sync(len(valid_threads))
@@ -172,11 +179,15 @@ async def _upsert_native_threads(threads: list[dict[str, Any]]) -> None:
                 expires_at=time.monotonic() + THREAD_SNAPSHOT_TTL_SECONDS,
                 payload=thread,
             )
+            logger.info(
+                "Thread snapshot cached: thread_id=%s (cache_size=%d, ttl=%.1fs)",
+                thread_id,
+                len(_thread_snapshot_cache),
+                THREAD_SNAPSHOT_TTL_SECONDS,
+            )
 
 
-async def _refresh_thread_from_native(
-    client: LangGraphCompatClient, thread_id: str
-) -> dict[str, Any] | None:
+async def _refresh_thread_from_native(client: LangGraphCompatClient, thread_id: str) -> dict[str, Any] | None:
     _invalidate_thread_snapshot(thread_id)
     native_thread = await client.get_thread(thread_id)
     if native_thread.get("thread_id"):
@@ -185,19 +196,21 @@ async def _refresh_thread_from_native(
     return None
 
 
-async def _get_thread_snapshot(
-    client: LangGraphCompatClient, thread_id: str
-) -> dict[str, Any]:
+async def _get_thread_snapshot(client: LangGraphCompatClient, thread_id: str) -> dict[str, Any]:
+    _ensure_thread_cache_sweeper_started()
     now = time.monotonic()
     cached = _thread_snapshot_cache.get(thread_id)
     if cached and cached.expires_at > now:
+        logger.debug("Thread snapshot cache HIT: thread_id=%s", thread_id)
         return cached.payload
 
     async with _thread_snapshot_cache_lock:
         cached = _thread_snapshot_cache.get(thread_id)
         if cached and cached.expires_at > now:
+            logger.debug("Thread snapshot cache HIT (after lock): thread_id=%s", thread_id)
             return cached.payload
 
+        logger.debug("Thread snapshot cache MISS: thread_id=%s", thread_id)
         thread = await client.get_thread(thread_id)
         if thread.get("thread_id"):
             await _upsert_native_threads([thread])
@@ -247,6 +260,10 @@ async def get_thread_history(thread_id: str, request: Request) -> list[dict[str,
         return native_history
 
     await record_fallback_hit()
+    logger.warning(
+        "LangGraph history fallback: thread_id=%s served from catalog (native empty or unavailable)",
+        thread_id,
+    )
     synthetic_state = _build_synthetic_thread_state(thread)
     limit_value = params.get("limit")
     if limit_value is not None:
@@ -276,6 +293,10 @@ async def get_thread_state(thread_id: str, request: Request) -> dict[str, Any]:
         return native_state
 
     await record_fallback_hit()
+    logger.warning(
+        "LangGraph state fallback: thread_id=%s served from catalog (native state empty or unavailable)",
+        thread_id,
+    )
     return _build_synthetic_thread_state(thread)
 
 
@@ -291,8 +312,11 @@ async def search_threads(request: Request) -> list[dict[str, Any]]:
         if native_threads:
             await _upsert_native_threads(native_threads)
     except Exception as exc:
-        # Keep serving the catalog even if native LangGraph search fails.
         await record_sync_failure(exc)
+        logger.warning(
+            "LangGraph search fallback: native search failed (%s), serving from catalog",
+            exc,
+        )
     return store.search_threads(
         ids=query.get("ids"),
         metadata=query.get("metadata"),
@@ -335,6 +359,10 @@ async def get_thread(thread_id: str) -> dict[str, Any]:
         pass
     thread = store.get_thread(thread_id)
     if thread:
+        logger.warning(
+            "LangGraph thread fallback: thread_id=%s served from catalog (native unavailable)",
+            thread_id,
+        )
         return thread
     raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
 
@@ -354,7 +382,7 @@ async def update_thread(thread_id: str, request: Request) -> Any:
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     client = LangGraphCompatClient()
     result = await client.proxy_request("PATCH", f"/threads/{thread_id}", json_body=payload)
-    
+
     _invalidate_thread_snapshot(thread_id)
     if "metadata" in payload:
         try:
@@ -370,6 +398,7 @@ async def update_thread(thread_id: str, request: Request) -> Any:
 
     return result
 
+
 @router.delete("/threads/{thread_id}")
 async def delete_thread(thread_id: str) -> Any:
     client = LangGraphCompatClient()
@@ -377,6 +406,7 @@ async def delete_thread(thread_id: str) -> Any:
     _invalidate_thread_snapshot(thread_id)
     get_thread_catalog_store().delete_thread(thread_id)
     return result
+
 
 @router.post("/threads/{thread_id}/state")
 async def update_thread_state(thread_id: str, request: Request) -> Any:
@@ -396,6 +426,7 @@ async def update_thread_state(thread_id: str, request: Request) -> Any:
         await record_sync_failure(exc)
 
     return result
+
 
 @router.patch("/threads/{thread_id}/state")
 async def patch_thread_state(thread_id: str, request: Request) -> Any:
@@ -429,3 +460,53 @@ async def proxy_thread_subpaths(thread_path: str, request: Request) -> Any:
             payload = None
     result = await client.proxy_request(request.method, f"/threads/{thread_path}", params=params, json_body=payload)
     return JSONResponse(content=result) if isinstance(result, (dict, list)) else result
+
+
+def _start_thread_cache_sweep() -> None:
+    """Periodic sweep that logs thread snapshot cache stats every 5 minutes."""
+    consecutive_failures = 0
+    while True:
+        time.sleep(_THREAD_CACHE_SWEEP_INTERVAL)
+        try:
+            now = time.monotonic()
+            expired_count = sum(1 for cached in _thread_snapshot_cache.values() if cached.expires_at <= now)
+            logger.info(
+                "Thread snapshot cache sweep: total=%d, expired=%d (ttl=%.1fs)",
+                len(_thread_snapshot_cache),
+                expired_count,
+                THREAD_SNAPSHOT_TTL_SECONDS,
+            )
+            # Evict expired entries
+            expired_keys = [k for k, v in _thread_snapshot_cache.items() if v.expires_at <= now]
+            for k in expired_keys:
+                _thread_snapshot_cache.pop(k, None)
+            if expired_keys:
+                logger.debug("Thread snapshot cache evicted %d expired entries", len(expired_keys))
+            if consecutive_failures > 0:
+                logger.info("Thread snapshot cache sweep recovered after %d consecutive failures", consecutive_failures)
+                consecutive_failures = 0
+        except Exception:
+            consecutive_failures += 1
+            if consecutive_failures >= _SWEEP_ALERT_THRESHOLD:
+                logger.error(
+                    "Thread snapshot cache sweep failed for %d consecutive cycles — cache eviction stalled",
+                    consecutive_failures,
+                )
+            else:
+                logger.warning("Thread snapshot cache sweep failed (consecutive_failures=%d)", consecutive_failures)
+
+
+def _ensure_thread_cache_sweeper_started() -> None:
+    """Start the thread cache sweeper (idempotent, thread-safe)."""
+    global _thread_cache_sweeper_started
+    if _thread_cache_sweeper_started:
+        return
+    with _thread_cache_sweeper_lock:
+        if _thread_cache_sweeper_started:
+            return
+        threading.Thread(
+            target=_start_thread_cache_sweep,
+            daemon=True,
+            name="thread-snapshot-cache-sweeper",
+        ).start()
+        _thread_cache_sweeper_started = True

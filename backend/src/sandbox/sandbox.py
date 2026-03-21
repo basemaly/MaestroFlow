@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 
 class Sandbox(ABC):
@@ -70,3 +71,11 @@ class Sandbox(ABC):
             content: The binary content to write to the file.
         """
         pass
+
+    def update_file_streaming(self, path: str, source_path: Path, chunk_size: int = 65536) -> None:
+        """Stream a local file into the sandbox without loading it fully into memory.
+
+        Default falls back to update_file() for backwards compatibility.
+        Override in remote sandbox backends to avoid full in-memory reads.
+        """
+        self.update_file(path, source_path.read_bytes())

@@ -1,5 +1,6 @@
 import base64
 import logging
+from pathlib import Path
 
 from agent_sandbox import Sandbox as AioSandboxClient
 
@@ -125,4 +126,17 @@ class AioSandbox(Sandbox):
             self._client.file.write_file(file=path, content=base64_content, encoding="base64")
         except Exception as e:
             logger.error(f"Failed to update file in sandbox: {e}")
+            raise
+
+    def update_file_streaming(self, path: str, source_path: Path, chunk_size: int = 65536) -> None:
+        """Stream a file to the sandbox without loading it fully into memory.
+
+        Uses the agent_sandbox client's upload_file() method which streams the file
+        via HTTP multipart upload, avoiding OOM issues with large files.
+        """
+        try:
+            with open(source_path, "rb") as f:
+                self._client.file.upload_file(file=(source_path.name, f), path=path)
+        except Exception as e:
+            logger.error(f"Failed to stream file to sandbox: {e}")
             raise

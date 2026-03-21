@@ -13,6 +13,9 @@ from src.sandbox.sandbox_provider import get_sandbox_provider
 
 logger = logging.getLogger(__name__)
 
+MAX_UPLOAD_FILES = 20
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
 router = APIRouter(prefix="/api/threads/{thread_id}/uploads", tags=["uploads"])
 
 # File extensions that should be converted to markdown
@@ -100,6 +103,9 @@ async def upload_files(
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(status_code=413, detail=f"Too many files: max {MAX_UPLOAD_FILES}")
+
     uploads_dir = get_uploads_dir(thread_id)
     paths = get_paths()
     uploaded_files = []
@@ -121,12 +127,19 @@ async def upload_files(
 
             file_path = uploads_dir / safe_filename
             file_size = 0
-            
+
             # Stream chunks directly to disk to prevent OOM
             async with aiofiles.open(file_path, "wb") as f:
                 while chunk := await file.read(65536):
                     await f.write(chunk)
                     file_size += len(chunk)
+
+            if file_size > MAX_UPLOAD_BYTES:
+                file_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"{safe_filename} exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+                )
 
             # Build relative path from backend root
             relative_path = str(paths.sandbox_uploads_dir(thread_id) / safe_filename)
@@ -135,12 +148,8 @@ async def upload_files(
             # Only sync to virtual path if it's a remote sandbox (provisioner)
             # Local Docker containers already have the directory volume-mounted
             if sandbox_id != "local" and not getattr(sandbox_provider, "_backend", None).__class__.__name__ == "LocalContainerBackend":
-                # Stream the file to the remote sandbox in smaller chunks if supported,
-                # but since update_file requires bytes, we read it safely (OOM risk remains for massive files on remote only)
-                # To fully solve OOM on remote, the Sandbox protocol needs a streaming update_file.
-                # For now, we only bypass this for local container mode where it is redundant and causing local OOMs.
                 try:
-                    sandbox.update_file(virtual_path, file_path.read_bytes())
+                    sandbox.update_file_streaming(virtual_path, file_path)
                 except Exception as e:
                     logger.error(f"Failed to sync file to remote sandbox: {e}")
 
@@ -163,7 +172,7 @@ async def upload_files(
                     md_virtual_path = f"{VIRTUAL_PATH_PREFIX}/uploads/{md_path.name}"
 
                     if sandbox_id != "local":
-                        sandbox.update_file(md_virtual_path, md_path.read_bytes())
+                        sandbox.update_file_streaming(md_virtual_path, md_path)
 
                     file_info["markdown_file"] = md_path.name
                     file_info["markdown_path"] = md_relative_path

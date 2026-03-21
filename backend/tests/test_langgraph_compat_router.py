@@ -3,6 +3,11 @@ import asyncio
 from src.gateway.routers import langgraph_compat
 
 
+class _FakeStore:
+    def get_thread(self, thread_id: str) -> dict | None:
+        return None
+
+
 def test_build_synthetic_thread_state_uses_thread_values():
     thread = {
         "thread_id": "thread-123",
@@ -38,14 +43,15 @@ def test_get_thread_history_falls_back_to_thread_snapshot():
     class FakeRequest:
         query_params = {"limit": "1"}
 
-    original = langgraph_compat.LangGraphCompatClient
+    original_client = langgraph_compat.LangGraphCompatClient
+    original_store = langgraph_compat.get_thread_catalog_store
     langgraph_compat.LangGraphCompatClient = FakeClient  # type: ignore[assignment]
+    langgraph_compat.get_thread_catalog_store = lambda: _FakeStore()  # type: ignore[assignment]
     try:
-        payload = asyncio.run(
-            langgraph_compat.get_thread_history("thread-123", FakeRequest())
-        )
+        payload = asyncio.run(langgraph_compat.get_thread_history("thread-123", FakeRequest()))
     finally:
-        langgraph_compat.LangGraphCompatClient = original  # type: ignore[assignment]
+        langgraph_compat.LangGraphCompatClient = original_client  # type: ignore[assignment]
+        langgraph_compat.get_thread_catalog_store = original_store  # type: ignore[assignment]
 
     assert len(payload) == 1
     assert payload[0]["values"]["messages"][0]["content"] == "hello"
@@ -77,9 +83,7 @@ def test_get_thread_state_passes_through_populated_native_state():
     original = langgraph_compat.LangGraphCompatClient
     langgraph_compat.LangGraphCompatClient = FakeClient  # type: ignore[assignment]
     try:
-        payload = asyncio.run(
-            langgraph_compat.get_thread_state("thread-123", FakeRequest())
-        )
+        payload = asyncio.run(langgraph_compat.get_thread_state("thread-123", FakeRequest()))
     finally:
         langgraph_compat.LangGraphCompatClient = original  # type: ignore[assignment]
 

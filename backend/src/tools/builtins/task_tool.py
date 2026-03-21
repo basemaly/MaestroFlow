@@ -1,8 +1,8 @@
 """Task tool for delegating work to subagents."""
 
+import asyncio
 import json
 import logging
-import time
 from dataclasses import replace
 from typing import Annotated, Literal
 
@@ -58,7 +58,7 @@ def _format_task_result(
 
 
 @tool("task", parse_docstring=True)
-def task_tool(
+async def task_tool(
     runtime: ToolRuntime[ContextT, ThreadState],
     description: str,
     prompt: str,
@@ -111,7 +111,9 @@ def task_tool(
         subagent_type = select_subagent(task_category=task_category, candidates=[heuristic_type, "general-purpose"])
         logger.info(
             "Auto-selected task '%s': heuristic='%s' -> mab_selected='%s'",
-            description, heuristic_type, subagent_type,
+            description,
+            heuristic_type,
+            subagent_type,
         )
     else:
         task_category = subagent_type  # explicit type is its own category
@@ -119,10 +121,7 @@ def task_tool(
     # Get subagent configuration
     config = get_subagent_config(subagent_type)
     if config is None:
-        return (
-            "Error: Unknown subagent type "
-            f"'{subagent_type}'. Available: general-purpose, bash, writing-refiner, argument-critic"
-        )
+        return f"Error: Unknown subagent type '{subagent_type}'. Available: general-purpose, bash, writing-refiner, argument-critic"
 
     # Build config overrides
     overrides: dict = {}
@@ -318,7 +317,10 @@ def task_tool(
                 if not artifact.is_valid:
                     logger.warning(
                         "[trace=%s] Task %s artifact quality warnings %s: %s",
-                        trace_id, task_id, artifact_header, artifact.quality_warnings,
+                        trace_id,
+                        task_id,
+                        artifact_header,
+                        artifact.quality_warnings,
                     )
                 writer(
                     {
@@ -378,7 +380,7 @@ def task_tool(
                 observation.update(output={"status": "timed_out", "task_id": task_id, "error": result.error})
                 return response
 
-            time.sleep(5)
+            await asyncio.sleep(5)
             poll_count += 1
 
             if poll_count > max_poll_count:

@@ -88,6 +88,7 @@ import {
 import { ClipboardPasteButton } from "./clipboard-paste-button";
 import { AgentPresetMenu, KnowledgeSourceMenu } from "./context-controls";
 import { ExecutiveIcon } from "./executive-icon";
+import { InputWithIndicator } from "./chats/input-with-indicator";
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
 import { Tooltip } from "./tooltip";
@@ -297,6 +298,7 @@ export function InputBox({
   const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(
     null,
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (models.length === 0) {
@@ -416,6 +418,7 @@ export function InputBox({
       if (!message.text) {
         return;
       }
+      setIsSubmitting(true);
       setFollowups([]);
       setFollowupsHidden(false);
       setFollowupsLoading(false);
@@ -489,6 +492,20 @@ export function InputBox({
       : trimmed;
     textInput.setInput(nextValue);
   }, [textInput]);
+
+  // Clear submitting state when streaming starts or ends
+  useEffect(() => {
+    if (status === "streaming" || status === "ready") {
+      setIsSubmitting(false);
+    }
+  }, [status]);
+
+  // Clear submitting state when streaming starts or ends
+  useEffect(() => {
+    if (status === "streaming" || status === "ready") {
+      setIsSubmitting(false);
+    }
+  }, [status]);
 
   useEffect(() => {
     const streaming = status === "streaming";
@@ -585,12 +602,14 @@ export function InputBox({
           {(attachment) => <PromptInputAttachment data={attachment} />}
         </PromptInputAttachments>
         <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
-          <PromptInputTextarea
+          <InputWithIndicator
             className={cn("size-full min-h-[8.75rem] px-1")}
             disabled={disabled}
             placeholder={t.inputBox.placeholder}
             autoFocus={autoFocus}
             defaultValue={initialValue}
+            isLoading={isSubmitting || status === "streaming"}
+            isThinking={status === "streaming"}
           />
         </PromptInputBody>
         <PromptInputFooter className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-t border-border/60 bg-background/65 px-2 py-2">
