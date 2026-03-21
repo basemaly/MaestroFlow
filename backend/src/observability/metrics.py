@@ -520,3 +520,34 @@ def set_health_score(overall_score: float, component_scores: dict[str, float] | 
             for component, score in component_scores.items():
                 component_health_score.labels(component=component).set(score)
         health_check_timestamp.set_to_current_time()
+
+
+# ============================================================================
+# LLM Operations Metrics
+# ============================================================================
+
+llm_cost_usd_total = Counter(
+    "llm_cost_usd_total",
+    "Total cost of LLM API calls in USD",
+    labelnames=["model"],
+)
+
+llm_token_usage = Histogram(
+    "llm_token_usage",
+    "Token usage per LLM call",
+    labelnames=["token_type"],  # input, output, total
+    buckets=(10, 50, 100, 500, 1000, 5000, 10000),
+)
+
+llm_call_duration_seconds = Histogram(
+    "llm_call_duration_seconds",
+    "LLM API call latency",
+    labelnames=["model"],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
+)
+
+llm_calls_total = Counter(
+    "llm_calls_total",
+    "Total number of LLM API calls",
+    labelnames=["model", "status"],  # status: success, error, timeout
+)

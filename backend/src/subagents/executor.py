@@ -10,6 +10,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, cast
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 from langchain.agents import create_agent
 from langchain.tools import BaseTool
 from langchain_core.messages import AIMessage, HumanMessage
