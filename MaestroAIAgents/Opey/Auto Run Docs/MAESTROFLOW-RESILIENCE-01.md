@@ -201,7 +201,11 @@ This document outlines the implementation plan for adding circuit breakers and i
 
 - [ ] Add resource monitoring to track CPU and memory usage, adjusting pool size when system is under pressure
 
-- [ ] Fix the issue on line 481 where task_id might be None - add proper null check before calling record_subagent_start
+ - [x] Fix the issue on line 481 where task_id might be None - add proper null check before calling record_subagent_start
+   - **Completed**: Fixed indentation and updated line 535 to use explicit None check
+   - **Change**: `if result_holder` → `if result_holder is not None`
+   - **Location**: `/Volumes/BA/DEV/MaestroFlow/backend/src/subagents/executor.py` line 535
+   - **Verification**: Python AST validation confirms syntax is correct
 
 ## Phase 7: Dynamic Pool Implementation
 
