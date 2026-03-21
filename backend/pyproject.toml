@@ -53,4 +53,4 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8.0.0", "ruff>=0.14.11"]
+dev = ["pytest>=8.0.0", "ruff>=0.14.11", "vcrpy>=8.1.1", "pytest-recording>=0.13.4"]

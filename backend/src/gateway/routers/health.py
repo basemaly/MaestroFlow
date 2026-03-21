@@ -7,6 +7,7 @@ from fastapi import APIRouter, Response
 
 from src.gateway.contracts import build_health_envelope
 from src.gateway.services.external_services import get_external_services_status
+from src.subagents.executor import get_subagent_pool_metrics, get_subagent_pool_size
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -110,3 +111,41 @@ async def prometheus_metrics() -> Response:
             media_type="text/plain",
             status_code=503,
         )
+
+
+@router.get("/subagent-pool")
+async def subagent_pool_health() -> dict:
+    """
+    Subagent pool metrics endpoint.
+
+    Returns health and performance data for the subagent execution pool,
+    including worker utilization, queue depth, and system resource usage.
+    """
+    metrics = get_subagent_pool_metrics()
+    pool_size = get_subagent_pool_size()
+
+    # Determine health status based on pool metrics
+    is_healthy = (
+        metrics.get("current_pending", 0) < (pool_size * 2)  # Queue not backing up
+        and metrics.get("cpu_percent", 0) < 90  # CPU not maxed
+        and metrics.get("memory_percent", 0) < 95  # Memory not critical
+    )
+
+    return {
+        **metrics,
+        "health": build_health_envelope(
+            configured=True,
+            available=True,
+            healthy=is_healthy,
+            summary=f"Subagent pool running {pool_size} workers with {metrics.get('current_active', 0)} active tasks.",
+            details={
+                "pool_size": pool_size,
+                "active_tasks": metrics.get("current_active", 0),
+                "pending_tasks": metrics.get("current_pending", 0),
+                "cpu_usage": f"{metrics.get('cpu_percent', 0):.1f}%",
+                "memory_usage": f"{metrics.get('memory_percent', 0):.1f}%",
+            },
+            metrics=metrics,
+        ),
+        "error": None,
+    }
