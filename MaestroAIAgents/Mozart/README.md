@@ -107,6 +107,16 @@ Mozart monitors HTTP connection pool health with per-service tracking:
 
 Use this for understanding why a service may be degraded or slow.
 
+### System Resource Monitoring
+
+Mozart tracks system-level metrics to prevent resource exhaustion:
+
+- **CPU usage %:** Current system CPU percentage
+- **Memory usage %:** Current system memory percentage
+- **Per-task resources:** CPU and memory consumed by individual tasks
+
+Monitor these metrics to detect when pool sizing needs adjustment or when external load affects Mozart.
+
 ## Configuration
 
 ### Service Configuration Tiers
@@ -132,6 +142,20 @@ Mozart pre-configures each service based on its cost and criticality:
 - Default timeouts and retry counts for other services
 
 Configuration is automatically applied through HTTPClientManager.
+
+### Exponential Backoff Retry Strategy
+
+When a request fails, Mozart retries with exponential backoff:
+
+```
+delay = min(base_delay * (2 ^ retry_count), max_delay)
+```
+
+- **Base delay:** 1.0 second (attempt 1: 1s, attempt 2: 2s, attempt 3: 4s)
+- **Max delay:** 30 seconds (prevents excessive wait)
+- **Jitter:** Optional randomization to prevent thundering herd
+
+Configure via service-specific settings or circuit breaker config.
 
 ## Deployment & Production
 
