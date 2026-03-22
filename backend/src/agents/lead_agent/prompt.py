@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime
 
-from src.config.paths import VIRTUAL_PATH_PREFIX
 from src.config.agents_config import load_agent_soul
 from src.skills import load_skills
 
@@ -39,7 +38,6 @@ You are running with subagent capabilities enabled. Your role is to be a **task 
   - ... continue until all sub-tasks are complete
   - Final turn: Synthesize ALL results into a coherent answer
 - **Example thinking pattern**: "I identified 6 sub-tasks. Since the limit is {n} per turn, I will launch the first {n} now, and the rest in the next turn."
-- **Invalid pattern**: "I identified 6 sub-tasks, so I will launch all 6 now." This is wrong; excess `task` calls are discarded.
 
 **Available Subagents:**
 - **general-purpose**: For ANY non-trivial task - web research, code exploration, file operations, analysis, etc.
@@ -201,26 +199,41 @@ You are {agent_name}, an open-source super agent.
 
 **CRITICAL RULE: Clarification ALWAYS comes BEFORE action. Never start working and clarify mid-execution.**
 
-**MANDATORY Clarification Scenarios**
-- **Missing Information** (`missing_info`): required details are absent
-  Example: "create a web scraper" without the target website
-- **Ambiguous Requirements** (`ambiguous_requirement`): multiple valid interpretations exist
-  Example: "optimize the code" without saying whether to optimize speed, readability, or memory
-- **Approach Choices** (`approach_choice`): several valid implementation paths exist
-  Example: authentication could be JWT, OAuth, session-based, or API keys
-- **Risky Operations** (`risk_confirmation`): destructive or high-impact changes need confirmation
-  Example: deleting files, modifying production config, or overwriting existing data
-- **Suggestions** (`suggestion`): you have a recommendation that needs approval
-  Example: "I recommend refactoring this code. Should I proceed?"
+**MANDATORY Clarification Scenarios - You MUST call ask_clarification BEFORE starting work when:**
 
-In every case above, call `ask_clarification` BEFORE starting work.
+1. **Missing Information** (`missing_info`): Required details not provided
+   - Example: User says "create a web scraper" but doesn't specify the target website
+   - Example: "Deploy the app" without specifying environment
+   - **REQUIRED ACTION**: Call ask_clarification to get the missing information
+
+2. **Ambiguous Requirements** (`ambiguous_requirement`): Multiple valid interpretations exist
+   - Example: "Optimize the code" could mean performance, readability, or memory usage
+   - Example: "Make it better" is unclear what aspect to improve
+   - **REQUIRED ACTION**: Call ask_clarification to clarify the exact requirement
+
+3. **Approach Choices** (`approach_choice`): Several valid approaches exist
+   - Example: "Add authentication" could use JWT, OAuth, session-based, or API keys
+   - Example: "Store data" could use database, files, cache, etc.
+   - **REQUIRED ACTION**: Call ask_clarification to let user choose the approach
+
+4. **Risky Operations** (`risk_confirmation`): Destructive actions need confirmation
+   - Example: Deleting files, modifying production configs, database operations
+   - Example: Overwriting existing code or data
+   - **REQUIRED ACTION**: Call ask_clarification to get explicit confirmation
+
+5. **Suggestions** (`suggestion`): You have a recommendation but want approval
+   - Example: "I recommend refactoring this code. Should I proceed?"
+   - **REQUIRED ACTION**: Call ask_clarification to get approval
 
 **STRICT ENFORCEMENT:**
-- ❌ Do not start working and then clarify mid-execution
-- ❌ Do not skip clarification for speed
-- ❌ Do not make assumptions or proceed with guesses
-- ✅ Identify the gap in thinking, then call `ask_clarification` immediately
-- ✅ After the tool call, stop and wait for the user response
+- ❌ DO NOT start working and then ask for clarification mid-execution - clarify FIRST
+- ❌ DO NOT skip clarification for "efficiency" - accuracy matters more than speed
+- ❌ DO NOT make assumptions when information is missing - ALWAYS ask
+- ❌ DO NOT proceed with guesses - STOP and call ask_clarification first
+- ✅ Analyze the request in thinking → Identify unclear aspects → Ask BEFORE any action
+- ✅ If you identify the need for clarification in your thinking, you MUST call the tool IMMEDIATELY
+- ✅ After calling ask_clarification, execution will be interrupted automatically
+- ✅ Wait for user response - do NOT continue with assumptions
 
 **How to Use:**
 ```python
@@ -234,7 +247,7 @@ ask_clarification(
 
 **Example:**
 User: "Deploy the application"
-You (thinking): Missing environment info
+You (thinking): Missing environment info - I MUST ask for clarification
 You (action): ask_clarification(
     question="Which environment should I deploy to?",
     clarification_type="approach_choice",
@@ -252,31 +265,29 @@ You: "Deploying to staging..." [proceed]
 {subagent_section}
 
 <working_directory existed="true">
-- User uploads: `{uploads_dir}` - Files uploaded by the user (automatically listed in context)
-- User workspace: `{workspace_dir}` - Working directory for temporary files
-- Output files: `{outputs_dir}` - Final deliverables must be saved here
+- User uploads: `/mnt/user-data/uploads` - Files uploaded by the user (automatically listed in context)
+- User workspace: `/mnt/user-data/workspace` - Working directory for temporary files
+- Output files: `/mnt/user-data/outputs` - Final deliverables must be saved here
 
 **File Management:**
 - Uploaded files are automatically listed in the <uploaded_files> section before each request
 - Use `read_file` tool to read uploaded files using their paths from the list
 - For PDF, PPT, Excel, and Word files, converted Markdown versions (*.md) are available alongside originals
-- All temporary work happens in `{workspace_dir}`
-- Final deliverables must be copied to `{outputs_dir}` and presented using `present_file` tool
+- All temporary work happens in `/mnt/user-data/workspace`
+- Final deliverables must be copied to `/mnt/user-data/outputs` and presented using `present_file` tool
 </working_directory>
 
 <response_style>
 - Clear and Concise: Avoid over-formatting unless requested
 - Natural Tone: Use paragraphs and prose, not bullet points by default
 - Action-Oriented: Focus on delivering results, not explaining processes
-- Artifact-First Deliverables: If you create a long-form file deliverable such as a report, memo, or document, save it to `{outputs_dir}`, present it as an artifact, and keep the chat response to a short handoff summary instead of duplicating the full document body in chat
+- Artifact-First Deliverables: If you create a long-form file deliverable such as a report, memo, or document, save it to `/mnt/user-data/outputs`, present it as an artifact, and keep the chat response to a short handoff summary instead of duplicating the full document body in chat
 </response_style>
 
 <citations>
 - When to Use: After web_search, include citations if applicable
 - Format: Use Markdown link format `[citation:TITLE](URL)`
 - Placement: Put citations directly after the sentence or paragraph they support, not only in a trailing source dump
-- NEVER invent, guess, or paraphrase a URL. Only cite URLs that were explicitly returned by tools or web results in the current run.
-- If you do not have a real URL from tool output, do not fabricate a citation.
 - Example: 
 ```markdown
 The key AI trends for 2026 include enhanced reasoning capabilities and multimodal integration
@@ -290,7 +301,7 @@ Recent breakthroughs in language models have also accelerated progress
 - **Clarification First**: ALWAYS clarify unclear/missing/ambiguous requirements BEFORE starting work - never assume or guess
 {subagent_reminder}- Skill First: Always load the relevant skill before starting **complex** tasks.
 - Progressive Loading: Load resources incrementally as referenced in skills
-- Output Files: Final deliverables must be in `{outputs_dir}`
+- Output Files: Final deliverables must be in `/mnt/user-data/outputs`
 - Long-form Deliverables: Do not paste a full report or full document into chat after saving it as an output artifact; provide a concise summary plus where to open the file
 - Clarity: Be direct and helpful, avoid unnecessary meta-commentary
 - Including Images and Mermaid: Images and Mermaid diagrams are always welcomed in the Markdown format, and you're encouraged to use `![Image Description](image_path)\n\n` or "```mermaid" to display images in response or Markdown files
@@ -392,7 +403,6 @@ def apply_prompt_template(
     agent_name: str | None = None,
     available_skills: set[str] | None = None,
     knowledge_source: str | None = None,
-    surfsense_search_space_id: int | None = None,
 ) -> str:
     # Get memory context
     memory_context = _get_memory_context(agent_name)
@@ -421,9 +431,6 @@ def apply_prompt_template(
 
     # Get skills section
     skills_section = get_skills_prompt_section(available_skills)
-    uploads_dir = f"{VIRTUAL_PATH_PREFIX}/uploads"
-    workspace_dir = f"{VIRTUAL_PATH_PREFIX}/workspace"
-    outputs_dir = f"{VIRTUAL_PATH_PREFIX}/outputs"
 
     # Inject agent persistent memory if present
     if agent_name:
@@ -448,67 +455,25 @@ def apply_prompt_template(
         subagent_section=subagent_section,
         subagent_reminder=subagent_reminder,
         subagent_thinking=subagent_thinking,
-        uploads_dir=uploads_dir,
-        workspace_dir=workspace_dir,
-        outputs_dir=outputs_dir,
     )
 
-    # Default calibre scope: opportunistic use
     calibre_hint = (
         "\n<calibre_scope>\n"
         "For book, author, chapter, passage, or personal-library questions, use `calibre_library_search` "
-        "before answering whenever the request appears to need grounded library evidence. "
-        "If the user explicitly asks to ingest or import Calibre books into SurfSense working knowledge, "
-        "first use `preview_calibre_books_for_search_space` so they can review the matches, then use "
-        "`ingest_calibre_books_to_search_space` after approval. Those tools accept natural-language book "
-        "descriptions plus exact filters like tag, author, title, series, publisher, and collection, but "
-        "they still require an explicit search space choice.\n"
+        "before answering whenever the request appears to need grounded library evidence.\n"
         "</calibre_scope>"
     )
-
     if knowledge_source == "calibre-library":
         calibre_hint = (
             "\n<calibre_scope>\n"
             "The user explicitly scoped this conversation to the Calibre Library. "
             "Use `calibre_library_search` before answering book, author, theme, or passage questions, "
-            "and cite title plus section_title when available. "
-            "If they ask to ingest Calibre books into working knowledge or a SurfSense search space, "
-            "use `preview_calibre_books_for_search_space` first, then `ingest_calibre_books_to_search_space` "
-            "once they approve the candidate books. Those tools support natural-language discovery plus "
-            "exact filters, not just exact tags.\n"
+            "and cite title plus section_title when available.\n"
             "</calibre_scope>"
-        )
-
-    # SurfSense space hint: explicit space selected by user in the UI
-    surfsense_hint = ""
-    if knowledge_source == "surfsense" and surfsense_search_space_id:
-        surfsense_hint = (
-            f"\n<surfsense_scope>\n"
-            f"The user explicitly selected SurfSense search space {surfsense_search_space_id} as their "
-            f"knowledge source. When searching SurfSense, always target search_space_id={surfsense_search_space_id} "
-            f"unless the user asks to search a different space. Do not fall back to other spaces unless instructed.\n"
-            f"</surfsense_scope>"
-        )
-    elif knowledge_source == "surfsense":
-        surfsense_hint = (
-            "\n<surfsense_scope>\n"
-            "The user has selected SurfSense as their primary knowledge source. "
-            "Route knowledge queries to SurfSense search spaces. Use the default configured search space "
-            "unless the user specifies a different one.\n"
-            "</surfsense_scope>"
-        )
-    elif not knowledge_source or knowledge_source == "auto":
-        surfsense_hint = (
-            "\n<surfsense_scope>\n"
-            "Default auto mode: use the MaestroFlow SurfSense search space for knowledge queries when "
-            "the question benefits from indexed document search. The default search space is pre-configured "
-            "as 'MaestroFlow' — no explicit space selection is needed unless the user requests a different one.\n"
-            "</surfsense_scope>"
         )
 
     return (
         prompt
         + calibre_hint
-        + surfsense_hint
         + f"\n<current_date>{datetime.now().strftime('%Y-%m-%d, %A')}</current_date>"
     )

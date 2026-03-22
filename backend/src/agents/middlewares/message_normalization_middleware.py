@@ -4,7 +4,7 @@ from typing import Any, NotRequired, override
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import BaseMessage, convert_to_messages
+from langchain_core.messages import BaseMessage
 from langgraph.runtime import Runtime
 
 
@@ -47,10 +47,9 @@ class MessageNormalizationMiddleware(AgentMiddleware[MessageNormalizationState])
         if not messages:
             return None
 
-        normalized_input = convert_to_messages(messages)
-        changed = list(messages) != normalized_input
+        changed = False
         normalized_messages: list[BaseMessage] = []
-        for message in normalized_input:
+        for message in messages:
             normalized_content = normalize_message_content(message.content)
             if normalized_content is not message.content:
                 changed = True
@@ -61,14 +60,6 @@ class MessageNormalizationMiddleware(AgentMiddleware[MessageNormalizationState])
         if not changed:
             return None
         return {"messages": normalized_messages}
-
-    @override
-    def before_agent(self, state: MessageNormalizationState, runtime: Runtime) -> dict | None:
-        return self._normalize_messages(state)
-
-    @override
-    async def abefore_agent(self, state: MessageNormalizationState, runtime: Runtime) -> dict | None:
-        return self._normalize_messages(state)
 
     @override
     def before_model(self, state: MessageNormalizationState, runtime: Runtime) -> dict | None:
