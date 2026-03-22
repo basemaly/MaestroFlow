@@ -1,0 +1,56 @@
+# Mozart
+
+Mozart is a resilient Maestro-managed AI agent with built-in fault tolerance, distributed execution, and comprehensive monitoring.
+
+## Core Concepts
+
+### Circuit Breaker Pattern
+
+Mozart uses the **Circuit Breaker pattern** to implement fail-fast behavior and prevent cascading failures. The circuit breaker monitors request success/failure rates and automatically "opens" (stops forwarding requests) when failure thresholds are exceeded.
+
+#### States
+- **CLOSED:** Normal operation, all requests forwarded
+- **OPEN:** Too many failures detected, requests rejected immediately with circuit error
+- **HALF_OPEN:** Testing if service recovered, limited requests allowed through
+
+#### Key Configuration
+- `failure_threshold`: Number of failures before opening (default: 5)
+- `success_threshold`: Successful requests needed to close from HALF_OPEN (default: 2)
+- `timeout`: Request timeout in seconds (default: 30s)
+- `reset_timeout`: Time before attempting recovery from OPEN state (default: 60s)
+
+This prevents your application from overwhelming a degraded service and allows time for recovery.
+
+## Getting Started
+
+### Quick Start
+
+Mozart provides a centralized **HTTPClientManager** for managing HTTP requests to external services with built-in circuit breaking, connection pooling, and health checks.
+
+#### Managed Services
+Mozart monitors and protects requests to:
+- **SurfSense** — Web scraping/data extraction
+- **LiteLLM** — LLM API routing (High-Cost protection)
+- **Langfuse** — Observability logging
+- **LangGraph** — Agent framework integration
+- **OpenViking** — Custom data source
+- **ActivePieces** — Workflow automation
+- **BrowserRuntime** — Browser automation
+- **StateWeave** — State management service
+
+#### Usage
+```python
+from mozart.http_client_manager import HTTPClientManager, ServiceName
+
+manager = HTTPClientManager()
+# GET request with circuit breaker protection
+response = manager.get(ServiceName.SURFSENSE, "https://api.surfsense.io/data")
+```
+
+Each service has pre-configured resilience settings optimized for its characteristics.
+
+## Monitoring & Observability
+
+## Deployment & Production
+
+## Advanced Topics
