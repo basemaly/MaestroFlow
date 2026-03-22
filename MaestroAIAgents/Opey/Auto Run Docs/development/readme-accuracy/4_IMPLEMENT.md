@@ -29,7 +29,9 @@ Implement ONE documentation fix from `/Volumes/BA/DEV/MaestroAIAgents/Opey/Auto 
     - ✅ Implemented DOC-005: Graceful Shutdown (HIGH, EASY)
     - ✅ Implemented DOC-006: Multi-Service Management Configuration (HIGH, MEDIUM)
     - ✅ Implemented DOC-007: Connection Pool Monitoring (MEDIUM, EASY)
-    - Added to README.md in Monitoring & Observability section
+    - ✅ Implemented DOC-008: System Resource Monitoring (MEDIUM, EASY)
+    - ✅ Implemented DOC-009: Exponential Backoff Retry Strategy (MEDIUM, EASY)
+    - Added to README.md in Configuration section
     - Updated status in LOOP_00001_PLAN.md
     - Logged change to USAGE_LOG_Mozart_2026-03-22.md
 

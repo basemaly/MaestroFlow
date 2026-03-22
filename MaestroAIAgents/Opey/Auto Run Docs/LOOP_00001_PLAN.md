@@ -252,52 +252,34 @@ related:
   ```
 
 ### DOC-008: Resource Monitoring
-- **Status:** `PENDING`
+- **Status:** `IMPLEMENTED`
+- **Implemented In:** Loop 00001
 - **Gap ID:** GAP-006
 - **Type:** MISSING
 - **User Importance:** MEDIUM
 - **Fix Effort:** EASY
 - **README Section:** Monitoring & Observability
 - **Fix Description:**
-  Document system resource tracking (CPU/memory) and how to use metrics to tune pool sizing and detect resource constraints.
-- **Proposed Content:**
-  ```markdown
-  ### System Resource Monitoring
-  
-  Mozart tracks system-level metrics to prevent resource exhaustion:
-  
-  - **CPU usage %:** Current system CPU percentage
-  - **Memory usage %:** Current system memory percentage
-  - **Per-task resources:** CPU and memory consumed by individual tasks
-  
-  Monitor these metrics to detect when pool sizing needs adjustment or when external load affects Mozart.
-  ```
+   Document system resource tracking (CPU/memory) and how to use metrics to tune pool sizing and detect resource constraints.
+- **Changes Made:**
+   - [x] Added System Resource Monitoring subsection under Monitoring & Observability
+   - [x] Documented CPU/memory tracking metrics
+   - [x] Included guidance on using metrics for pool tuning
 
 ### DOC-009: Exponential Backoff Retry Logic
-- **Status:** `PENDING`
+- **Status:** `IMPLEMENTED`
+- **Implemented In:** Loop 00001
 - **Gap ID:** GAP-007
 - **Type:** MISSING
 - **User Importance:** MEDIUM
 - **Fix Effort:** EASY
-- **README Section:** Core Concepts / Configuration
+- **README Section:** Configuration
 - **Fix Description:**
-  Briefly explain the exponential backoff algorithm used for retries and mention when jitter is applied to prevent thundering herd problems.
-- **Proposed Content:**
-  ```markdown
-  ### Exponential Backoff Retry Strategy
-  
-  When a request fails, Mozart retries with exponential backoff:
-  
-  ```
-  delay = min(base_delay * (2 ^ retry_count), max_delay)
-  ```
-  
-  - **Base delay:** 1.0 second (attempt 1: 1s, attempt 2: 2s, attempt 3: 4s)
-  - **Max delay:** 30 seconds (prevents excessive wait)
-  - **Jitter:** Optional randomization to prevent thundering herd
-  
-  Configure via service-specific settings or circuit breaker config.
-  ```
+   Briefly explain the exponential backoff algorithm used for retries and mention when jitter is applied to prevent thundering herd problems.
+- **Changes Made:**
+   - [x] Added Exponential Backoff Retry Strategy subsection under Configuration
+   - [x] Documented exponential backoff formula and parameters
+   - [x] Explained base delay, max delay, and jitter concepts
 
 ### DOC-010: Graceful Degradation Patterns
 - **Status:** `PENDING`

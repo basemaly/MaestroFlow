@@ -300,3 +300,85 @@ Use this for understanding why a service may be degraded or slow.
 - [x] No broken links or references introduced
 - [x] Content is concise and fits naturally into Monitoring & Observability section
 
+---
+
+## 2026-03-22 21:15 - Implemented System Resource Monitoring Documentation
+
+**Agent:** Mozart
+**Project:** /Volumes/BA/DEV/MaestroAIAgents/Mozart
+**Loop:** 00001
+**Doc ID:** DOC-008
+**Gap ID:** GAP-006
+
+### Change Type
+MISSING → Added
+
+### README Section
+Monitoring & Observability
+
+### What Was Changed
+Added documentation for System Resource Monitoring, which complements the existing Connection Pool Monitoring and Metrics & Observability sections. This addition explains how Mozart tracks system-level CPU and memory metrics at both the system and per-task level. Users can now use these metrics to diagnose resource constraints and make informed decisions about pool sizing adjustments based on observed resource usage patterns.
+
+### Content Added/Changed
+```markdown
+### System Resource Monitoring
+
+Mozart tracks system-level metrics to prevent resource exhaustion:
+
+- **CPU usage %:** Current system CPU percentage
+- **Memory usage %:** Current system memory percentage
+- **Per-task resources:** CPU and memory consumed by individual tasks
+
+Monitor these metrics to detect when pool sizing needs adjustment or when external load affects Mozart.
+```
+
+### Verification
+- [x] Change matches the proposed fix from LOOP_00001_PLAN.md (DOC-008)
+- [x] Formatting matches README style conventions
+- [x] No broken links or references introduced
+- [x] Content is practical and fits naturally into Monitoring & Observability section
+- [x] Placement is logical (after Connection Pool Monitoring, before Configuration section)
+
+---
+
+## 2026-03-22 22:30 - Implemented Exponential Backoff Retry Strategy Documentation
+
+**Agent:** Mozart
+**Project:** /Volumes/BA/DEV/MaestroAIAgents/Mozart
+**Loop:** 00001
+**Doc ID:** DOC-009
+**Gap ID:** GAP-007
+
+### Change Type
+MISSING → Added
+
+### README Section
+Configuration
+
+### What Was Changed
+Added documentation for Mozart's exponential backoff retry strategy, explaining the algorithm used when requests fail and how jitter is applied to prevent thundering herd problems. This section complements the Service Configuration Tiers by showing users how retry behavior is managed across different service types and how they can configure backoff parameters for their specific needs.
+
+### Content Added/Changed
+```markdown
+### Exponential Backoff Retry Strategy
+
+When a request fails, Mozart retries with exponential backoff:
+
+```
+delay = min(base_delay * (2 ^ retry_count), max_delay)
+```
+
+- **Base delay:** 1.0 second (attempt 1: 1s, attempt 2: 2s, attempt 3: 4s)
+- **Max delay:** 30 seconds (prevents excessive wait)
+- **Jitter:** Optional randomization to prevent thundering herd
+
+Configure via service-specific settings or circuit breaker config.
+```
+
+### Verification
+- [x] Change matches the proposed fix from LOOP_00001_PLAN.md (DOC-009)
+- [x] Formatting matches README style conventions
+- [x] No broken links or references introduced
+- [x] Content is accurate and properly placed after Service Configuration Tiers
+- [x] Formula and parameters align with Mozart's retry implementation
+
