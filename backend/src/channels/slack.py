@@ -31,8 +31,6 @@ class SlackChannel(Channel):
         self._web_client = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._allowed_users: set[str] = set(config.get("allowed_users", []))
-        self._reconnect_task: asyncio.Task | None = None
-        self._heartbeat_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         if self._running:
@@ -67,28 +65,16 @@ class SlackChannel(Channel):
         self._running = True
         self.bus.subscribe_outbound(self._on_outbound)
 
-        # Start reconnection task
-        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+        # Start socket mode in background thread
+        asyncio.get_event_loop().run_in_executor(None, self._socket_client.connect)
         logger.info("Slack channel started")
 
     async def stop(self) -> None:
         self._running = False
         self.bus.unsubscribe_outbound(self._on_outbound)
-
-        # Cancel reconnection and heartbeat tasks
-        if self._reconnect_task:
-            self._reconnect_task.cancel()
-            self._reconnect_task = None
-
-        if self._heartbeat_task:
-            self._heartbeat_task.cancel()
-            self._heartbeat_task = None
-
-        # Close socket client
         if self._socket_client:
             self._socket_client.close()
             self._socket_client = None
-
         logger.info("Slack channel stopped")
 
     async def send(self, msg: OutboundMessage, *, _max_retries: int = 3) -> None:
