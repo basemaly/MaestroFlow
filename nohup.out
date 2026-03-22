@@ -78,3 +78,5 @@ Listeners:
 Prewarming key routes...
 Press Ctrl+C to stop all services
 
+./scripts/start.sh: line 276: 63259 Terminated: 15          nohup pnpm exec next dev --turbopack --hostname "$MAESTROFLOW_FRONTEND_HOST" --port "$MAESTROFLOW_FRONTEND_PORT" > ../logs/frontend.log 2>&1
+./scripts/start.sh: line 322: 63288 Killed: 9               nginx -g "daemon off; pid $NGINX_PID_FILE;" -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" > logs/nginx.log 2>&1

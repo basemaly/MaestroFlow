@@ -1,22 +1,37 @@
-[2026-03-21T16:28:57.336Z] Plugin initialized: 3 commands [
+[2026-03-22T00:58:48.611Z] Plugin initialized: 3 commands [
   "plannotator-review",
   "plannotator-last",
   "plannotator-annotate"
 ]
-[2026-03-21T16:28:57.411Z] Registered /subtask command
-[2026-03-21T16:28:59.282Z] message-hooks: ENTRY msgCount=10, sessions=ses_2eec692c8ffeEg4dHwsl71hrwT
-[2026-03-21T16:28:59.282Z] message-hooks: MESSAGES: [0]user: text:""# Maestro System Context
-
-You are **Cla..." | [1]user: text:"<available-skills>
-Use the use_skill, re..."(syn) | [2]assistant: step-start, text:"I'll review both the shared-context work...", tool:completed, tool:completed, tool:completed, step-finish, patch | [3]assistant: step-start, tool:completed, tool:completed, tool:completed, step-finish | [4]assistant: step-start, tool:completed, tool:completed, step-finish | [5]assistant: step-start, tool:completed, tool:completed, step-finish | [6]assistant: step-start, tool:completed, tool:completed, step-finish | [7]assistant: step-start, text:"Here's a consolidated summary of everyth...", step-finish | [8]user: text:""Provide a brief synopsis of what you ju..." | [9]user: text:"<skill-evaluation-required>
-SKILL EVALUA..."(syn)
-[2026-03-21T16:28:59.282Z] message-hooks: post-filter, msgCount=10
-[2026-03-21T16:28:59.282Z] message-hooks: about to search for OPENCODE_GENERIC
-[2026-03-21T16:28:59.282Z] message-hooks: searching 10 messages for OPENCODE_GENERIC
-[2026-03-21T16:28:59.282Z] message-hooks: found synthetic text at [1]: "<available-skills>
+[2026-03-22T00:58:48.712Z] Registered /subtask command
+[2026-03-22T00:59:12.176Z] message-hooks: ENTRY msgCount=2, sessions=ses_2ecf264d4ffeOE9pUn62mERpSD
+[2026-03-22T00:59:12.176Z] message-hooks: MESSAGES: [0]user: text:"push all the recent work from today in M..." | [1]user: text:"<available-skills>
+Use the use_skill, re..."(syn)
+[2026-03-22T00:59:12.176Z] message-hooks: post-filter, msgCount=2
+[2026-03-22T00:59:12.176Z] message-hooks: about to search for OPENCODE_GENERIC
+[2026-03-22T00:59:12.176Z] message-hooks: searching 2 messages for OPENCODE_GENERIC
+[2026-03-22T00:59:12.176Z] message-hooks: found synthetic text at [1]: "<available-skills>
 Use the use_skill, read_skill_f..." matches=false
-[2026-03-21T16:28:59.282Z] message-hooks: found synthetic text at [9]: "<skill-evaluation-required>
-SKILL EVALUATION PROCE..." matches=false
-[2026-03-21T16:28:59.282Z] message-hooks: generic search complete, found=false, index=-1
-[2026-03-21T16:28:59.282Z] message-hooks: no generic part found, checking for pending prompt return
-[2026-03-21T16:29:08.312Z] session.idle: sessionID=ses_2eec692c8ffeEg4dHwsl71hrwT
+[2026-03-22T00:59:12.176Z] message-hooks: generic search complete, found=false, index=-1
+[2026-03-22T00:59:12.176Z] message-hooks: no generic part found, checking for pending prompt return
+[2026-03-22T00:59:12.769Z] session.idle: sessionID=ses_2ecf264d4ffeOE9pUn62mERpSD
+[2026-03-22T01:00:46.746Z] message-hooks: ENTRY msgCount=4, sessions=ses_2ecf264d4ffeOE9pUn62mERpSD
+[2026-03-22T01:00:46.746Z] message-hooks: MESSAGES: [0]user: text:"push all the recent work from today in M..." | [1]user: text:"<available-skills>
+Use the use_skill, re..."(syn) | [2]assistant: step-start, step-finish | [3]user: text:"push all the recent work from today in M..."
+[2026-03-22T01:00:46.746Z] message-hooks: post-filter, msgCount=4
+[2026-03-22T01:00:46.746Z] message-hooks: about to search for OPENCODE_GENERIC
+[2026-03-22T01:00:46.746Z] message-hooks: searching 4 messages for OPENCODE_GENERIC
+[2026-03-22T01:00:46.746Z] message-hooks: found synthetic text at [1]: "<available-skills>
+Use the use_skill, read_skill_f..." matches=false
+[2026-03-22T01:00:46.746Z] message-hooks: generic search complete, found=false, index=-1
+[2026-03-22T01:00:46.746Z] message-hooks: no generic part found, checking for pending prompt return
+[2026-03-22T01:00:49.365Z] message-hooks: ENTRY msgCount=5, sessions=ses_2ecf264d4ffeOE9pUn62mERpSD
+[2026-03-22T01:00:49.365Z] message-hooks: MESSAGES: [0]user: text:"push all the recent work from today in M..." | [1]user: text:"<available-skills>
+Use the use_skill, re..."(syn) | [2]assistant: step-start, step-finish | [3]user: text:"push all the recent work from today in M..." | [4]assistant: step-start, text:"I'll push all the recent work from today...", tool:completed, tool:completed, step-finish
+[2026-03-22T01:00:49.365Z] message-hooks: post-filter, msgCount=5
+[2026-03-22T01:00:49.365Z] message-hooks: about to search for OPENCODE_GENERIC
+[2026-03-22T01:00:49.365Z] message-hooks: searching 5 messages for OPENCODE_GENERIC
+[2026-03-22T01:00:49.365Z] message-hooks: found synthetic text at [1]: "<available-skills>
+Use the use_skill, read_skill_f..." matches=false
+[2026-03-22T01:00:49.365Z] message-hooks: generic search complete, found=false, index=-1
+[2026-03-22T01:00:49.365Z] message-hooks: no generic part found, checking for pending prompt return

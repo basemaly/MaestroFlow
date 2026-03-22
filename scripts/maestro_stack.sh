@@ -55,6 +55,21 @@ litellm_ok() {
   fi
 }
 
+litellm_circuit_breaker_health() {
+  local health_url="http://127.0.0.1:4000/v1/health"
+  local api_key header
+  api_key="${LITELLM_PROXY_API_KEY:-}"
+  if [[ -z "${api_key}" ]]; then
+    api_key="$(read_env_value "${MAESTROFLOW_ENV_FILE}" "LITELLM_PROXY_API_KEY" || true)"
+  fi
+  if [[ -n "${api_key}" ]]; then
+    header="Authorization: Bearer ${api_key}"
+    curl -fsS --max-time 5 -H "${header}" "${health_url}" 2>/dev/null | grep -q "healthy\|operational" && return 0 || return 1
+  else
+    curl -fsS --max-time 5 "${health_url}" 2>/dev/null | grep -q "healthy\|operational" && return 0 || return 1
+  fi
+}
+
 service_running() {
   local service="$1"
   case "${service}" in
@@ -144,6 +159,13 @@ litellm_status() {
   local status
   status="$(cd "${LITELLM_ROOT}" && ./scripts/litellm_stack.sh status)"
   echo "litellm=${status}"
+  
+  # Check circuit breaker health (non-critical)
+  if litellm_circuit_breaker_health; then
+    echo "  → Circuit breaker: healthy"
+  else
+    echo "  → Circuit breaker: initializing or not available"
+  fi
 }
 
 surfsense_start() {

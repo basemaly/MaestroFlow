@@ -14,7 +14,7 @@ from enum import Enum
 from threading import Lock
 from typing import Any, Callable, Dict, Optional, TypeVar, Awaitable
 
-from observability.metrics import (
+from src.core.resilience.metrics_lazy import (
     record_circuit_breaker_state_change,
     record_circuit_breaker_failure,
     record_circuit_breaker_success,
@@ -22,11 +22,11 @@ from observability.metrics import (
     record_circuit_breaker_half_open_attempt,
     record_http_client_request,
     record_http_client_retry,
+    get_structured_logger,
 )
-from observability.structured_logging import get_structured_logger
 
 logger = logging.getLogger(__name__)
-structured_logger = get_structured_logger()
+structured_logger = None  # Lazy loaded
 
 T = TypeVar("T")
 
