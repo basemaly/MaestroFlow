@@ -118,6 +118,44 @@ class MetricsRegistry:
             buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 3600.0),
         )
 
+        # Per-endpoint metrics
+        self.websocket_connections_by_endpoint = Gauge(
+            "websocket_connections_by_endpoint",
+            "WebSocket connections by endpoint",
+            labelnames=["endpoint"],
+        )
+
+        self.websocket_messages_per_second = Gauge(
+            "websocket_messages_per_second",
+            "WebSocket message throughput (messages/sec) by endpoint and direction",
+            labelnames=["endpoint", "direction"],
+        )
+
+        self.websocket_message_size_bytes = Histogram(
+            "websocket_message_size_bytes",
+            "WebSocket message size distribution in bytes",
+            labelnames=["endpoint", "direction"],
+            buckets=(16, 64, 256, 1024, 4096, 16384, 65536, 262144),
+        )
+
+        self.websocket_errors_total = Counter(
+            "websocket_errors_total",
+            "Total WebSocket errors by endpoint and error type",
+            labelnames=["endpoint", "error_type"],
+        )
+
+        self.websocket_disconnect_reason = Counter(
+            "websocket_disconnect_reason",
+            "WebSocket disconnects by reason and endpoint",
+            labelnames=["reason", "endpoint"],
+        )
+
+        self.websocket_heartbeat_failures_total = Counter(
+            "websocket_heartbeat_failures_total",
+            "Total WebSocket heartbeat ping/pong failures by endpoint",
+            labelnames=["endpoint"],
+        )
+
         # ============ PROCESS METRICS ============
         self.process_memory_usage_bytes = Gauge(
             "process_memory_usage_bytes", "Process RSS memory usage in bytes"

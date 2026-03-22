@@ -13,6 +13,13 @@ Configurable via environment variables:
 - LANGFUSE_SECRET_KEY: Langfuse secret API key
 - LANGFUSE_HOST: Langfuse API host (default: https://cloud.langfuse.io)
 - LANGFUSE_TIMEOUT_SECONDS: Timeout for trace batching (default: 30)
+
+Health thresholds for composite scoring:
+- DB_HEALTH_THRESHOLD_SLOW_QUERY_MS: Threshold for slow queries (default: 1000ms)
+- QUEUE_HEALTH_THRESHOLD_DEPTH_PERCENT: Queue depth alert threshold (default: 80%)
+- CACHE_HEALTH_THRESHOLD_HIT_RATIO_PERCENT: Cache hit ratio warning (default: 20%)
+- MEMORY_HEALTH_THRESHOLD_GROWTH_RATE_MB_MIN: Memory growth rate alert (default: 5 MB/min)
+- WEBSOCKET_HEALTH_THRESHOLD_ERROR_RATE_PERCENT: WebSocket error rate threshold (default: 5%)
 """
 
 import os
@@ -50,6 +57,23 @@ class ObservabilityConfig:
             os.getenv("LANGFUSE_SAMPLE_RATE", "1.0")
         )  # 1.0 = 100% sampling
 
+        # Health scoring thresholds
+        self.DB_HEALTH_THRESHOLD_SLOW_QUERY_MS = int(
+            os.getenv("DB_HEALTH_THRESHOLD_SLOW_QUERY_MS", "1000")
+        )
+        self.QUEUE_HEALTH_THRESHOLD_DEPTH_PERCENT = int(
+            os.getenv("QUEUE_HEALTH_THRESHOLD_DEPTH_PERCENT", "80")
+        )
+        self.CACHE_HEALTH_THRESHOLD_HIT_RATIO_PERCENT = int(
+            os.getenv("CACHE_HEALTH_THRESHOLD_HIT_RATIO_PERCENT", "20")
+        )
+        self.MEMORY_HEALTH_THRESHOLD_GROWTH_RATE_MB_MIN = float(
+            os.getenv("MEMORY_HEALTH_THRESHOLD_GROWTH_RATE_MB_MIN", "5.0")
+        )
+        self.WEBSOCKET_HEALTH_THRESHOLD_ERROR_RATE_PERCENT = float(
+            os.getenv("WEBSOCKET_HEALTH_THRESHOLD_ERROR_RATE_PERCENT", "5.0")
+        )
+
     def __repr__(self) -> str:
         """String representation of configuration."""
         return (
@@ -62,7 +86,12 @@ class ObservabilityConfig:
             f"db_pool_idle_timeout={self.DB_POOL_IDLE_TIMEOUT_SECONDS}s, "
             f"langfuse_enabled={self.LANGFUSE_ENABLED}, "
             f"langfuse_host={self.LANGFUSE_HOST}, "
-            f"langfuse_sample_rate={self.LANGFUSE_SAMPLE_RATE}"
+            f"langfuse_sample_rate={self.LANGFUSE_SAMPLE_RATE}, "
+            f"db_health_slow_query_ms={self.DB_HEALTH_THRESHOLD_SLOW_QUERY_MS}, "
+            f"queue_health_depth_percent={self.QUEUE_HEALTH_THRESHOLD_DEPTH_PERCENT}, "
+            f"cache_health_hit_ratio_percent={self.CACHE_HEALTH_THRESHOLD_HIT_RATIO_PERCENT}, "
+            f"memory_health_growth_rate_mb_min={self.MEMORY_HEALTH_THRESHOLD_GROWTH_RATE_MB_MIN}, "
+            f"websocket_health_error_rate_percent={self.WEBSOCKET_HEALTH_THRESHOLD_ERROR_RATE_PERCENT}"
             f")"
         )
 
