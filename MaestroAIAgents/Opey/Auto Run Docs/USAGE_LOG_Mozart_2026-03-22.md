@@ -206,3 +206,58 @@ print(f"Avg response time: {metrics.average_response_time}ms")
 - [x] Formatting matches README style conventions
 - [x] No broken links or references introduced
 - [x] Content is accurate for production monitoring use cases
+
+---
+
+## 2026-03-22 17:15 - Implemented Multi-Service Management Documentation
+
+**Agent:** Mozart
+**Project:** /Volumes/BA/DEV/MaestroAIAgents/Mozart
+**Loop:** 00001
+**Doc ID:** DOC-006
+**Gap ID:** GAP-009
+
+### Change Type
+MISSING → Added
+
+### README Section
+Configuration
+
+### What Was Changed
+Added a new Configuration section documenting Mozart's service configuration tiers (High-Cost, Critical, Non-Blocking, Standard). This explains why each service has different timeout and retry settings based on its cost and criticality to the system. Users can now understand and potentially customize service configuration for their specific needs.
+
+### Content Added/Changed
+```markdown
+## Configuration
+
+### Service Configuration Tiers
+
+Mozart pre-configures each service based on its cost and criticality:
+
+#### High-Cost Services
+- **LiteLLM** — Expensive LLM API calls
+- Timeout: 60s, Max Retries: 2, Failure Threshold: 3
+- Prevents retrying expensive failed requests too many times
+
+#### Critical Services
+- **SurfSense** — Core data extraction
+- Timeout: 30s, Max Retries: 3, Failure Threshold: 5
+- Tolerates more transient failures due to external factors
+
+#### Non-Blocking Services
+- **Langfuse** — Logging (failures don't block main workflow)
+- Timeout: 5s, Max Retries: 1, Failure Threshold: 10
+- Fast failure to prevent delays from non-critical services
+
+#### Standard Services
+- Default timeouts and retry counts for other services
+
+Configuration is automatically applied through HTTPClientManager.
+```
+
+### Verification
+- [x] Change matches the proposed fix from LOOP_00001_PLAN.md (DOC-006)
+- [x] Formatting matches README style conventions
+- [x] No broken links or references introduced
+- [x] Content is accurate based on service configuration architecture
+

@@ -96,6 +96,32 @@ print(f"Success rate: {metrics.successful}/{metrics.total}")
 print(f"Avg response time: {metrics.average_response_time}ms")
 ```
 
+## Configuration
+
+### Service Configuration Tiers
+
+Mozart pre-configures each service based on its cost and criticality:
+
+#### High-Cost Services
+- **LiteLLM** — Expensive LLM API calls
+- Timeout: 60s, Max Retries: 2, Failure Threshold: 3
+- Prevents retrying expensive failed requests too many times
+
+#### Critical Services
+- **SurfSense** — Core data extraction
+- Timeout: 30s, Max Retries: 3, Failure Threshold: 5
+- Tolerates more transient failures due to external factors
+
+#### Non-Blocking Services
+- **Langfuse** — Logging (failures don't block main workflow)
+- Timeout: 5s, Max Retries: 1, Failure Threshold: 10
+- Fast failure to prevent delays from non-critical services
+
+#### Standard Services
+- Default timeouts and retry counts for other services
+
+Configuration is automatically applied through HTTPClientManager.
+
 ## Deployment & Production
 
 ### Graceful Shutdown
