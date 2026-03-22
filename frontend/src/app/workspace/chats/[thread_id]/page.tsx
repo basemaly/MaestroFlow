@@ -153,7 +153,7 @@ export default function ChatPage() {
         return;
       }
 
-      if (isFirstTurn || manualPlanReview) {
+      if (manualPlanReview) {
         setPlanningBusy(true);
         void startFirstTurnReview({
           thread_id: threadId,
@@ -192,7 +192,7 @@ export default function ChatPage() {
         toast.error(errorMessage);
       });
     },
-    [isFirstTurn, manualPlanReview, planningReview, sendMessage, settings.context, threadId],
+    [manualPlanReview, planningReview, sendMessage, settings.context, threadId],
   );
   const handleStop = useCallback(async () => {
     await thread.stop();

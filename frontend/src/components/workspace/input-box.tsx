@@ -9,6 +9,7 @@ import {
   GraduationCapIcon,
   LayersIcon,
   LightbulbIcon,
+  Loader2Icon,
   PaperclipIcon,
   PlusIcon,
   SparklesIcon,
@@ -88,7 +89,6 @@ import {
 import { ClipboardPasteButton } from "./clipboard-paste-button";
 import { AgentPresetMenu, KnowledgeSourceMenu } from "./context-controls";
 import { ExecutiveIcon } from "./executive-icon";
-import { InputWithIndicator } from "./chats/input-with-indicator";
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
 import { Tooltip } from "./tooltip";
@@ -601,15 +601,13 @@ export function InputBox({
         <PromptInputAttachments>
           {(attachment) => <PromptInputAttachment data={attachment} />}
         </PromptInputAttachments>
-        <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
-          <InputWithIndicator
-            className={cn("size-full min-h-[8.75rem] px-1")}
-            disabled={disabled}
+        <PromptInputBody>
+          <PromptInputTextarea
+            className={cn("min-h-[8.75rem] px-1")}
+            disabled={disabled || isSubmitting || status === "streaming"}
             placeholder={t.inputBox.placeholder}
             autoFocus={autoFocus}
             defaultValue={initialValue}
-            isLoading={isSubmitting || status === "streaming"}
-            isThinking={status === "streaming"}
           />
         </PromptInputBody>
         <PromptInputFooter className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-t border-border/60 bg-background/65 px-2 py-2">
@@ -1035,6 +1033,13 @@ export function InputBox({
         <div className="bg-background absolute right-0 -bottom-[17px] left-0 z-0 h-4"></div>
       )}
       </PromptInput>
+
+      {(isSubmitting || status === "streaming") && (
+        <div className="pointer-events-none absolute right-4 bottom-[3.5rem] z-10 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <Loader2Icon className="size-3 animate-spin" />
+          <span>{status === "streaming" ? "Thinking..." : "Processing..."}</span>
+        </div>
+      )}
 
       {!disabled &&
         !isNewThread &&

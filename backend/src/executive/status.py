@@ -458,6 +458,81 @@ async def collect_system_status() -> ExecutiveSystemStatus:
     return ExecutiveSystemStatus(summary=summary, components=statuses)
 
 
+async def collect_planning_status() -> ExecutiveSystemStatus:
+    """Collect a lightweight status snapshot for planning decisions.
+
+    Manual plan review only needs routing-relevant dependency health, not the full
+    operational dashboard. Keeping this path narrow avoids repeated expensive probes.
+    """
+    relevant_component_ids = ("litellm", "langgraph", "surfsense", "langfuse")
+    registry = get_component_registry()
+    external = await _external_status_map()
+
+    statuses: list[ExecutiveStatusSnapshot] = []
+    for component_id in relevant_component_ids:
+        component = registry.get(component_id)
+        if component is None:
+            continue
+        if _is_component_disabled(component_id):
+            statuses.append(
+                ExecutiveStatusSnapshot(
+                    component_id=component_id,
+                    label=component.label,
+                    state="disabled",
+                    summary=f"{component.label} is intentionally disabled for this runtime profile.",
+                    details={"disabled_by_profile": True},
+                    metrics={},
+                    recommended_actions=[],
+                )
+            )
+            continue
+
+        item = external.get(component_id)
+        if item is None:
+            statuses.append(
+                ExecutiveStatusSnapshot(
+                    component_id=component_id,
+                    label=component.label,
+                    state="unknown",
+                    summary="No external status available.",
+                )
+            )
+            continue
+
+        statuses.append(
+            ExecutiveStatusSnapshot(
+                component_id=component_id,
+                label=component.label,
+                state="healthy" if item["available"] else ("misconfigured" if not item["configured"] else "unavailable"),
+                summary=item["message"] or f"{component.label} is reachable.",
+                details={
+                    "url": item.get("url"),
+                    "configured": item.get("configured"),
+                    "required": item.get("required"),
+                },
+                metrics={"available": item.get("available")},
+                recommended_actions=[],
+            )
+        )
+
+    status_map = {status.component_id: status for status in statuses}
+    for status in statuses:
+        status.dependencies = _dependencies(status.component_id, status_map)
+
+    state_counts: dict[str, int] = {
+        "healthy": 0,
+        "degraded": 0,
+        "unavailable": 0,
+        "misconfigured": 0,
+        "disabled": 0,
+        "unknown": 0,
+    }
+    for item in statuses:
+        state_counts[item.state] = state_counts.get(item.state, 0) + 1
+
+    return ExecutiveSystemStatus(summary=state_counts, components=statuses)
+
+
 def get_component_log_path(component_id: str) -> Path | None:
     mapping = {
         "frontend": LOG_ROOT / "frontend.log",

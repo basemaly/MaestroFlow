@@ -8,6 +8,7 @@ import "./src/env.js";
 const config = {
   allowedDevOrigins: ["127.0.0.1", "localhost", "127.0.0.1:2027", "localhost:2027"],
   devIndicators: false,
+  distDir: process.env.MAESTROFLOW_NEXT_DIST_DIR ?? ".next",
   output: "standalone",
 };
 

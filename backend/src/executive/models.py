@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 ExecutiveState = Literal["healthy", "degraded", "unavailable", "misconfigured", "disabled", "unknown"]
@@ -59,7 +63,7 @@ class ExecutiveStatusSnapshot(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     dependencies: list[ExecutiveDependency] = Field(default_factory=list)
     recommended_actions: list[str] = Field(default_factory=list)
-    checked_at: datetime = Field(default_factory=datetime.utcnow)
+    checked_at: datetime = Field(default_factory=_utc_now)
 
 
 class ExecutiveActionRequest(BaseModel):
@@ -127,7 +131,7 @@ class ExecutiveAdvisoryRule(BaseModel):
 
 
 class ExecutiveSystemStatus(BaseModel):
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=_utc_now)
     summary: dict[str, int] = Field(default_factory=dict)
     components: list[ExecutiveStatusSnapshot] = Field(default_factory=list)
 
@@ -143,3 +147,34 @@ class ExecutiveChatResponse(BaseModel):
     action_preview: ExecutiveActionPreview | None = None
     component_refs: list[str] = Field(default_factory=list)
     advisory_refs: list[str] = Field(default_factory=list)
+
+
+class ExecutiveBlueprint(BaseModel):
+    blueprint_id: str
+    title: str
+    description: str = ""
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utc_now)
+    updated_at: datetime = Field(default_factory=_utc_now)
+
+
+class ExecutiveBlueprintRun(BaseModel):
+    run_id: str
+    blueprint_id: str
+    status: str
+    current_step_index: int = 0
+    started_at: datetime = Field(default_factory=_utc_now)
+    last_heartbeat_at: datetime | None = None
+    lease_expires_at: datetime | None = Field(default_factory=lambda: _utc_now() + timedelta(minutes=10))
+    finished_at: datetime | None = None
+    result: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExecutiveHeartbeat(BaseModel):
+    heartbeat_id: str
+    scope_type: str
+    scope_id: str
+    timestamp: datetime = Field(default_factory=_utc_now)
+    lease_expires_at: datetime | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)

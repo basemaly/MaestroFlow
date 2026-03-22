@@ -8,7 +8,7 @@ import httpx
 
 from src.config import get_langfuse_config
 from src.core.http import initialize_http_client_manager
-from src.core.http.client_manager import HTTPClientManager, ServiceName
+from src.core.http.client_manager import HTTPClientManager, ServiceName, get_http_client_manager
 from src.core.resilience.circuit_breaker import CircuitOpenError
 from src.integrations.activepieces import get_activepieces_config
 from src.integrations.browser_runtime import get_browser_runtime_config
@@ -49,6 +49,23 @@ async def _call_service_health(
         return False, str(exc)
 
 
+async def _call_url_health(
+    url: str,
+    *,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> tuple[bool, str | None]:
+    """Probe a fully-qualified URL directly, bypassing the client manager."""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return True, None
+    except httpx.HTTPStatusError as exc:
+        return False, f"HTTP {exc.response.status_code}"
+    except httpx.RequestError as exc:
+        return False, str(exc)
+
+
 async def _build_managed_service_status(
     manager: HTTPClientManager,
     *,
@@ -83,7 +100,9 @@ async def _build_managed_service_status(
 
 
 async def get_external_services_status() -> dict[str, Any]:
-    manager = initialize_http_client_manager()
+    manager = get_http_client_manager()
+    if not manager.has_registered_services():
+        manager = initialize_http_client_manager()
 
     openviking_config = get_openviking_config()
     activepieces_config = get_activepieces_config()
@@ -99,18 +118,31 @@ async def get_external_services_status() -> dict[str, Any]:
 
     openviking_origin = _normalize_origin(openviking_config.base_url)
     openviking_configured = bool(openviking_config.is_configured and openviking_origin)
-    statuses.append(
-        await _build_managed_service_status(
-            manager,
-            service=ServiceName.OPENVIKING,
-            label="OpenViking",
-            configured=openviking_configured,
-            required=False,
-            path="/docs",
-            url=openviking_origin,
-            not_configured_message="OpenViking is not configured.",
+    if openviking_configured:
+        _ov_avail, _ov_err = await _call_url_health(f"{openviking_origin}/health")
+        statuses.append(
+            {
+                "service": ServiceName.OPENVIKING.value,
+                "label": "OpenViking",
+                "configured": True,
+                "available": _ov_avail,
+                "required": False,
+                "url": openviking_origin,
+                "message": f"OpenViking is unreachable: {_ov_err}" if not _ov_avail else None,
+            }
         )
-    )
+    else:
+        statuses.append(
+            {
+                "service": ServiceName.OPENVIKING.value,
+                "label": "OpenViking",
+                "configured": False,
+                "available": False,
+                "required": False,
+                "url": openviking_origin,
+                "message": "OpenViking is not configured.",
+            }
+        )
 
     activepieces_origin = _normalize_origin(activepieces_config.base_url)
     activepieces_configured = bool(activepieces_config.is_configured and activepieces_origin)
@@ -154,19 +186,31 @@ async def get_external_services_status() -> dict[str, Any]:
 
     surfsense_origin = _normalize_origin(surfsense_config.base_url)
     surfsense_configured = bool(surfsense_config.base_url and surfsense_config.bearer_token)
-    statuses.append(
-        await _build_managed_service_status(
-            manager,
-            service=ServiceName.SURFSENSE,
-            label="SurfSense",
-            configured=surfsense_configured,
-            required=False,
-            path="/health",
-            url=surfsense_origin,
-            not_configured_message="SurfSense is not configured.",
+    if surfsense_configured:
+        _ss_avail, _ss_err = await _call_url_health(f"{surfsense_origin}/health")
+        statuses.append(
+            {
+                "service": ServiceName.SURFSENSE.value,
+                "label": "SurfSense",
+                "configured": True,
+                "available": _ss_avail,
+                "required": False,
+                "url": surfsense_origin,
+                "message": f"SurfSense is unreachable: {_ss_err}" if not _ss_avail else None,
+            }
         )
-    )
-
+    else:
+        statuses.append(
+            {
+                "service": ServiceName.SURFSENSE.value,
+                "label": "SurfSense",
+                "configured": False,
+                "available": False,
+                "required": False,
+                "url": surfsense_origin,
+                "message": "SurfSense is not configured.",
+            }
+        )
     langfuse_origin = _normalize_origin(langfuse_config.host)
     langfuse_configured = bool(langfuse_config.is_configured)
     statuses.append(
@@ -184,18 +228,31 @@ async def get_external_services_status() -> dict[str, Any]:
 
     litellm_origin = _normalize_origin(litellm_base_url or "http://127.0.0.1:4000")
     litellm_configured = bool(litellm_base_url)
-    statuses.append(
-        await _build_managed_service_status(
-            manager,
-            service=ServiceName.LITELLM,
-            label="LiteLLM",
-            configured=litellm_configured,
-            required=True,
-            path="/v1/models",
-            url=litellm_origin,
-            not_configured_message="LiteLLM is not configured.",
+    if litellm_configured:
+        _ll_avail, _ll_err = await _call_url_health(f"{litellm_origin}/health/liveliness")
+        statuses.append(
+            {
+                "service": ServiceName.LITELLM.value,
+                "label": "LiteLLM",
+                "configured": True,
+                "available": _ll_avail,
+                "required": True,
+                "url": litellm_origin,
+                "message": f"LiteLLM is unreachable: {_ll_err}" if not _ll_avail else None,
+            }
         )
-    )
+    else:
+        statuses.append(
+            {
+                "service": ServiceName.LITELLM.value,
+                "label": "LiteLLM",
+                "configured": False,
+                "available": False,
+                "required": True,
+                "url": litellm_origin,
+                "message": "LiteLLM is not configured.",
+            }
+        )
 
     statuses.append(
         await _build_managed_service_status(

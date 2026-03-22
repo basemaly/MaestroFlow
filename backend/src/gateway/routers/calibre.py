@@ -70,7 +70,7 @@ async def get_calibre_status(collection: str | None = None) -> dict:
 
     logger.debug("Calibre status cache MISS for collection=%s", collection)
     try:
-        payload = await SurfSenseCalibreClient().get_calibre_status(collection=collection)
+        payload = await SurfSenseCalibreClient(use_circuit_breaker=False).get_calibre_status(collection=collection)
         response = {
             **payload,
             "available": True,
@@ -208,7 +208,7 @@ async def get_calibre_health(collection: str | None = None) -> dict:
 
     logger.debug("Calibre health cache MISS for collection=%s", collection)
     try:
-        payload = await SurfSenseCalibreClient().get_calibre_health(collection=collection)
+        payload = await SurfSenseCalibreClient(use_circuit_breaker=False).get_calibre_health(collection=collection)
         response = {
             **payload,
             "available": True,

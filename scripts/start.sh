@@ -72,11 +72,17 @@ stop_all_services() {
     # Frontend (matches pnpm/next processes on the canonical local port)
     pkill -15 -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
     pkill -15 -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -15 -f "next start.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -15 -f "next start.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
     pkill -15 -f "pnpm.*next dev" 2>/dev/null || true
+    pkill -15 -f "pnpm.*next start" 2>/dev/null || true
     sleep 0.2
     pkill -9 -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
     pkill -9 -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -9 -f "next start.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -9 -f "next start.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
     pkill -9 -f "pnpm.*next dev" 2>/dev/null || true
+    pkill -9 -f "pnpm.*next start" 2>/dev/null || true
     free_port "$MAESTROFLOW_FRONTEND_PORT"
 
     # Nginx
@@ -247,7 +253,7 @@ cleanup_conflicting_local_processes
 echo ""
 echo "Services starting up..."
 echo "  → Backend: LangGraph + Gateway"
-echo "  → Frontend: Next.js"
+echo "  → Frontend: Next.js (${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app})"
 echo "  → Nginx: Reverse Proxy"
 echo ""
 
@@ -273,7 +279,11 @@ ensure_langgraph_runtime
 echo "✓ LangGraph server started on localhost:$MAESTROFLOW_LANGGRAPH_PORT (Docker)"
 
 echo "Starting Gateway API..."
-(cd backend && exec uv run uvicorn src.gateway.app:app --host 0.0.0.0 --port "$MAESTROFLOW_GATEWAY_PORT" > ../logs/gateway.log 2>&1) &
+(
+  cd backend
+  export MAESTROFLOW_FRONTEND_RUNTIME_MODE="${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app}"
+  exec uv run uvicorn src.gateway.app:app --host 0.0.0.0 --port "$MAESTROFLOW_GATEWAY_PORT" > ../logs/gateway.log 2>&1
+) &
 GATEWAY_PID=$!
 ./scripts/wait-for-port.sh "$MAESTROFLOW_GATEWAY_PORT" 30 "Gateway API" || {
     echo "✗ Gateway API failed to start. Last log output:"
@@ -285,7 +295,14 @@ GATEWAY_PID=$!
 echo "✓ Gateway API started on localhost:$MAESTROFLOW_GATEWAY_PORT"
 
 echo "Starting Frontend..."
-(cd frontend && nohup pnpm exec next dev --turbopack --hostname "$MAESTROFLOW_FRONTEND_HOST" --port "$MAESTROFLOW_FRONTEND_PORT" > ../logs/frontend.log 2>&1 &)
+(
+  cd frontend
+  export MAESTROFLOW_FRONTEND_BIND_HOST="$MAESTROFLOW_FRONTEND_HOST"
+  export MAESTROFLOW_FRONTEND_BIND_PORT="$MAESTROFLOW_FRONTEND_PORT"
+  export MAESTROFLOW_FRONTEND_RUNTIME_MODE="${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app}"
+  export NEXT_PUBLIC_MAESTROFLOW_FRONTEND_RUNTIME_MODE="$MAESTROFLOW_FRONTEND_RUNTIME_MODE"
+  nohup ../scripts/run-frontend-runtime.sh > ../logs/frontend.log 2>&1 &
+)
 # Get the PID of the backgrounded Next.js process
 FRONTEND_PID=$!
 ./scripts/wait-for-port.sh "$MAESTROFLOW_FRONTEND_PORT" 120 "Frontend" || {

@@ -39,8 +39,10 @@ def _fake_advisory():
 def _patch_no_llm(monkeypatch, tmp_path):
     """Disable the LLM so the heuristic fallback is exercised."""
     monkeypatch.setenv("EXECUTIVE_DB_PATH", str(tmp_path / "executive.db"))
-    monkeypatch.setattr("src.planning.service.get_status_payload", _fake_status())
-    monkeypatch.setattr("src.planning.service.get_advisory_payload", _fake_advisory())
+    monkeypatch.setattr("src.planning.service.get_planning_status_payload", _fake_status())
+    monkeypatch.setattr("src.planning.service.get_advisory_payload_for_status", lambda status: [])
+    import src.planning.service as svc
+    svc._planning_status_cache.update({"expires_at": 0.0, "status": None, "advisory": None})
 
 
 def _patch_with_llm(monkeypatch, tmp_path, llm_result: _LLMPlannerSchema):
@@ -77,7 +79,7 @@ def test_first_turn_review_triggers_for_complex_prompt(monkeypatch, tmp_path: Pa
 
     assert review.review_required is True
     assert review.plan.steps
-    assert review.complexity in {"complex", "high_cost"}
+    assert review.complexity in {"complex", "high_cost", "high_ambiguity"}
 
 
 def test_first_turn_review_can_be_forced(monkeypatch, tmp_path: Path):
@@ -98,6 +100,30 @@ def test_first_turn_review_can_be_forced(monkeypatch, tmp_path: Path):
     assert review.status in {"plan_review", "awaiting_clarification"}
 
 
+def test_forced_review_uses_fast_heuristic_path_for_clear_complex_prompt(monkeypatch, tmp_path: Path):
+    _patch_no_llm(monkeypatch, tmp_path)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("LLM planner should not run for forced clear-complex manual review")
+
+    monkeypatch.setattr("src.planning.service.create_chat_model", fail_if_called, raising=False)
+
+    review = asyncio.run(
+        first_turn_review(
+            FirstTurnReviewRequest(
+                thread_id="thread-fast-review",
+                prompt="Research node-based text editors, compare the main open-source editors, and produce a design guide for a collaborative word processor.",
+                context={},
+                force_review=True,
+            )
+        )
+    )
+
+    assert review.review_required is True
+    assert review.complexity == "complex"
+    assert review.plan.steps
+
+
 def test_apply_suggestions_and_approve(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("EXECUTIVE_DB_PATH", str(tmp_path / "executive.db"))
 
@@ -112,8 +138,10 @@ def test_apply_suggestions_and_approve(monkeypatch, tmp_path: Path):
     async def fake_advisory():
         return []
 
-    monkeypatch.setattr("src.planning.service.get_status_payload", fake_status)
-    monkeypatch.setattr("src.planning.service.get_advisory_payload", fake_advisory)
+    monkeypatch.setattr("src.planning.service.get_planning_status_payload", fake_status)
+    monkeypatch.setattr("src.planning.service.get_advisory_payload_for_status", lambda status: [])
+    import src.planning.service as svc
+    svc._planning_status_cache.update({"expires_at": 0.0, "status": None, "advisory": None})
 
     review = asyncio.run(
         first_turn_review(

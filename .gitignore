@@ -39,6 +39,7 @@ skills/custom/*
 logs/
 .run/
 log/
+scripts/.logs/
 
 # Local git hooks (keep only on this machine, do not push)
 .githooks/

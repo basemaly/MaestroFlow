@@ -139,11 +139,17 @@ stop_pid_process() {
   if [ "$name" = "frontend" ]; then
     pkill -15 -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
     pkill -15 -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -15 -f "next start.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -15 -f "next start.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
     pkill -15 -f "pnpm.*next dev" 2>/dev/null || true
+    pkill -15 -f "pnpm.*next start" 2>/dev/null || true
     sleep 0.2
     pkill -9 -f "next dev.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
     pkill -9 -f "next dev.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -9 -f "next start.*--port $MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
+    pkill -9 -f "next start.*$MAESTROFLOW_FRONTEND_PORT" 2>/dev/null || true
     pkill -9 -f "pnpm.*next dev" 2>/dev/null || true
+    pkill -9 -f "pnpm.*next start" 2>/dev/null || true
   elif [ "$name" = "gateway" ]; then
     pkill -15 -f "uvicorn src.gateway.app:app" 2>/dev/null || true
     sleep 0.2
@@ -182,6 +188,7 @@ start_gateway() {
     source "$REPO_ROOT/.env"
     export LANGGRAPH_CHECKPOINTER_URL="${LANGGRAPH_CHECKPOINTER_URL:-$LANGGRAPH_POSTGRES_URL_DEFAULT}"
     export BG_JOB_ISOLATED_LOOPS="${BG_JOB_ISOLATED_LOOPS:-true}"
+    export MAESTROFLOW_FRONTEND_RUNTIME_MODE="${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app}"
     set +a
     exec "$REPO_ROOT/backend/.venv/bin/uvicorn" src.gateway.app:app --host 0.0.0.0 --port "$MAESTROFLOW_GATEWAY_PORT" >>"$REPO_ROOT/logs/gateway.log" 2>&1
   ) &
@@ -191,7 +198,11 @@ start_gateway() {
 start_frontend() {
   (
     cd "$REPO_ROOT/frontend"
-    exec pnpm exec next dev --turbopack --hostname "$MAESTROFLOW_FRONTEND_HOST" --port "$MAESTROFLOW_FRONTEND_PORT" >>"$REPO_ROOT/logs/frontend.log" 2>&1
+    export MAESTROFLOW_FRONTEND_BIND_HOST="$MAESTROFLOW_FRONTEND_HOST"
+    export MAESTROFLOW_FRONTEND_BIND_PORT="$MAESTROFLOW_FRONTEND_PORT"
+    export MAESTROFLOW_FRONTEND_RUNTIME_MODE="${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app}"
+    export NEXT_PUBLIC_MAESTROFLOW_FRONTEND_RUNTIME_MODE="$MAESTROFLOW_FRONTEND_RUNTIME_MODE"
+    exec "$REPO_ROOT/scripts/run-frontend-runtime.sh" >>"$REPO_ROOT/logs/frontend.log" 2>&1
   ) &
   write_pid frontend "$!"
 }

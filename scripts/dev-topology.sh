@@ -90,6 +90,7 @@ detect_dev_runtime_mode() {
 print_dev_topology() {
   local mode="$1"
   printf "Mode           : %s\n" "$mode"
+  printf "Frontend mode  : %s\n" "${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app}"
   printf "Public app     : http://%s:%s\n" "$MAESTROFLOW_PUBLIC_HOST" "$MAESTROFLOW_PUBLIC_PORT"
   printf "Frontend direct: http://%s:%s\n" "$MAESTROFLOW_FRONTEND_HOST" "$MAESTROFLOW_FRONTEND_PORT"
   printf "Gateway direct : http://%s:%s\n" "$MAESTROFLOW_GATEWAY_HOST" "$MAESTROFLOW_GATEWAY_PORT"
@@ -130,8 +131,8 @@ cleanup_conflicting_local_processes() {
   warn_if_mixed_topology "$mode"
 
   # Clean up stray repo-owned local services that survive outside the blessed launchers.
-  kill_process_on_port_if_matches "$MAESTROFLOW_FRONTEND_PORT" "next.*/next dev"
-  kill_process_on_port_if_matches 3000 "next.*/next dev"
+  kill_process_on_port_if_matches "$MAESTROFLOW_FRONTEND_PORT" "next.*/next (dev|start)"
+  kill_process_on_port_if_matches 3000 "next.*/next (dev|start)"
   kill_process_on_port_if_matches "$MAESTROFLOW_GATEWAY_PORT" "uvicorn .*src.gateway.app:app"
   kill_process_on_port_if_matches "$MAESTROFLOW_PUBLIC_PORT" "nginx.*nginx.local.conf"
 }

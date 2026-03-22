@@ -124,20 +124,27 @@ services:
       args:
         PNPM_STORE_PATH: ${PNPM_STORE_PATH:-/root/.local/share/pnpm/store}
     container_name: deer-flow-frontend
-    command: sh -c "pnpm run dev --hostname 0.0.0.0 --port 3000 2>&1 | tee /app/logs/frontend.log"
+    command: sh -c "cd /app/frontend && /app/scripts/run-frontend-runtime.sh 2>&1 | tee /app/logs/frontend.log"
     volumes:
       - ../frontend:/app/frontend
+      - ../scripts:/app/scripts:ro
       - ../logs:/app/logs
       # Mount pnpm store for caching
       - ${PNPM_STORE_PATH:-~/.local/share/pnpm/store}:/root/.local/share/pnpm/store
       - frontend-node-modules:/app/frontend/node_modules
     working_dir: /app/frontend
     environment:
-      - NODE_ENV=development
-      - WATCHPACK_POLLING=true
+      - NODE_ENV=production
+      - WATCHPACK_POLLING=${WATCHPACK_POLLING:-false}
       - CI=true
       - MAESTROFLOW_INTERNAL_GATEWAY_URL=http://gateway:8001
       - MAESTROFLOW_LOG_FORMAT=${MAESTROFLOW_LOG_FORMAT:-json}
+      - MAESTROFLOW_FRONTEND_RUNTIME_MODE=${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app}
+      - MAESTROFLOW_FRONTEND_BIND_HOST=0.0.0.0
+      - MAESTROFLOW_FRONTEND_BIND_PORT=3000
+      - MAESTROFLOW_PUBLIC_ORIGIN=${MAESTROFLOW_PUBLIC_ORIGIN:-http://localhost:2027}
+      - BETTER_AUTH_BASE_URL=${BETTER_AUTH_BASE_URL:-http://localhost:2027}
+      - NEXT_PUBLIC_MAESTROFLOW_FRONTEND_RUNTIME_MODE=${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app}
     env_file:
       - ../frontend/.env
     networks:
@@ -170,6 +177,7 @@ services:
       - CI=true
       - MAESTROFLOW_LOG_FORMAT=${MAESTROFLOW_LOG_FORMAT:-json}
       - MAESTROFLOW_RUNTIME_PROFILE=${MAESTROFLOW_RUNTIME_PROFILE:-full}
+      - MAESTROFLOW_FRONTEND_RUNTIME_MODE=${MAESTROFLOW_FRONTEND_RUNTIME_MODE:-app}
       - LITELLM_PROXY_BASE_URL=http://host.docker.internal:4000/v1
       - LANGGRAPH_BASE_URL=http://langgraph:8000
       - GATEWAY_BASE_URL=http://gateway:8001

@@ -107,11 +107,22 @@ class HTTPClientManager:
             config: Service configuration including URL, timeouts, and circuit breaker settings
         """
         with self._manager_lock:
-            if config.name in self._service_configs:
-                logger.warning(f"Service {config.name.value} already registered, replacing")
+            existing = self._service_configs.get(config.name)
+            if existing == config:
+                logger.debug(f"Service {config.name.value} already registered with identical config")
+                return
+            if existing is not None:
+                logger.info(f"Refreshing service registration for {config.name.value}")
+                self._clients.pop(config.name, None)
+                self._circuit_breakers.pop(config.name, None)
 
             self._service_configs[config.name] = config
             logger.info(f"Registered service: {config.name.value} at {config.base_url}")
+
+    def has_registered_services(self) -> bool:
+        """Return whether any managed services are currently registered."""
+        with self._manager_lock:
+            return bool(self._service_configs)
 
     async def get_client(self, service: ServiceName) -> httpx.AsyncClient:
         """Get or create an HTTP client for a service.
@@ -356,6 +367,7 @@ class HTTPClientManager:
 
             self._clients.clear()
             self._circuit_breakers.clear()
+            self._service_configs.clear()
             logger.info("HTTPClientManager cleanup complete")
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -10,7 +12,7 @@ from pydantic import BaseModel
 from pydantic import Field as PydanticField
 
 from src.agents.decomposer import complexity_score
-from src.executive.service import get_advisory_payload, get_status_payload
+from src.executive.service import get_advisory_payload_for_status, get_planning_status_payload
 from src.observability import get_managed_prompt, make_trace_id, observe_span, score_trace_by_id
 from src.planning.models import (
     ApplySuggestionsRequest,
@@ -32,6 +34,16 @@ from src.planning.models import (
 from src.planning.storage import get_plan_review, save_plan_review
 
 logger = logging.getLogger(__name__)
+
+_PLANNING_MODEL_CANDIDATES = (
+    "gemini-2-5-flash",
+    "gemini-2-5-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gpt-4-1-mini",
+    "claude-haiku-4-5",
+)
+_PLANNING_STATUS_CACHE_TTL_SECONDS = float(os.environ.get("MAESTROFLOW_PLANNING_STATUS_CACHE_TTL_SECONDS", "15"))
+_planning_status_cache: dict[str, Any] = {"expires_at": 0.0, "status": None, "advisory": None}
 
 # Module-level reference so tests can monkeypatch it
 try:
@@ -170,6 +182,44 @@ def _get_available_model_names() -> list[str]:
         return [m.name for m in get_app_config().models]
     except Exception:
         return []
+
+
+def _resolve_planning_model_name() -> str | None:
+    available = _get_available_model_names()
+    if not available:
+        return None
+
+    explicit = os.environ.get("MAESTROFLOW_PLANNING_MODEL", "").strip()
+    if explicit and explicit in available:
+        return explicit
+
+    for candidate in _PLANNING_MODEL_CANDIDATES:
+        if candidate in available:
+            return candidate
+    return available[0]
+
+
+async def _get_planning_status_and_advisory() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    now = time.monotonic()
+    cached_status = _planning_status_cache.get("status")
+    cached_advisory = _planning_status_cache.get("advisory")
+    if (
+        cached_status is not None
+        and cached_advisory is not None
+        and now < float(_planning_status_cache.get("expires_at", 0.0))
+    ):
+        return cached_status, cached_advisory
+
+    status = await get_planning_status_payload()
+    advisory = get_advisory_payload_for_status(status)
+    _planning_status_cache.update(
+        {
+            "expires_at": now + _PLANNING_STATUS_CACHE_TTL_SECONDS,
+            "status": status,
+            "advisory": advisory,
+        }
+    )
+    return status, advisory
 
 
 def _get_status_notes(status: dict[str, Any]) -> str:
@@ -321,20 +371,23 @@ async def _build_plan_with_llm(
     context: dict[str, Any],
     status: dict[str, Any],
     advisory: list[dict[str, Any]],
+    *,
+    trace_id: str | None = None,
 ) -> tuple[PlanDraft, PlanningComplexity, list[ClarificationQuestion], list[ExecutiveSuggestion]]:
     """Call the LLM to produce a structured plan. Falls back to heuristics on any failure."""
     try:
         if create_chat_model is None:
             raise RuntimeError("create_chat_model not available")
-        model = create_chat_model()
+        planning_model = _resolve_planning_model_name()
+        model = create_chat_model(name=planning_model, thinking_enabled=False, trace_id=trace_id)
         planner = model.with_structured_output(_LLMPlannerSchema)
-        model_names = _get_available_model_names()
+        model_names = [name for name in _get_available_model_names() if name in _PLANNING_MODEL_CANDIDATES][:5]
         status_notes = _get_status_notes(status)
         current_mode = context.get("mode", "standard")
 
         system_prompt = (
             "You are the planning agent for an AI super-agent system.\n\n"
-            f"Available models: {', '.join(model_names) if model_names else 'default'}\n"
+            f"Recommended models to choose from: {', '.join(model_names) if model_names else (planning_model or 'default')}\n"
             f"Current session mode: {current_mode}\n"
             "Available tools: web search (tavily), web fetch (jina/firecrawl), bash execution, "
             "file read/write/str_replace, image search, sub-agent delegation (for parallel workstreams), "
@@ -618,6 +671,31 @@ def _build_suggestions(
     return suggestions[:5]
 
 
+def _should_use_llm_planner(
+    prompt: str,
+    context: dict[str, Any],
+    *,
+    complexity: PlanningComplexity,
+    force_review: bool,
+) -> bool:
+    """Decide whether a review truly needs the LLM planner.
+
+    Forced manual review should stay fast for clear multi-step prompts. Use the LLM
+    when the request is ambiguous, high-cost, or benefits materially from prompt/tool
+    optimization beyond the heuristic plan.
+    """
+    text = prompt.lower()
+    if complexity in {"high_ambiguity", "high_cost"}:
+        return True
+    if any(marker in text for marker in _DOC_EDIT_MARKERS):
+        return True
+    if any(marker in text for marker in _INTERNAL_KNOWLEDGE_MARKERS):
+        return True
+    if context.get("mode") in {"pro", "ultra"} and any(marker in text for marker in _RESEARCH_MARKERS):
+        return True
+    return not force_review and complexity == "complex"
+
+
 # ---------------------------------------------------------------------------
 # Public service functions
 # ---------------------------------------------------------------------------
@@ -630,8 +708,9 @@ async def first_turn_review(request: FirstTurnReviewRequest) -> FirstTurnReviewR
         input={"thread_id": request.thread_id, "prompt": request.prompt, "context": request.context},
         metadata={"agent_name": request.agent_name},
     ):
-        status = await get_status_payload()
-        advisory = await get_advisory_payload()
+        status, advisory = await _get_planning_status_and_advisory()
+
+        heuristic_complexity, heuristic_review_required = _classify_prompt(request.prompt, request.context)
 
         # Trivially simple fast path: skip LLM planner entirely for short, clear queries
         word_count = len(request.prompt.split())
@@ -641,15 +720,31 @@ async def first_turn_review(request: FirstTurnReviewRequest) -> FirstTurnReviewR
             and not request.force_review
         )
 
+        use_llm_planner = (
+            not is_trivially_simple
+            and _should_use_llm_planner(
+                request.prompt,
+                request.context,
+                complexity=heuristic_complexity,
+                force_review=request.force_review,
+            )
+        )
+
         if is_trivially_simple:
             plan = _build_heuristic_plan(request.prompt, "simple", False)
             complexity: PlanningComplexity = "simple"
             questions: list = []
             suggestions: list = []
-        else:
+        elif use_llm_planner:
             plan, complexity, questions, suggestions = await _build_plan_with_llm(
-                request.prompt, request.context, status, advisory
+                request.prompt, request.context, status, advisory, trace_id=trace_id
             )
+        else:
+            complexity = heuristic_complexity
+            review_required = heuristic_review_required or request.force_review
+            plan = _build_heuristic_plan(request.prompt, complexity, review_required)
+            questions = _build_questions(request.prompt, complexity)
+            suggestions = _build_suggestions(request.prompt, request.context, status, advisory)
 
         # force_review always overrides the LLM's own review_required decision
         review_required = plan.review_required or request.force_review

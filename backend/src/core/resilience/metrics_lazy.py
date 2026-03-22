@@ -31,32 +31,41 @@ def _ensure_structured_logger() -> object:
     return _structured_logger
 
 
-def record_circuit_breaker_state_change(service: str, old_state: str, new_state: str, metrics: dict) -> None:
+def record_circuit_breaker_state_change(
+    service: str,
+    from_state: str,
+    to_state: str,
+    metrics: dict | None = None,
+) -> None:
     """Record circuit breaker state change."""
     try:
         m = _ensure_metrics_module()
         if hasattr(m, "record_circuit_breaker_state_change"):
-            m.record_circuit_breaker_state_change(service, old_state, new_state, metrics)
+            m.record_circuit_breaker_state_change(service, from_state, to_state)
     except Exception:
         pass
 
 
-def record_circuit_breaker_failure(service: str, error: str, details: dict) -> None:
+def record_circuit_breaker_failure(
+    service: str,
+    error: str | None = None,
+    details: dict | None = None,
+) -> None:
     """Record circuit breaker failure."""
     try:
         m = _ensure_metrics_module()
         if hasattr(m, "record_circuit_breaker_failure"):
-            m.record_circuit_breaker_failure(service, error, details)
+            m.record_circuit_breaker_failure(service)
     except Exception:
         pass
 
 
-def record_circuit_breaker_success(service: str, response_time: float) -> None:
+def record_circuit_breaker_success(service: str, response_time: float | None = None) -> None:
     """Record circuit breaker success."""
     try:
         m = _ensure_metrics_module()
         if hasattr(m, "record_circuit_breaker_success"):
-            m.record_circuit_breaker_success(service, response_time)
+            m.record_circuit_breaker_success(service)
     except Exception:
         pass
 
@@ -81,22 +90,31 @@ def record_circuit_breaker_half_open_attempt(service: str) -> None:
         pass
 
 
-def record_http_client_request(service: str, method: str, path: str, status: int, duration: float) -> None:
+def record_http_client_request(
+    service: str,
+    status: str,
+    duration_seconds: float,
+    **_: object,
+) -> None:
     """Record HTTP client request."""
     try:
         m = _ensure_metrics_module()
         if hasattr(m, "record_http_client_request"):
-            m.record_http_client_request(service, method, path, status, duration)
+            m.record_http_client_request(service, status, duration_seconds)
     except Exception:
         pass
 
 
-def record_http_client_retry(service: str, attempt: int, error: str) -> None:
+def record_http_client_retry(
+    service: str,
+    attempt: int | None = None,
+    error: str | None = None,
+) -> None:
     """Record HTTP client retry."""
     try:
         m = _ensure_metrics_module()
         if hasattr(m, "record_http_client_retry"):
-            m.record_http_client_retry(service, attempt, error)
+            m.record_http_client_retry(service)
     except Exception:
         pass
 

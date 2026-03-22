@@ -4,10 +4,9 @@ from langchain.agents import create_agent
 
 from src.executive.service import (
     EXECUTIVE_DEFAULT_MODEL,
-    get_advisory_payload,
     get_capabilities_payload,
     get_executive_settings_payload,
-    get_status_payload,
+    get_status_and_advisory_payload,
 )
 from src.executive.tools import (
     executive_analyze_prompt,
@@ -241,8 +240,7 @@ def _build_runtime_context(status: dict, advisory: list, capabilities: dict) -> 
 
 
 async def run_executive_chat(messages: list[dict[str, str]]) -> dict:
-    advisory = await get_advisory_payload()
-    status = await get_status_payload()
+    status, advisory = await get_status_and_advisory_payload()
     capabilities = get_capabilities_payload()
     settings = get_executive_settings_payload()
 

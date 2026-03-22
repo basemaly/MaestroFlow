@@ -38,6 +38,9 @@ def initialize_http_client_manager() -> HTTPClientManager:
         The initialized HTTPClientManager singleton instance
     """
     manager = HTTPClientManager.get_instance()
+    if manager.has_registered_services():
+        logger.debug("HTTP client manager already initialized; reusing existing registrations")
+        return manager
 
     # SurfSense
     surfsense_config = get_surfsense_config()
@@ -53,7 +56,7 @@ def initialize_http_client_manager() -> HTTPClientManager:
                 success_threshold=2,
                 reset_timeout=60.0,
                 enabled=True,
-                fallback_url=surfsense_config.fallback_url,
+                fallback_url=getattr(surfsense_config, "fallback_url", None),
             )
         )
         logger.info("Registered SurfSense service")

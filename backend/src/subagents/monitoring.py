@@ -71,8 +71,16 @@ class SubagentMetricsCollector:
             return {
                 "window_minutes": window_minutes,
                 "executions_count": 0,
+                "avg_duration_seconds": 0.0,
+                "max_duration_seconds": 0.0,
+                "min_duration_seconds": 0.0,
+                "avg_queue_wait_seconds": 0.0,
+                "max_queue_wait_seconds": 0.0,
                 "current_concurrent": self.current_concurrent,
                 "max_concurrent_seen": self.max_concurrent_seen,
+                "by_model": {},
+                "warning_high_queue_wait": False,
+                "warning_low_throughput": False,
             }
 
         durations = [m.duration_seconds for m in recent]
@@ -118,7 +126,7 @@ class SubagentMetricsCollector:
                 f"HIGH QUEUE WAIT DETECTED: max_queue_wait={summary['max_queue_wait_seconds']:.2f}s. "
                 "This indicates thread pool saturation or model throttling."
             )
-        if summary.get("warning_low_throughput"):
+        if summary["executions_count"] > 0 and summary.get("warning_low_throughput"):
             logger.warning("LOW THROUGHPUT: Few executions in last 5 minutes. Check model/API availability.")
 
 

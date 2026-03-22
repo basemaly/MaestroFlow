@@ -44,6 +44,12 @@ function statusTone(state: string): string {
   return "text-red-300 border-red-500/30 bg-red-500/10";
 }
 
+function runtimeModeLabel(mode?: string): string {
+  if (mode === "ui-dev") return "UI Dev";
+  if (mode === "app") return "App";
+  return mode ?? "Unknown";
+}
+
 function DiagnosticsNav({ active }: { active: DiagnosticsSection }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -219,6 +225,45 @@ export function DiagnosticsPageClient({ section }: { section: DiagnosticsSection
       <div className="flex-1 overflow-y-auto p-6">
         {section === "overview" ? (
           <div className="space-y-6">
+            <section className="grid gap-3 xl:grid-cols-3">
+              <Card className="border-border/60 py-3">
+                <CardHeader className="px-4 pb-1">
+                  <CardDescription className="text-[11px] uppercase tracking-[0.12em]">Frontend runtime</CardDescription>
+                  <CardTitle className="text-2xl">{runtimeModeLabel(overviewQuery.data?.runtime.frontend_mode)}</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pt-0 text-sm text-muted-foreground">
+                  Normal usage should stay on App mode. Switch to UI Dev only when you need live frontend editing.
+                </CardContent>
+              </Card>
+              <Card className="border-border/60 py-3">
+                <CardHeader className="px-4 pb-1">
+                  <CardDescription className="text-[11px] uppercase tracking-[0.12em]">Latest plan review</CardDescription>
+                  <CardTitle className="text-2xl">
+                    {typeof overviewQuery.data?.signals.plan_review.latest_duration_ms === "number"
+                      ? `${overviewQuery.data.signals.plan_review.latest_duration_ms.toFixed(0)} ms`
+                      : "None"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pt-0 text-sm text-muted-foreground">
+                  {overviewQuery.data?.signals.plan_review.count ?? 0} recent requests
+                  {typeof overviewQuery.data?.signals.plan_review.max_duration_ms === "number"
+                    ? ` · max ${overviewQuery.data.signals.plan_review.max_duration_ms.toFixed(0)} ms`
+                    : ""}
+                </CardContent>
+              </Card>
+              <Card className="border-border/60 py-3">
+                <CardHeader className="px-4 pb-1">
+                  <CardDescription className="text-[11px] uppercase tracking-[0.12em]">Gateway log health</CardDescription>
+                  <CardTitle className="text-2xl">
+                    {overviewQuery.data?.signals.gateway_warnings ?? 0} / {overviewQuery.data?.signals.gateway_errors ?? 0}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pt-0 text-sm text-muted-foreground">
+                  warnings / errors in the recent gateway log window
+                </CardContent>
+              </Card>
+            </section>
+
             <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               {Object.entries(overviewQuery.data?.status.summary ?? {}).map(([label, count]) => (
                 <Card key={label} className="border-border/60 bg-background/70 py-3">

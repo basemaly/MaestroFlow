@@ -263,6 +263,7 @@ export function GraphComposerShell({
   const [saveState, setSaveState] = useState<"saved" | "dirty" | "saving">("saved");
   const [edgeKind, setEdgeKind] = useState<GraphEdgeKind>("references");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [sourceFilter, setSourceFilter] = useState<"all" | BlockSource>("all");
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -280,6 +281,7 @@ export function GraphComposerShell({
     setTitle(document.title);
     setWritingMemory(document.writing_memory ?? "");
     setGraph(normalized.graph_composer ?? seedGraphFromMarkdown(document.content_markdown));
+    setFocusedSectionId(null);
     setSaveState("saved");
   }, [document.content_markdown, document.doc_id, document.editor_json, document.title, document.writing_memory]);
 
@@ -360,8 +362,8 @@ export function GraphComposerShell({
   );
   const activeSectionId = useMemo(() => {
     const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId);
-    return selectedNode?.sectionId ?? sortedSections[0]?.id ?? null;
-  }, [graph.nodes, selectedNodeId, sortedSections]);
+    return selectedNode?.sectionId ?? focusedSectionId ?? sortedSections[0]?.id ?? null;
+  }, [focusedSectionId, graph.nodes, selectedNodeId, sortedSections]);
 
   useEffect(() => {
     setSaveState("dirty");
@@ -618,8 +620,17 @@ export function GraphComposerShell({
 
   const handleFocusSection = useCallback((sectionId: string) => {
     setSelectedNodeId(null);
-    setActiveSectionId(sectionId);
-  }, []);
+    setFocusedSectionId(sectionId);
+    const section = graph.section_frames.find((frame) => frame.id === sectionId);
+    if (!section || !flowInstance) {
+      return;
+    }
+    void flowInstance.setCenter(
+      section.position.x + section.width / 2,
+      section.position.y + section.height / 2,
+      { zoom: 0.72, duration: 500 },
+    );
+  }, [flowInstance, graph.section_frames]);
 
   const handleSetEdgeKind = useCallback((kind: GraphEdgeKind) => {
     setEdgeKind(kind);
@@ -628,158 +639,6 @@ export function GraphComposerShell({
   const handleSetSourceFilter = useCallback((filter: "all" | BlockSource) => {
     setSourceFilter(filter);
   }, []);
-
-  function addNode(kind: GraphNodeKind, sectionId?: string | null) {
-    mutateGraph((current) => {
-      const selectedNode = current.nodes.find((node) => node.id === selectedNodeId);
-      const targetSection = current.section_frames.find((frame) => frame.id === (sectionId ?? selectedNode?.sectionId))
-        ?? current.section_frames[0];
-      const sectionNodeCount = current.nodes.filter((node) => node.sectionId === targetSection?.id).length;
-      const nodeId = nextId("node");
-      const nextNode: GraphComposerNode = {
-        id: nodeId,
-        kind,
-        title: kind === "section" ? `Section ${current.section_frames.length + 1}` : NODE_LABELS[kind],
-        content: getDefaultNodeContent(kind),
-        position: {
-          x: (targetSection?.position.x ?? 0) + 22,
-          y: 96 + (sectionNodeCount * 148),
-        },
-        sectionId: targetSection?.id ?? null,
-        source: kind === "source" ? "manual" : null,
-      };
-      return {
-        ...current,
-        nodes: [...current.nodes, nextNode],
-      };
-    });
-  }
-
-  function importBlock(blockId: string) {
-    const block = blocks.find((candidate) => candidate.id === blockId);
-    if (!block) {
-      return;
-    }
-    mutateGraph((current) => {
-      const targetSection = current.section_frames[0];
-      const nodeCount = current.nodes.filter((node) => node.sectionId === targetSection?.id).length;
-      const sourceNode = convertBlockToSourceNode(block, targetSection?.id ?? null, nodeCount);
-      sourceNode.position = {
-        x: (targetSection?.position.x ?? 0) + 22,
-        y: 96 + (nodeCount * 148),
-      };
-      return {
-        ...current,
-        nodes: [...current.nodes, sourceNode],
-      };
-    });
-    toast.success("Imported into graph");
-  }
-
-  function importAllFromSource(source: BlockSource) {
-    const alreadyImported = new Set(
-      graph.nodes
-        .filter((node) => node.kind === "source" && node.source === source)
-        .map((node) => node.title),
-    );
-    const matching = blocks.filter((block) => block.source === source && !alreadyImported.has(block.title));
-    if (matching.length === 0) {
-      toast.message(`No new ${source} clips to import`);
-      return;
-    }
-    mutateGraph((current) => {
-      const targetSection = current.section_frames[0];
-      const existingCount = current.nodes.filter((node) => node.sectionId === targetSection?.id).length;
-      const importedNodes = matching.map((block, index) => {
-        const node = convertBlockToSourceNode(block, targetSection?.id ?? null, existingCount + index);
-        node.position = {
-          x: (targetSection?.position.x ?? 0) + 22,
-          y: 96 + ((existingCount + index) * 148),
-        };
-        return node;
-      });
-      return {
-        ...current,
-        nodes: [...current.nodes, ...importedNodes],
-      };
-    });
-    toast.success(`Imported ${matching.length} ${source} clip${matching.length === 1 ? "" : "s"}`);
-  }
-
-  function addStarterPattern(pattern: "claim-evidence" | "quote-turn" | "rewrite-branch") {
-    mutateGraph((current) => {
-      const targetSection = current.section_frames[0];
-      const sectionNodes = current.nodes.filter((node) => node.sectionId === targetSection?.id).length;
-      const baseY = 96 + (sectionNodes * 148);
-      const additions: GraphComposerNode[] = [];
-      if (pattern === "claim-evidence") {
-        additions.push(
-          {
-            id: nextId("node"),
-            kind: "paragraph",
-            title: "Claim",
-            content: "State the central point clearly and concretely.",
-            position: { x: (targetSection?.position.x ?? 0) + 22, y: baseY },
-            sectionId: targetSection?.id ?? null,
-            source: null,
-          },
-          {
-            id: nextId("node"),
-            kind: "evidence",
-            title: "Evidence",
-            content: "- Add a grounded fact\n- Add a concrete example",
-            position: { x: (targetSection?.position.x ?? 0) + 22, y: baseY + 148 },
-            sectionId: targetSection?.id ?? null,
-            source: null,
-          },
-        );
-      } else if (pattern === "quote-turn") {
-        additions.push(
-          {
-            id: nextId("node"),
-            kind: "quote",
-            title: "Quote",
-            content: "Drop in a sourced line or excerpt here.",
-            position: { x: (targetSection?.position.x ?? 0) + 22, y: baseY },
-            sectionId: targetSection?.id ?? null,
-            source: null,
-          },
-          {
-            id: nextId("node"),
-            kind: "transition",
-            title: "Turn",
-            content: "Explain what the quote changes, proves, or complicates.",
-            position: { x: (targetSection?.position.x ?? 0) + 22, y: baseY + 148 },
-            sectionId: targetSection?.id ?? null,
-            source: null,
-          },
-        );
-      } else {
-        const anchorId = selectedNode?.id ?? null;
-        const rewriteNode: GraphComposerNode = {
-          id: nextId("node"),
-          kind: "rewrite",
-          title: "Alternate branch",
-          content: "Write a sharper alternate version of the selected idea.",
-          position: { x: (targetSection?.position.x ?? 0) + 32, y: baseY },
-          sectionId: targetSection?.id ?? null,
-          source: null,
-        };
-        additions.push(rewriteNode);
-        return {
-          ...current,
-          nodes: [...current.nodes, ...additions],
-          edges: anchorId
-            ? [...current.edges, { id: nextId("edge"), source: anchorId, target: rewriteNode.id, kind: "rewrite-of" }]
-            : current.edges,
-        };
-      }
-      return {
-        ...current,
-        nodes: [...current.nodes, ...additions],
-      };
-    });
-  }
 
   const updateNode = useCallback((nodeId: string, patch: Partial<GraphComposerNode>) => {
     mutateGraph((current) => ({
@@ -875,18 +734,6 @@ export function GraphComposerShell({
       duration: 500,
     });
   }, [flowInstance, graph.nodes]);
-
-  const focusSection = useCallback((sectionId: string) => {
-    const section = graph.section_frames.find((frame) => frame.id === sectionId);
-    if (!section || !flowInstance) {
-      return;
-    }
-    void flowInstance.setCenter(
-      section.position.x + section.width / 2,
-      section.position.y + section.height / 2,
-      { zoom: 0.72, duration: 500 },
-    );
-  }, [flowInstance, graph.section_frames]);
 
   function rebuildFromDocument() {
     const rebuilt = seedGraphFromMarkdown(document.content_markdown);
@@ -1024,24 +871,6 @@ export function GraphComposerShell({
     });
   }
 
-  function handleConnect(connection: Connection) {
-    if (!connection.source || !connection.target) {
-      return;
-    }
-    mutateGraph((current) => ({
-      ...current,
-      edges: [
-        ...current.edges,
-        {
-          id: nextId("edge"),
-          source: connection.source,
-          target: connection.target,
-          kind: edgeKind,
-        } satisfies GraphComposerEdge,
-      ],
-    }));
-  }
-
   return (
     <div className="grid size-full min-h-0 grid-cols-1 gap-4 xl:grid-cols-[16rem_minmax(24rem,1fr)_20rem] 2xl:grid-cols-[18rem_minmax(32rem,1fr)_24rem]">
       <Card className="min-h-0 min-w-0 overflow-hidden border-stone-700/10 bg-[linear-gradient(180deg,rgba(255,251,235,0.92),rgba(255,248,240,0.9))] py-4 shadow-[0_18px_50px_rgba(120,53,15,0.08)]">
@@ -1144,7 +973,7 @@ export function GraphComposerShell({
               size="sm"
               variant="secondary"
               className="w-full justify-start rounded-xl text-xs"
-              onClick={addSection}
+              onClick={handleAddSection}
             >
               <MilestoneIcon className="size-3.5" />
               Add section frame

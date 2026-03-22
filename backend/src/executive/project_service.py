@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -31,8 +32,34 @@ from src.executive.template import collect_input_outputs, render_stage_prompt
 
 logger = logging.getLogger(__name__)
 
+_EXECUTIVE_EVAL_MODEL_CANDIDATES = (
+    "gemini-2-5-flash",
+    "gemini-2-5-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gpt-4-1-mini",
+    "claude-haiku-4-5",
+)
+
 # Dedicated thread pool for background stage execution (isolated from subagent pool)
 _project_exec_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="executive-project-")
+
+
+def _resolve_executive_eval_model() -> str | None:
+    try:
+        from src.config import get_app_config
+
+        available = [model.name for model in get_app_config().models]
+    except Exception:
+        return None
+
+    explicit = os.environ.get("MAESTROFLOW_EXECUTIVE_EVAL_MODEL", "").strip()
+    if explicit and explicit in available:
+        return explicit
+
+    for candidate in _EXECUTIVE_EVAL_MODEL_CANDIDATES:
+        if candidate in available:
+            return candidate
+    return available[0] if available else None
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +354,7 @@ async def assess_goal_completion(project: ExecutiveProject) -> tuple[bool, str]:
         from src.models.factory import create_chat_model
         from langchain_core.messages import HumanMessage
 
-        model = create_chat_model(name=None, thinking_enabled=False)
+        model = create_chat_model(name=_resolve_executive_eval_model(), thinking_enabled=False)
         response = await model.ainvoke([HumanMessage(content=full_prompt)])
         text = response.content if isinstance(response.content, str) else str(response.content)
         first_line = text.strip().splitlines()[0].lower() if text.strip() else ""
@@ -546,7 +573,7 @@ async def _assess_quality(stage: WorkflowStage, project: ExecutiveProject, outpu
             f"Goal: {project.goal}\n\nOutput:\n{output[:3000]}\n\n"
             "Respond with ONLY a decimal number between 0.0 and 1.0."
         )
-        model = create_chat_model(name=None, thinking_enabled=False)
+        model = create_chat_model(name=_resolve_executive_eval_model(), thinking_enabled=False)
         response = await model.ainvoke([HumanMessage(content=prompt)])
         text = response.content if isinstance(response.content, str) else ""
         score = float(text.strip().split()[0])
@@ -566,7 +593,7 @@ async def _check_stage_goal(stage: WorkflowStage, project: ExecutiveProject, out
             f"Stage output:\n{output[:3000]}\n\n"
             "Answer 'yes' if the goal is met, 'no' otherwise. First word only."
         )
-        model = create_chat_model(name=None, thinking_enabled=False)
+        model = create_chat_model(name=_resolve_executive_eval_model(), thinking_enabled=False)
         response = await model.ainvoke([HumanMessage(content=prompt)])
         text = response.content if isinstance(response.content, str) else ""
         return "yes" in text.strip().lower().split()[0] if text.strip() else False

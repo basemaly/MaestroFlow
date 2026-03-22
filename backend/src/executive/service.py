@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from src.executive.actions import confirm_approval, execute_action, preview_action, reject_approval
 from src.executive.advisory import build_advisory
-from src.executive.models import ExecutiveActionDefinition
+from src.executive.models import ExecutiveActionDefinition, ExecutiveSystemStatus
 from src.executive.registry import get_component_registry, list_action_definitions
-from src.executive.status import collect_component_status, collect_system_status
+from src.executive.status import collect_component_status, collect_planning_status, collect_system_status
 from src.executive.storage import list_approvals, list_audit_entries
 
 
@@ -18,6 +18,10 @@ def get_registry_payload() -> dict:
 
 async def get_status_payload() -> dict:
     return (await collect_system_status()).model_dump(mode="json")
+
+
+async def get_planning_status_payload() -> dict:
+    return (await collect_planning_status()).model_dump(mode="json")
 
 
 async def get_component_payload(component_id: str) -> dict:
@@ -64,6 +68,16 @@ async def get_advisory_payload() -> list[dict]:
     return [rule.model_dump(mode="json") for rule in build_advisory(status)]
 
 
+def get_advisory_payload_for_status(status_payload: dict) -> list[dict]:
+    status = ExecutiveSystemStatus.model_validate(status_payload)
+    return [rule.model_dump(mode="json") for rule in build_advisory(status)]
+
+
+async def get_status_and_advisory_payload() -> tuple[dict, list[dict]]:
+    status = await get_status_payload()
+    return status, get_advisory_payload_for_status(status)
+
+
 def get_capabilities_payload() -> dict:
     """
     Return a snapshot of MaestroFlow's current capabilities:
@@ -84,39 +98,44 @@ def get_capabilities_payload() -> dict:
 
     try:
         from src.config.app_config import get_app_config
+
         for m in get_app_config().models:
-            capabilities["models"].append({
-                "name": m.name,
-                "supports_thinking": getattr(m, "supports_thinking", False),
-                "supports_vision": getattr(m, "supports_vision", False),
-            })
+            capabilities["models"].append(
+                {
+                    "name": m.name,
+                    "supports_thinking": getattr(m, "supports_thinking", False),
+                    "supports_vision": getattr(m, "supports_vision", False),
+                }
+            )
     except Exception:
         pass
 
     try:
         from src.tools import get_available_tools
+
         default_model = capabilities["models"][0]["name"] if capabilities["models"] else None
         tools = get_available_tools(model_name=default_model)
-        capabilities["tools"] = [
-            {"name": t.name, "description": (t.description or "")[:120]}
-            for t in tools
-        ]
+        capabilities["tools"] = [{"name": t.name, "description": (t.description or "")[:120]} for t in tools]
     except Exception:
         pass
 
     try:
         from src.skills import load_skills
+
         for s in load_skills():
-            capabilities["skills"].append({
-                "name": s.name,
-                "description": s.description,
-                "enabled": s.enabled,
-            })
+            capabilities["skills"].append(
+                {
+                    "name": s.name,
+                    "description": s.description,
+                    "enabled": s.enabled,
+                }
+            )
     except Exception:
         pass
 
     try:
         from src.subagents.registry import get_subagent_names
+
         capabilities["subagent_types"] = get_subagent_names()
     except Exception:
         capabilities["subagent_types"] = ["general-purpose", "bash"]
@@ -133,8 +152,8 @@ async def analyze_prompt_payload(prompt: str, context: dict | None = None) -> di
     # Lazy import to avoid circular dependency (planning/service.py imports from here)
     from src.planning.service import _build_plan_with_llm  # type: ignore[attr-defined]
 
-    status = await get_status_payload()
-    advisory = await get_advisory_payload()
+    status = await get_planning_status_payload()
+    advisory = get_advisory_payload_for_status(status)
     plan, complexity, questions, suggestions = await _build_plan_with_llm(
         prompt=prompt,
         context=context or {},
@@ -163,6 +182,7 @@ EXECUTIVE_DEFAULT_MODEL = "gemini-3.1-pro-preview-customtools"
 
 def get_executive_settings_payload() -> dict:
     from src.executive.runtime_overrides import get_executive_model_override
+
     return {
         "model": get_executive_model_override() or EXECUTIVE_DEFAULT_MODEL,
         "available_models": EXECUTIVE_FRONTIER_MODELS,
@@ -171,6 +191,7 @@ def get_executive_settings_payload() -> dict:
 
 def update_executive_settings_payload(model_name: str) -> dict:
     from src.executive.runtime_overrides import set_executive_model_override
+
     if model_name not in EXECUTIVE_FRONTIER_MODELS:
         raise ValueError(f"Model '{model_name}' is not in the allowed frontier model list.")
     set_executive_model_override(model_name)
@@ -186,6 +207,7 @@ async def run_agent_payload(
 ) -> dict:
     """Spawn a lead_agent run and return its result."""
     from src.executive.orchestrator import run_lead_agent
+
     return await run_lead_agent(
         prompt=prompt,
         model_name=model_name or None,
@@ -193,3 +215,146 @@ async def run_agent_payload(
         thinking_enabled=thinking_enabled,
         subagent_enabled=subagent_enabled,
     )
+
+
+# ---------------------------------------------------------------------------
+# Autoresearch payloads
+# ---------------------------------------------------------------------------
+
+
+def get_autoresearch_registry_payload() -> dict:
+    from src.autoresearch.storage import list_champions
+
+    champions = list_champions()
+    return {"champions": [c.model_dump(mode="json") for c in champions]}
+
+
+def list_autoresearch_experiments_payload(limit: int = 50) -> list[dict]:
+    from src.autoresearch.storage import list_experiments
+
+    return [e.model_dump(mode="json") for e in list_experiments(limit=limit)]
+
+
+def get_autoresearch_experiment_payload(experiment_id: str) -> dict:
+    from src.autoresearch.storage import get_experiment
+
+    experiment = get_experiment(experiment_id)
+    if experiment is None:
+        raise ValueError(f"Unknown experiment '{experiment_id}'")
+    return experiment.model_dump(mode="json")
+
+
+def approve_autoresearch_experiment_payload(experiment_id: str, *, actor_id: str = "executive") -> dict:
+    from src.autoresearch.storage import get_experiment, update_experiment
+
+    experiment = get_experiment(experiment_id)
+    if experiment is None:
+        raise ValueError(f"Unknown experiment '{experiment_id}'")
+    experiment.status = "promoted"
+    update_experiment(experiment)
+    return experiment.model_dump(mode="json")
+
+
+def reject_autoresearch_experiment_payload(experiment_id: str, *, reason: str = "") -> dict:
+    from src.autoresearch.storage import get_experiment, update_experiment
+
+    experiment = get_experiment(experiment_id)
+    if experiment is None:
+        raise ValueError(f"Unknown experiment '{experiment_id}'")
+    experiment.status = "rejected"
+    if reason:
+        experiment.metadata = {**(experiment.metadata or {}), "rejection_reason": reason}
+    update_experiment(experiment)
+    return experiment.model_dump(mode="json")
+
+
+def rollback_autoresearch_prompt_payload(role: str, prompt_text: str, *, actor_id: str = "executive") -> dict:
+    from src.autoresearch.storage import get_champion, save_champion
+    from src.autoresearch.models import ChampionVersion
+    from datetime import UTC, datetime
+
+    champion = get_champion(role)
+    if champion is None:
+        raise ValueError(f"No champion found for role '{role}'")
+    champion.prompt_text = prompt_text
+    champion.updated_at = datetime.now(UTC)
+    save_champion(champion)
+    return champion.model_dump(mode="json")
+
+
+def stop_autoresearch_experiment_payload(experiment_id: str, *, reason: str = "") -> dict:
+    from src.autoresearch.storage import get_experiment, update_experiment
+
+    experiment = get_experiment(experiment_id)
+    if experiment is None:
+        raise ValueError(f"Unknown experiment '{experiment_id}'")
+    experiment.status = "stopped"
+    if reason:
+        experiment.metadata = {**(experiment.metadata or {}), "stop_reason": reason}
+    update_experiment(experiment)
+    return experiment.model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# Blueprint / heartbeat payloads
+# ---------------------------------------------------------------------------
+
+
+def list_blueprints_payload() -> list[dict]:
+    from src.executive.storage import list_blueprints
+
+    return [b.model_dump(mode="json") for b in list_blueprints()]
+
+
+def list_blueprint_runs_payload(blueprint_id: str, limit: int = 50) -> list[dict]:
+    from src.executive.storage import list_blueprint_runs
+
+    return [r.model_dump(mode="json") for r in list_blueprint_runs(blueprint_id, limit=limit)]
+
+
+def list_heartbeats_payload(
+    limit: int = 50,
+    *,
+    scope_type: str | None = None,
+    scope_id: str | None = None,
+) -> list[dict]:
+    from src.executive.storage import list_heartbeats
+
+    return [h.model_dump(mode="json") for h in list_heartbeats(limit=limit, scope_type=scope_type, scope_id=scope_id)]
+
+
+def record_heartbeat_payload(
+    scope_type: str,
+    scope_id: str,
+    *,
+    payload: dict | None = None,
+    lease_seconds: int = 3600,
+) -> dict:
+    from src.executive.storage import record_blueprint_heartbeat
+
+    heartbeat = record_blueprint_heartbeat(
+        scope_type=scope_type,
+        scope_id=scope_id,
+        payload=payload,
+        lease_seconds=lease_seconds,
+    )
+    return heartbeat.model_dump(mode="json")
+
+
+def register_blueprint_payload(title: str, description: str, steps: list[dict]) -> dict:
+    from src.executive.storage import upsert_blueprint
+    from src.executive.models import ExecutiveBlueprint
+    import uuid
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    blueprint = ExecutiveBlueprint(
+        blueprint_id=str(uuid.uuid4()),
+        title=title,
+        description=description,
+        steps=steps,
+        created_at=now,
+        updated_at=now,
+    )
+    upsert_blueprint(blueprint)
+    return blueprint.model_dump(mode="json")

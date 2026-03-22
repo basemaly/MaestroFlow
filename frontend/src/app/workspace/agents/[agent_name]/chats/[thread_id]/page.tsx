@@ -188,7 +188,7 @@ export default function AgentChatPage() {
         ? { agent_id_override: agentIdOverride }
         : {};
 
-      if (isFirstTurn || manualPlanReview) {
+      if (manualPlanReview) {
         setPlanningBusy(true);
         void startFirstTurnReview({
           thread_id: threadId,
@@ -231,7 +231,7 @@ export default function AgentChatPage() {
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- MENTION_RE is stable
-    [agent_name, isFirstTurn, manualPlanReview, planningReview, sendMessage, settings.context, threadId],
+    [agent_name, manualPlanReview, planningReview, sendMessage, settings.context, threadId],
   );
 
   const handleStop = useCallback(async () => {

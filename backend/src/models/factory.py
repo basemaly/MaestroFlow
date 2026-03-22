@@ -179,6 +179,29 @@ def _create_base_chat_model_cached(name: str, thinking_enabled: bool) -> BaseCha
     return model_instance
 
 
+def get_model_capabilities(name: str) -> dict:
+    """Return capability flags for a model by name.
+
+    Args:
+        name: The model name as defined in config.
+
+    Returns:
+        A dict with boolean capability flags, e.g. ``{"supports_vision": True}``.
+
+    Raises:
+        ValueError: If the model is not found in the config.
+    """
+    config = get_app_config()
+    model_config = config.get_model_config(name)
+    if model_config is None:
+        raise ValueError(f"Model {name} not found in config")
+    return {
+        "supports_vision": bool(model_config.supports_vision),
+        "supports_thinking": bool(model_config.supports_thinking),
+        "supports_reasoning_effort": bool(model_config.supports_reasoning_effort),
+    }
+
+
 def create_chat_model(name: str | None = None, thinking_enabled: bool = False, **kwargs) -> BaseChatModel:
     """Create a chat model instance from the config.
 
@@ -203,7 +226,9 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     # Get cached base model instance (reuses connections across calls)
     model_instance = _create_base_chat_model_cached(name, thinking_enabled)
 
-    # Attach per-call tracers with unique trace IDs
+    # Attach per-call tracers with unique trace IDs without mutating the cached base model.
+    callbacks = list(getattr(model_instance, "callbacks", None) or [])
+
     if is_tracing_enabled():
         try:
             from langchain_core.tracers.langchain import LangChainTracer
@@ -212,10 +237,8 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             tracer = LangChainTracer(
                 project_name=tracing_config.project,
             )
-            existing_callbacks = list(model_instance.callbacks or [])
-            # Remove any previous LangSmith tracers to avoid duplication
-            existing_callbacks = [cb for cb in existing_callbacks if not isinstance(cb, LangChainTracer)]
-            model_instance.callbacks = [*existing_callbacks, tracer]
+            callbacks = [cb for cb in callbacks if not isinstance(cb, LangChainTracer)]
+            callbacks.append(tracer)
             logger.debug(f"LangSmith tracing attached to model '{name}' (project='{tracing_config.project}')")
         except Exception as e:
             logger.warning(f"Failed to attach LangSmith tracing to model '{name}': {e}")
@@ -226,11 +249,12 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             parent_observation_id=parent_observation_id,
         )
         if langfuse_handler is not None:
-            existing_callbacks = list(model_instance.callbacks or [])
-            # Remove any previous Langfuse handlers to avoid duplication
-            existing_callbacks = [cb for cb in existing_callbacks if type(cb).__name__ != "LangfuseCallbackHandler"]
-            model_instance.callbacks = [*existing_callbacks, langfuse_handler]
+            callbacks = [cb for cb in callbacks if type(cb).__name__ != "LangfuseCallbackHandler"]
+            callbacks.append(langfuse_handler)
     except Exception as e:
         logger.warning(f"Failed to attach Langfuse tracing to model '{name}': {e}")
+
+    if callbacks:
+        model_instance = model_instance.with_config({"callbacks": callbacks})
 
     return model_instance

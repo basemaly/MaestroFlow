@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -17,35 +17,39 @@ function describeRuntimeMode() {
   const backend = getBackendBaseURL() || `${origin}/api`;
   const langgraph = getLangGraphBaseURL(false);
 
+  const runtimeMode = process.env.NEXT_PUBLIC_MAESTROFLOW_FRONTEND_RUNTIME_MODE ?? "app";
+
   if ((host === "127.0.0.1" || host === "localhost") && port === "2027") {
     return {
-      label: "Full Stack",
+      label: runtimeMode === "ui-dev" ? "Full Stack · UI Dev" : "Full Stack · App",
       tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-800",
-      detail: `Public app ${origin} via nginx proxy\nGateway ${backend}\nLangGraph ${langgraph}`,
+      detail: `Public app ${origin} via nginx proxy\nFrontend mode ${runtimeMode}\nGateway ${backend}\nLangGraph ${langgraph}`,
     };
   }
 
   if ((host === "127.0.0.1" || host === "localhost") && (port === "3010" || port === "3000")) {
     return {
-      label: "Frontend Direct",
+      label: runtimeMode === "ui-dev" ? "Frontend Direct · UI Dev" : "Frontend Direct · App",
       tone: "border-amber-500/30 bg-amber-500/10 text-amber-800",
-      detail: `Frontend dev origin ${origin}\nGateway ${backend}\nLangGraph ${langgraph}`,
+      detail: `Frontend origin ${origin}\nFrontend mode ${runtimeMode}\nGateway ${backend}\nLangGraph ${langgraph}`,
     };
   }
 
   return {
-    label: "Custom Route",
+    label: runtimeMode === "ui-dev" ? "Custom Route · UI Dev" : "Custom Route · App",
     tone: "border-zinc-500/30 bg-zinc-500/10 text-zinc-800",
-    detail: `Origin ${origin}\nGateway ${backend}\nLangGraph ${langgraph}`,
+    detail: `Origin ${origin}\nFrontend mode ${runtimeMode}\nGateway ${backend}\nLangGraph ${langgraph}`,
   };
 }
 
 export function DevRuntimeBadge() {
-  const runtime = useMemo(() => {
+  const [runtime, setRuntime] = useState<ReturnType<typeof describeRuntimeMode>>(null);
+
+  useEffect(() => {
     if (process.env.NODE_ENV !== "development") {
-      return null;
+      return;
     }
-    return describeRuntimeMode();
+    setRuntime(describeRuntimeMode());
   }, []);
 
   if (!runtime) {

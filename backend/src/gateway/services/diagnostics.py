@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import deque
 from datetime import UTC, datetime
@@ -237,15 +238,56 @@ def list_event_entries(*, limit: int = 100, kind: str | None = None) -> list[dic
     return entries[: max(1, min(limit, 200))]
 
 
+def _count_log_levels(path: Path, limit: int = 4000, recent_minutes: int = 15) -> dict[str, int]:
+    counts = {"warnings": 0, "errors": 0}
+    cutoff = datetime.now(UTC).timestamp() - (recent_minutes * 60)
+    for payload in _iter_recent_log_payloads(path, limit):
+        timestamp = payload.get("timestamp")
+        if isinstance(timestamp, str):
+            try:
+                parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                if parsed.astimezone(UTC).timestamp() < cutoff:
+                    continue
+            except ValueError:
+                pass
+        level = str(payload.get("level") or "").upper()
+        if level == "WARNING":
+            counts["warnings"] += 1
+        elif level in {"ERROR", "CRITICAL"}:
+            counts["errors"] += 1
+    return counts
+
+
+def _latest_plan_review_stats() -> dict[str, Any]:
+    entries = list_request_entries(limit=400, path_contains="/api/planning/first-turn-review")
+    if not entries:
+        return {
+            "count": 0,
+            "latest_duration_ms": None,
+            "max_duration_ms": None,
+        }
+    durations = [entry["duration_ms"] for entry in entries if isinstance(entry.get("duration_ms"), float)]
+    return {
+        "count": len(entries),
+        "latest_duration_ms": durations[0] if durations else None,
+        "max_duration_ms": max(durations) if durations else None,
+    }
+
+
 async def get_diagnostics_overview() -> dict[str, Any]:
     status = await collect_system_status()
     log_components = list_log_components()
     recent_requests = list_request_entries(limit=50)
     recent_traces = list_trace_entries(limit=50)
     recent_events = list_event_entries(limit=50)
+    gateway_levels = _count_log_levels(LOG_ROOT / "gateway.log")
+    plan_review_stats = _latest_plan_review_stats()
     failing_components = [component for component in status.components if component.state not in {"healthy", "disabled"}]
     return {
         "generated_at": datetime.now(UTC).isoformat(),
+        "runtime": {
+            "frontend_mode": os.getenv("MAESTROFLOW_FRONTEND_RUNTIME_MODE", "app"),
+        },
         "status": status.model_dump(mode="json"),
         "summary": {
             "warnings": len(failing_components),
@@ -253,6 +295,11 @@ async def get_diagnostics_overview() -> dict[str, Any]:
             "recent_requests": len(recent_requests),
             "recent_traces": len(recent_traces),
             "recent_events": len(recent_events),
+        },
+        "signals": {
+            "gateway_warnings": gateway_levels["warnings"],
+            "gateway_errors": gateway_levels["errors"],
+            "plan_review": plan_review_stats,
         },
         "sections": {
             "logs": {

@@ -57,6 +57,9 @@ export type DiagnosticsEventEntry = {
 
 export type DiagnosticsOverview = {
   generated_at: string;
+  runtime: {
+    frontend_mode: "app" | "ui-dev" | string;
+  };
   status: ExecutiveSystemStatus;
   summary: {
     warnings: number;
@@ -64,6 +67,15 @@ export type DiagnosticsOverview = {
     recent_requests: number;
     recent_traces: number;
     recent_events: number;
+  };
+  signals: {
+    gateway_warnings: number;
+    gateway_errors: number;
+    plan_review: {
+      count: number;
+      latest_duration_ms?: number | null;
+      max_duration_ms?: number | null;
+    };
   };
   sections: {
     logs: {
