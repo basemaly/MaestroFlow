@@ -1,8 +1,8 @@
 """Task tool for delegating work to subagents."""
 
-import asyncio
 import json
 import logging
+import time
 from dataclasses import replace
 from typing import Annotated, Literal
 
@@ -58,7 +58,7 @@ def _format_task_result(
 
 
 @tool("task", parse_docstring=True)
-async def task_tool(
+def task_tool(
     runtime: ToolRuntime[ContextT, ThreadState],
     description: str,
     prompt: str,
@@ -91,16 +91,12 @@ async def task_tool(
     - Simple, single-step operations (use tools directly)
     - Tasks requiring user interaction or clarification
 
-    Model selection note:
-    - If you omit `subagent_model`, the task uses normal system routing/default behavior.
-
     Args:
         description: A short (3-5 word) description of the task for logging/display. ALWAYS PROVIDE THIS PARAMETER FIRST.
         prompt: The task description for the subagent. Be specific and clear about what needs to be done. ALWAYS PROVIDE THIS PARAMETER SECOND.
         subagent_type: The type of subagent to use. If omitted, auto-classified from the description and prompt. ALWAYS PROVIDE THIS PARAMETER THIRD when you know the type.
-        subagent_model: Optional model preference for the subagent. If omitted, normal system routing/default
-            behavior is used. Use exact model names when possible, or phrases like "fastest gemini model",
-            "fastest local model", or "gpt-5-2-codex".
+        subagent_model: Optional model preference for the subagent. Use exact model names when possible,
+            or phrases like "fastest gemini model", "fastest local model", or "gpt-5-2-codex".
         max_turns: Optional maximum number of agent turns. Defaults to subagent's configured max.
     """
     # Auto-classify subagent_type when not explicitly provided
@@ -111,9 +107,7 @@ async def task_tool(
         subagent_type = select_subagent(task_category=task_category, candidates=[heuristic_type, "general-purpose"])
         logger.info(
             "Auto-selected task '%s': heuristic='%s' -> mab_selected='%s'",
-            description,
-            heuristic_type,
-            subagent_type,
+            description, heuristic_type, subagent_type,
         )
     else:
         task_category = subagent_type  # explicit type is its own category
@@ -121,7 +115,10 @@ async def task_tool(
     # Get subagent configuration
     config = get_subagent_config(subagent_type)
     if config is None:
-        return f"Error: Unknown subagent type '{subagent_type}'. Available: general-purpose, bash, writing-refiner, argument-critic"
+        return (
+            "Error: Unknown subagent type "
+            f"'{subagent_type}'. Available: general-purpose, bash, writing-refiner, argument-critic"
+        )
 
     # Build config overrides
     overrides: dict = {}
@@ -317,10 +314,7 @@ async def task_tool(
                 if not artifact.is_valid:
                     logger.warning(
                         "[trace=%s] Task %s artifact quality warnings %s: %s",
-                        trace_id,
-                        task_id,
-                        artifact_header,
-                        artifact.quality_warnings,
+                        trace_id, task_id, artifact_header, artifact.quality_warnings,
                     )
                 writer(
                     {
@@ -380,7 +374,7 @@ async def task_tool(
                 observation.update(output={"status": "timed_out", "task_id": task_id, "error": result.error})
                 return response
 
-            await asyncio.sleep(5)
+            time.sleep(5)
             poll_count += 1
 
             if poll_count > max_poll_count:
