@@ -282,7 +282,8 @@ related:
    - [x] Explained base delay, max delay, and jitter concepts
 
 ### DOC-010: Graceful Degradation Patterns
-- **Status:** `PENDING`
+- **Status:** `IMPLEMENTED`
+- **Implemented In:** Loop 00001
 - **Gap ID:** GAP-014
 - **Type:** MISSING
 - **User Importance:** MEDIUM
@@ -290,29 +291,10 @@ related:
 - **README Section:** Advanced / Patterns
 - **Fix Description:**
   Document the multiple degradation strategies available when services fail: cached responses, fallback endpoints, event queuing for replay, and degradation flags. Show how different services use different patterns.
-- **Proposed Content:**
-  ```markdown
-  ## Graceful Degradation Patterns
-  
-  When a service circuit opens or becomes unavailable, Mozart implements multiple degradation strategies:
-  
-  ### Cached Responses
-  Return previously cached successful responses when the circuit is open. Useful for read-heavy operations.
-  
-  ### Fallback Endpoints
-  Automatically switch to a configured fallback URL for continued operation at reduced capacity.
-  ```python
-  config.fallback_url = "https://fallback.surfsense.io"
-  ```
-  
-  ### Event Queuing for Replay
-  Queue events (e.g., logs, metrics) for replay when service recovers. Example: Langfuse event logging.
-  
-  ### Degradation Flags
-  Return responses with a `degraded=true` flag indicating reduced functionality or stale data.
-  
-  Choose strategies based on your service's role and the acceptable trade-offs.
-  ```
+- **Changes Made:**
+  - [x] Added Graceful Degradation Patterns section under Advanced Topics
+  - [x] Documented four degradation strategies with practical examples
+  - [x] Included guidance on strategy selection based on service role
 
 ---
 
