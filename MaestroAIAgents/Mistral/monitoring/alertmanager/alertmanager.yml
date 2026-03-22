@@ -1,0 +1,52 @@
+global:
+  resolve_timeout: 5m
+  # Slack webhook URL can be configured via environment variable
+  slack_api_url: ${SLACK_WEBHOOK_URL:-}
+
+route:
+  receiver: 'maestroflow-default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+
+  # Route for critical errors
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical-pagerduty'
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 4h
+
+    - match:
+        severity: warning
+      receiver: 'maestroflow-slack-warnings'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 24h
+
+receivers:
+  - name: 'maestroflow-default'
+    # Default receiver - can be configured for email/webhook
+
+  - name: 'maestroflow-slack-warnings'
+    slack_configs:
+      - api_url: ${SLACK_WEBHOOK_URL:-}
+        channel: '#maestroflow-warnings'
+        title: 'Warning: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  - name: 'critical-pagerduty'
+    pagerduty_configs:
+      - service_key: ${PAGERDUTY_SERVICE_KEY:-}
+        description: '{{ .GroupLabels.alertname }}'
+
+inhibit_rules:
+  # Inhibit warning alerts if a critical alert is firing for the same instance
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['instance', 'alertname']
