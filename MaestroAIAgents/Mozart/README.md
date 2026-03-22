@@ -171,3 +171,24 @@ Mozart handles shutdown gracefully through signal handlers and cleanup hooks:
 This is essential for Kubernetes and Docker deployments to prevent request loss.
 
 ## Advanced Topics
+
+### Graceful Degradation Patterns
+
+When a service circuit opens or becomes unavailable, Mozart implements multiple degradation strategies:
+
+#### Cached Responses
+Return previously cached successful responses when the circuit is open. Useful for read-heavy operations. Mozart automatically caches successful responses and replays them when services fail, reducing user-visible outages.
+
+#### Fallback Endpoints
+Automatically switch to a configured fallback URL for continued operation at reduced capacity.
+```python
+config.fallback_url = "https://fallback.surfsense.io"
+```
+
+#### Event Queuing for Replay
+Queue events (e.g., logs, metrics) for replay when service recovers. Example: Langfuse event logging queues events and replays them once connectivity is restored, ensuring no observability data is lost.
+
+#### Degradation Flags
+Return responses with a `degraded=true` flag indicating reduced functionality or stale data. This allows clients to adjust behavior when receiving cached or fallback results.
+
+Choose strategies based on your service's role and the acceptable trade-offs. Critical services benefit from cached responses and fallback endpoints, while non-blocking services like logging prioritize event queuing.
