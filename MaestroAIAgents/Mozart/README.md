@@ -49,6 +49,24 @@ response = manager.get(ServiceName.SURFSENSE, "https://api.surfsense.io/data")
 
 Each service has pre-configured resilience settings optimized for its characteristics.
 
+### Dynamic Executor Pool
+
+Mozart automatically manages a pool of worker threads to execute subagents concurrently. The pool size adjusts dynamically based on:
+- Queue depth (pending tasks)
+- System resource availability (CPU, memory)
+- Configured min/max bounds
+
+#### Default Configuration
+- **Min workers:** 2 (always available for low-latency execution)
+- **Max workers:** 16 (prevents resource exhaustion)
+
+The pool handles:
+- **Backpressure:** Rejects new tasks when all workers are busy
+- **Graceful shutdown:** Completes pending tasks before terminating
+- **Resource monitoring:** Tracks CPU/memory per task and pool-wide
+
+This ensures Mozart scales efficiently with demand while protecting system stability.
+
 ## Monitoring & Observability
 
 ## Deployment & Production
