@@ -261,3 +261,42 @@ Configuration is automatically applied through HTTPClientManager.
 - [x] No broken links or references introduced
 - [x] Content is accurate based on service configuration architecture
 
+---
+
+## 2026-03-22 18:00 - Implemented Connection Pool Monitoring Documentation
+
+**Agent:** Mozart
+**Project:** /Volumes/BA/DEV/MaestroAIAgents/Mozart
+**Loop:** 00001
+**Doc ID:** DOC-007
+**Gap ID:** GAP-002
+
+### Change Type
+MISSING → Added
+
+### README Section
+Monitoring & Observability
+
+### What Was Changed
+Added documentation for Connection Pool Monitoring, a key operational concern for understanding service health. This brief but important addition explains how Mozart tracks connection pool health on a per-service basis, including pool status endpoints, connection limits, keepalive management, and health history tracking. Users can now diagnose why a service might be degraded or slow by checking connection pool metrics.
+
+### Content Added/Changed
+```markdown
+### Connection Pool Monitoring
+
+Mozart monitors HTTP connection pool health with per-service tracking:
+
+- **Pool status endpoint:** Available for health checks
+- **Connection limits:** Configurable max connections per service
+- **Keepalive management:** Configurable keepalive limits
+- **Health history:** Timestamps of state changes
+
+Use this for understanding why a service may be degraded or slow.
+```
+
+### Verification
+- [x] Change matches the proposed fix from LOOP_00001_PLAN.md (DOC-007)
+- [x] Formatting matches README style conventions
+- [x] No broken links or references introduced
+- [x] Content is concise and fits naturally into Monitoring & Observability section
+

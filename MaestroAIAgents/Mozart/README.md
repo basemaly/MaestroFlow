@@ -96,6 +96,17 @@ print(f"Success rate: {metrics.successful}/{metrics.total}")
 print(f"Avg response time: {metrics.average_response_time}ms")
 ```
 
+### Connection Pool Monitoring
+
+Mozart monitors HTTP connection pool health with per-service tracking:
+
+- **Pool status endpoint:** Available for health checks
+- **Connection limits:** Configurable max connections per service
+- **Keepalive management:** Configurable keepalive limits
+- **Health history:** Timestamps of state changes
+
+Use this for understanding why a service may be degraded or slow.
+
 ## Configuration
 
 ### Service Configuration Tiers
