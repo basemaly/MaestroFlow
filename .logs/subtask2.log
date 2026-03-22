@@ -35,3 +35,24 @@ Use the use_skill, re..."(syn) | [2]assistant: step-start, step-finish | [3]user
 Use the use_skill, read_skill_f..." matches=false
 [2026-03-22T01:00:49.365Z] message-hooks: generic search complete, found=false, index=-1
 [2026-03-22T01:00:49.365Z] message-hooks: no generic part found, checking for pending prompt return
+[2026-03-22T01:00:51.097Z] message-hooks: ENTRY msgCount=6, sessions=ses_2ecf264d4ffeOE9pUn62mERpSD
+[2026-03-22T01:00:51.097Z] message-hooks: MESSAGES: [0]user: text:"push all the recent work from today in M..." | [1]user: text:"<available-skills>
+Use the use_skill, re..."(syn) | [2]assistant: step-start, step-finish | [3]user: text:"push all the recent work from today in M..." | [4]assistant: step-start, text:"I'll push all the recent work from today...", tool:completed, tool:completed, step-finish | [5]assistant: step-start, text:"I can see there are 7 commits ahead of o...", tool:completed, tool:completed, step-finish
+[2026-03-22T01:00:51.097Z] message-hooks: post-filter, msgCount=6
+[2026-03-22T01:00:51.097Z] message-hooks: about to search for OPENCODE_GENERIC
+[2026-03-22T01:00:51.097Z] message-hooks: searching 6 messages for OPENCODE_GENERIC
+[2026-03-22T01:00:51.097Z] message-hooks: found synthetic text at [1]: "<available-skills>
+Use the use_skill, read_skill_f..." matches=false
+[2026-03-22T01:00:51.097Z] message-hooks: generic search complete, found=false, index=-1
+[2026-03-22T01:00:51.097Z] message-hooks: no generic part found, checking for pending prompt return
+[2026-03-22T01:00:54.607Z] message-hooks: ENTRY msgCount=7, sessions=ses_2ecf264d4ffeOE9pUn62mERpSD
+[2026-03-22T01:00:54.607Z] message-hooks: MESSAGES: [0]user: text:"push all the recent work from today in M..." | [1]user: text:"<available-skills>
+Use the use_skill, re..."(syn) | [2]assistant: step-start, step-finish | [3]user: text:"push all the recent work from today in M..." | [4]assistant: step-start, text:"I'll push all the recent work from today...", tool:completed, tool:completed, step-finish | [5]assistant: step-start, text:"I can see there are 7 commits ahead of o...", tool:completed, tool:completed, step-finish | [6]assistant: step-start, text:"Now I'll create a commit for these stage...", tool:completed, tool:completed, step-finish
+[2026-03-22T01:00:54.607Z] message-hooks: post-filter, msgCount=7
+[2026-03-22T01:00:54.607Z] message-hooks: about to search for OPENCODE_GENERIC
+[2026-03-22T01:00:54.607Z] message-hooks: searching 7 messages for OPENCODE_GENERIC
+[2026-03-22T01:00:54.607Z] message-hooks: found synthetic text at [1]: "<available-skills>
+Use the use_skill, read_skill_f..." matches=false
+[2026-03-22T01:00:54.607Z] message-hooks: generic search complete, found=false, index=-1
+[2026-03-22T01:00:54.607Z] message-hooks: no generic part found, checking for pending prompt return
+[2026-03-22T01:00:57.112Z] session.idle: sessionID=ses_2ecf264d4ffeOE9pUn62mERpSD

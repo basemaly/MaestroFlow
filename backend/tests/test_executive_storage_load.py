@@ -52,10 +52,55 @@ class TestConnectionPoolEffectiveness:
         print(f"  P95: {p95_latency:.2f}ms")
         print(f"  Early queries (1-5): {early_avg:.2f}ms")
         print(f"  Late queries (51-100): {late_avg:.2f}ms")
-        print(f"  Pool reuse: 100% (same thread)")
+        print(f"  Pool reuse ratio: {storage.get_pool_metrics()['reuse_ratio']:.1%}")
 
         # Later queries should be faster due to connection reuse
         assert late_avg <= early_avg * 1.5, "Connection reuse should improve latency over time"
+
+    def test_multi_threaded_concurrent_queries(self, temp_db_path):
+        """Measure query latency under concurrent load."""
+        num_threads = 10
+        queries_per_thread = 20
+        latencies = []
+        latencies_lock = threading.Lock()
+
+        def run_queries():
+            for i in range(queries_per_thread):
+                start = time.perf_counter()
+                with storage._db_conn() as conn:
+                    cursor = conn.execute("SELECT COUNT(*) FROM executive_approvals")
+                    cursor.fetchone()
+                elapsed = (time.perf_counter() - start) * 1000
+                with latencies_lock:
+                    latencies.append(elapsed)
+
+        start_time = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = [executor.submit(run_queries) for _ in range(num_threads)]
+            for future in as_completed(futures):
+                future.result()
+        elapsed_time = time.perf_counter() - start_time
+
+        avg_latency = sum(latencies) / len(latencies)
+        p95_latency = sorted(latencies)[int(len(latencies) * 0.95)]
+        p99_latency = sorted(latencies)[int(len(latencies) * 0.99)]
+        throughput = len(latencies) / elapsed_time
+
+        metrics = storage.get_pool_metrics()
+
+        print(f"\nMulti-threaded query latency ({num_threads} threads, {len(latencies)} queries):")
+        print(f"  Average: {avg_latency:.2f}ms")
+        print(f"  P95: {p95_latency:.2f}ms")
+        print(f"  P99: {p99_latency:.2f}ms")
+        print(f"  Throughput: {throughput:.1f} queries/sec")
+        print(f"  Total time: {elapsed_time:.2f}s")
+        print(f"  Pool size: {metrics['pool_size']}/{metrics['max_pool_size']}")
+        print(f"  Connections created: {metrics['connections_created']}")
+        print(f"  Connections reused: {metrics['connections_reused']}")
+        print(f"  Reuse ratio: {metrics['reuse_ratio']:.1%}")
+
+        # With pooling, most queries should reuse connections
+        assert metrics["reuse_ratio"] > 0.8, f"Connection reuse ratio {metrics['reuse_ratio']:.1%} is too low"
 
     def test_approval_creation_throughput(self, temp_db_path):
         """Measure throughput of approval creation under load."""
@@ -175,6 +220,12 @@ class TestPoolMetrics:
         print(f"\nPool metrics:")
         print(f"  Pool size: {metrics['pool_size']}")
         print(f"  Max pool size: {metrics['max_pool_size']}")
+        print(f"  Connections created: {metrics['connections_created']}")
+        print(f"  Connections reused: {metrics['connections_reused']}")
+        print(f"  Reuse ratio: {metrics['reuse_ratio']:.1%}")
 
         assert metrics["pool_size"] > 0, "Should have at least one connection"
         assert metrics["max_pool_size"] == storage.MAX_POOL_SIZE, "Max size should match config"
+        assert "reuse_ratio" in metrics, "Metrics should include reuse_ratio"
+        assert "connections_created" in metrics, "Metrics should include connections_created"
+        assert "connections_reused" in metrics, "Metrics should include connections_reused"

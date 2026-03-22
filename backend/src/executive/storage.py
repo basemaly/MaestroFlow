@@ -16,6 +16,15 @@ import threading
 
 logger = logging.getLogger(__name__)
 
+# Metrics for monitoring
+_pool_metrics = {
+    "connections_created": 0,
+    "connections_reused": 0,
+    "queries_executed": 0,
+    "query_times": [],  # List of (query_type, duration_ms)
+}
+_metrics_lock = threading.Lock()
+
 # Import metrics for pool monitoring
 try:
     from src.observability.metrics import (
@@ -155,7 +164,12 @@ def _db_conn():
             conn.execute("PRAGMA temp_store=MEMORY")
             conn.row_factory = sqlite3.Row
             _connection_pool[conn_key] = conn
+            with _metrics_lock:
+                _pool_metrics["connections_created"] += 1
             logger.debug(f"Created new DB connection (pool size: {len(_connection_pool)}/{MAX_POOL_SIZE})")
+        else:
+            with _metrics_lock:
+                _pool_metrics["connections_reused"] += 1
 
         conn = _connection_pool[conn_key]
         _pool_last_accessed[conn_key] = time.time()
@@ -199,9 +213,16 @@ def get_pool_metrics() -> dict:
     """Get current pool metrics for monitoring/testing."""
     with _pool_lock:
         total_connections = (len(_connection_pool)) if _connection_pool else 0
+        created = _pool_metrics["connections_created"]
+        reused = _pool_metrics["connections_reused"]
+        total_ops = created + reused
+        reuse_ratio = reused / total_ops if total_ops > 0 else 0
         return {
             "pool_size": total_connections,
             "max_pool_size": MAX_POOL_SIZE,
+            "connections_created": created,
+            "connections_reused": reused,
+            "reuse_ratio": reuse_ratio,
         }
 
 
