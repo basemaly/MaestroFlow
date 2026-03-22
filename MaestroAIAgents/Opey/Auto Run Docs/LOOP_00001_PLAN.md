@@ -127,46 +127,48 @@ related:
    ```
 
 ### DOC-004: Metrics Collection System
-- **Status:** `PENDING`
+- **Status:** `IMPLEMENTED`
+- **Implemented In:** Loop 00001
 - **Gap ID:** GAP-008
 - **Type:** MISSING
 - **User Importance:** HIGH
 - **Fix Effort:** MEDIUM
 - **README Section:** Monitoring & Observability
 - **Fix Description:**
-  Document the built-in metrics system that tracks requests, responses, state changes, and resource usage. Explain what metrics are available and how to access them for production monitoring.
+   Document the built-in metrics system that tracks requests, responses, state changes, and resource usage. Explain what metrics are available and how to access them for production monitoring.
 - **Proposed Content:**
-  ```markdown
-  ## Metrics & Observability
-  
-  Mozart collects comprehensive metrics on circuit breaker behavior and executor pool performance.
-  
-  ### Circuit Breaker Metrics
-  - **Request counts:** total, successful, failed, rejected, timeout
-  - **Response times:** min, max, average (milliseconds)
-  - **State changes:** history with timestamps
-  - **Pool status:** connection count, health status
-  
-  ### Executor Pool Metrics
-  - **Task status breakdown:** pending, running, completed, failed
-  - **Queue metrics:** wait times from submission to execution
-  - **Execution times:** per-task duration distribution
-  - **Resource usage:** CPU percentage, memory percentage
-  
-  Metrics are maintained in a sliding window (default: last 100 events) for performance.
-  
-  ### Accessing Metrics
-  ```python
-  circuit_breaker = manager.get_circuit_breaker(ServiceName.SURFSENSE)
-  metrics = circuit_breaker.metrics
-  
-  print(f"Success rate: {metrics.successful}/{metrics.total}")
-  print(f"Avg response time: {metrics.average_response_time}ms")
-  ```
-  ```
+   ```markdown
+   ## Metrics & Observability
+   
+   Mozart collects comprehensive metrics on circuit breaker behavior and executor pool performance.
+   
+   ### Circuit Breaker Metrics
+   - **Request counts:** total, successful, failed, rejected, timeout
+   - **Response times:** min, max, average (milliseconds)
+   - **State changes:** history with timestamps
+   - **Pool status:** connection count, health status
+   
+   ### Executor Pool Metrics
+   - **Task status breakdown:** pending, running, completed, failed
+   - **Queue metrics:** wait times from submission to execution
+   - **Execution times:** per-task duration distribution
+   - **Resource usage:** CPU percentage, memory percentage
+   
+   Metrics are maintained in a sliding window (default: last 100 events) for performance.
+   
+   ### Accessing Metrics
+   ```python
+   circuit_breaker = manager.get_circuit_breaker(ServiceName.SURFSENSE)
+   metrics = circuit_breaker.metrics
+   
+   print(f"Success rate: {metrics.successful}/{metrics.total}")
+   print(f"Avg response time: {metrics.average_response_time}ms")
+   ```
+   ```
 
 ### DOC-005: Graceful Shutdown
-- **Status:** `PENDING`
+- **Status:** `IMPLEMENTED`
+- **Implemented In:** Loop 00001
 - **Gap ID:** GAP-005
 - **Type:** MISSING
 - **User Importance:** HIGH
@@ -175,18 +177,18 @@ related:
 - **Fix Description:**
   Document how Mozart handles graceful shutdown via signal handlers (SIGTERM/SIGINT) and atexit hooks. Explain the timeout for task completion and what happens when it expires.
 - **Proposed Content:**
-  ```markdown
-  ### Graceful Shutdown
-  
-  Mozart handles shutdown gracefully through signal handlers and cleanup hooks:
-  
-  - **SIGTERM/SIGINT:** Initiates graceful shutdown, allows in-flight tasks to complete
-  - **Task completion timeout:** Default 30 seconds to finish pending tasks
-  - **Force termination:** After timeout, remaining tasks are cancelled
-  - **Resource cleanup:** Connections and executor pools closed properly
-  
-  This is essential for Kubernetes and Docker deployments to prevent request loss.
-  ```
+   ```markdown
+   ### Graceful Shutdown
+   
+   Mozart handles shutdown gracefully through signal handlers and cleanup hooks:
+   
+   - **SIGTERM/SIGINT:** Initiates graceful shutdown, allows in-flight tasks to complete
+   - **Task completion timeout:** Default 30 seconds to finish pending tasks
+   - **Force termination:** After timeout, remaining tasks are cancelled
+   - **Resource cleanup:** Connections and executor pools closed properly
+   
+   This is essential for Kubernetes and Docker deployments to prevent request loss.
+   ```
 
 ### DOC-006: Multi-Service Management
 - **Status:** `PENDING`
