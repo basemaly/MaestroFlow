@@ -51,10 +51,10 @@
   - Ensure middleware runs early in the chain (before other middleware)
   - **COMPLETED:** 2026-03-21 - Full middleware implementation with proper request tracking and endpoint skipping
 
-- [ ] Add middleware to FastAPI app in `main.py`
-  - `app.add_middleware(MetricsMiddleware)`
-  - Verify correct execution order
-  - **NOTE:** Awaiting main.py implementation
+- [x] Add middleware to FastAPI app in `main.py`
+   - `app.add_middleware(MetricsMiddleware)`
+   - Verify correct execution order
+   - **COMPLETED:** 2026-03-21 - Created main.py with MetricsMiddleware added first in the middleware chain
 
 ---
 
@@ -130,8 +130,8 @@
   - `DB_POOL_IDLE_TIMEOUT_SECONDS` (from earlier gap; add here if missing)
   - **COMPLETED:** 2026-03-21 - Full configuration module with all environment variables
 
-- [ ] Load config in `main.py` and pass to observability module
-  - **NOTE:** Awaiting main.py implementation
+- [x] Load config in `main.py` and pass to observability module
+   - **COMPLETED:** 2026-03-21 - Config loaded via load_config() in FastAPI lifespan startup handler
 
 ---
 
