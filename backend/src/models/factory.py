@@ -2,7 +2,6 @@ import logging
 from functools import lru_cache
 
 from langchain.chat_models import BaseChatModel
-from openai import RateLimitError as OpenAIRateLimitError
 
 from src.config import get_app_config, get_tracing_config, is_tracing_enabled
 from src.executive.runtime_overrides import get_default_model_override
@@ -12,23 +11,10 @@ from src.reflection import resolve_class
 
 logger = logging.getLogger(__name__)
 
-
-@lru_cache(maxsize=32)
-def get_model_capabilities(name: str) -> dict[str, bool]:
-    """Get cached model capabilities for a given model name.
-
-    Returns a dict with keys: supports_thinking, supports_vision, supports_reasoning_effort
-    """
-    config = get_app_config()
-    model_config = config.get_model_config(name)
-    if model_config is None:
-        raise ValueError(f"Model {name} not found in config") from None
-
-    return {
-        "supports_thinking": model_config.supports_thinking,
-        "supports_vision": model_config.supports_vision,
-        "supports_reasoning_effort": model_config.supports_reasoning_effort,
-    }
+try:
+    from openai import RateLimitError as OpenAIRateLimitError
+except Exception:  # pragma: no cover - openai is expected but keep import safe
+    OpenAIRateLimitError = None
 
 
 def _deep_merge_dicts(base: dict, updates: dict) -> dict:
@@ -99,7 +85,7 @@ def _maybe_attach_rate_limit_fallback(
         return model_instance
 
     try:
-        fallback_model = _create_base_chat_model_cached(fallback_name, False)
+        fallback_model = create_chat_model(name=fallback_name, thinking_enabled=False)
     except ValueError:
         logger.debug(
             "Rate-limit fallback model '%s' not found in config — skipping fallback for '%s'",
@@ -186,22 +172,7 @@ def _create_base_chat_model_cached(name: str, thinking_enabled: bool) -> BaseCha
         if disabled_settings:
             model_settings_from_config = _deep_merge_dicts(model_settings_from_config, disabled_settings)
 
-    # If the model is OpenAI-compatible and a LiteLLM proxy is configured, prefer the proxy as the base_url.
-    # This ensures model SDKs use the local LiteLLM proxy when present (keeps traffic local and consistent
-    # with the HTTP client manager registration). Deeper routing through the HTTPClientManager (circuit
-    # breaker protection) is handled at the proxy/manager layer; setting the base_url keeps client libs
-    # pointed at the proxy rather than external endpoints.
-    from os import getenv
-
-    try:
-        if _is_openai_compatible_model(model_config.use):
-            litellm_base = getenv("LITELLM_PROXY_BASE_URL") or getenv("OPENAI_API_BASE")
-            if litellm_base and not model_settings_from_config.get("base_url"):
-                model_settings_from_config["base_url"] = litellm_base
-    except Exception:
-        # Be conservative: if anything goes wrong here, fall back to default behaviour
-        pass
-
+    # Create the base model instance
     model_instance = model_class(**model_settings_from_config)
     model_instance = _maybe_attach_rate_limit_fallback(model_instance, name=name)
     logger.debug(f"Created cached base model instance for '{name}' (thinking_enabled={thinking_enabled})")
@@ -232,8 +203,6 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     # Get cached base model instance (reuses connections across calls)
     model_instance = _create_base_chat_model_cached(name, thinking_enabled)
 
-    callbacks: list[object] = []
-
     # Attach per-call tracers with unique trace IDs
     if is_tracing_enabled():
         try:
@@ -243,7 +212,10 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             tracer = LangChainTracer(
                 project_name=tracing_config.project,
             )
-            callbacks.append(tracer)
+            existing_callbacks = list(model_instance.callbacks or [])
+            # Remove any previous LangSmith tracers to avoid duplication
+            existing_callbacks = [cb for cb in existing_callbacks if not isinstance(cb, LangChainTracer)]
+            model_instance.callbacks = [*existing_callbacks, tracer]
             logger.debug(f"LangSmith tracing attached to model '{name}' (project='{tracing_config.project}')")
         except Exception as e:
             logger.warning(f"Failed to attach LangSmith tracing to model '{name}': {e}")
@@ -254,11 +226,11 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             parent_observation_id=parent_observation_id,
         )
         if langfuse_handler is not None:
-            callbacks.append(langfuse_handler)
+            existing_callbacks = list(model_instance.callbacks or [])
+            # Remove any previous Langfuse handlers to avoid duplication
+            existing_callbacks = [cb for cb in existing_callbacks if type(cb).__name__ != "LangfuseCallbackHandler"]
+            model_instance.callbacks = [*existing_callbacks, langfuse_handler]
     except Exception as e:
         logger.warning(f"Failed to attach Langfuse tracing to model '{name}': {e}")
-
-    if callbacks:
-        model_instance = model_instance.with_config(callbacks=callbacks)
 
     return model_instance

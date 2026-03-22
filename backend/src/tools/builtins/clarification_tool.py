@@ -42,14 +42,12 @@ def ask_clarification_tool(
     - Don't make assumptions when clarification is needed
     - For risky operations, ALWAYS ask for confirmation
     - After calling this tool, execution will be interrupted automatically
-    - Omit `options` entirely when the clarification does not naturally present explicit choices
 
     Args:
         question: The clarification question to ask the user. Be specific and clear.
         clarification_type: The type of clarification needed (missing_info, ambiguous_requirement, approach_choice, risk_confirmation, suggestion).
         context: Optional context explaining why clarification is needed. Helps the user understand the situation.
-        options: Optional list of choices (for approach_choice or suggestion types). Omit this field entirely
-            when the clarification does not naturally present explicit choices.
+        options: Optional list of choices (for approach_choice or suggestion types). Present clear options for the user to choose from.
     """
     # This is a placeholder implementation
     # The actual logic is handled by ClarificationMiddleware which intercepts this tool call

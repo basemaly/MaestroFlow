@@ -4,7 +4,6 @@ import asyncio
 import logging
 from pathlib import Path
 
-import aiofiles
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
@@ -12,9 +11,6 @@ from src.config.paths import VIRTUAL_PATH_PREFIX, get_paths
 from src.sandbox.sandbox_provider import get_sandbox_provider
 
 logger = logging.getLogger(__name__)
-
-MAX_UPLOAD_FILES = 20
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 router = APIRouter(prefix="/api/threads/{thread_id}/uploads", tags=["uploads"])
 
@@ -103,9 +99,6 @@ async def upload_files(
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
-    if len(files) > MAX_UPLOAD_FILES:
-        raise HTTPException(status_code=413, detail=f"Too many files: max {MAX_UPLOAD_FILES}")
-
     uploads_dir = get_uploads_dir(thread_id)
     paths = get_paths()
     uploaded_files = []
@@ -125,43 +118,28 @@ async def upload_files(
                 logger.warning(f"Skipping file with unsafe filename: {file.filename!r}")
                 continue
 
+            content = await file.read()
             file_path = uploads_dir / safe_filename
-            file_size = 0
-
-            # Stream chunks directly to disk to prevent OOM
-            async with aiofiles.open(file_path, "wb") as f:
-                while chunk := await file.read(65536):
-                    await f.write(chunk)
-                    file_size += len(chunk)
-
-            if file_size > MAX_UPLOAD_BYTES:
-                file_path.unlink(missing_ok=True)
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"{safe_filename} exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
-                )
+            file_path.write_bytes(content)
 
             # Build relative path from backend root
             relative_path = str(paths.sandbox_uploads_dir(thread_id) / safe_filename)
             virtual_path = f"{VIRTUAL_PATH_PREFIX}/uploads/{safe_filename}"
 
-            # Only sync to virtual path if it's a remote sandbox (provisioner)
-            # Local Docker containers already have the directory volume-mounted
-            if sandbox_id != "local" and not getattr(sandbox_provider, "_backend", None).__class__.__name__ == "LocalContainerBackend":
-                try:
-                    sandbox.update_file_streaming(virtual_path, file_path)
-                except Exception as e:
-                    logger.error(f"Failed to sync file to remote sandbox: {e}")
+            # Keep local sandbox source of truth in thread-scoped host storage.
+            # For non-local sandboxes, also sync to virtual path for runtime visibility.
+            if sandbox_id != "local":
+                sandbox.update_file(virtual_path, content)
 
             file_info = {
                 "filename": safe_filename,
-                "size": str(file_size),
+                "size": str(len(content)),
                 "path": relative_path,  # Actual filesystem path (relative to backend/)
                 "virtual_path": virtual_path,  # Path for Agent in sandbox
                 "artifact_url": f"/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/{safe_filename}",  # HTTP URL
             }
 
-            logger.info(f"Saved file: {safe_filename} ({file_size} bytes) to {relative_path}")
+            logger.info(f"Saved file: {safe_filename} ({len(content)} bytes) to {relative_path}")
 
             # Check if file should be converted to markdown
             file_ext = file_path.suffix.lower()
@@ -172,7 +150,7 @@ async def upload_files(
                     md_virtual_path = f"{VIRTUAL_PATH_PREFIX}/uploads/{md_path.name}"
 
                     if sandbox_id != "local":
-                        sandbox.update_file_streaming(md_virtual_path, md_path)
+                        sandbox.update_file(md_virtual_path, md_path.read_bytes())
 
                     file_info["markdown_file"] = md_path.name
                     file_info["markdown_path"] = md_relative_path

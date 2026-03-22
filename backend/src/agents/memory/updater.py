@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,10 +18,6 @@ from src.models import create_chat_model
 from src.observability import get_managed_prompt, observe_span
 
 logger = logging.getLogger(__name__)
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _get_memory_file_path(agent_name: str | None = None) -> Path:
@@ -49,7 +45,7 @@ def _create_empty_memory() -> dict[str, Any]:
     """Create an empty memory structure."""
     return {
         "version": "1.0",
-        "lastUpdated": _utc_now_iso(),
+        "lastUpdated": datetime.utcnow().isoformat() + "Z",
         "user": {
             "workContext": {"summary": "", "updatedAt": ""},
             "personalContext": {"summary": "", "updatedAt": ""},
@@ -198,7 +194,7 @@ def _save_memory_to_file(memory_data: dict[str, Any], agent_name: str | None = N
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Update lastUpdated timestamp
-        memory_data["lastUpdated"] = _utc_now_iso()
+        memory_data["lastUpdated"] = datetime.utcnow().isoformat() + "Z"
 
         # Write atomically using temp file
         temp_path = file_path.with_suffix(".tmp")
@@ -335,7 +331,7 @@ class MemoryUpdater:
             Updated memory data.
         """
         config = get_memory_config()
-        now = _utc_now_iso()
+        now = datetime.utcnow().isoformat() + "Z"
 
         # Update user sections
         user_updates = update_data.get("user", {})

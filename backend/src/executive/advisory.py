@@ -12,7 +12,7 @@ def build_advisory(status: ExecutiveSystemStatus) -> list[ExecutiveAdvisoryRule]
     rules: list[ExecutiveAdvisoryRule] = []
     by_component = {item.component_id: item for item in status.components}
 
-    for component_id in ("litellm", "langgraph", "surfsense", "langfuse", "openviking", "activepieces", "browser_runtime", "stateweave"):
+    for component_id in ("litellm", "langgraph", "surfsense", "langfuse"):
         snapshot = by_component.get(component_id)
         if snapshot and snapshot.state == "disabled":
             continue

@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_LANGGRAPH_URL = os.getenv("LANGGRAPH_BASE_URL", "http://localhost:2024")
 DEFAULT_GATEWAY_URL = os.getenv("GATEWAY_BASE_URL", "http://localhost:8001")
 DEFAULT_ASSISTANT_ID = "lead_agent"
-DEFAULT_QUEUE_MAXSIZE = 100  # Backpressure limit: older messages wait if queue is full
 
 DEFAULT_RUN_CONFIG: dict[str, Any] = {"recursion_limit": 100}
 DEFAULT_RUN_CONTEXT: dict[str, Any] = {
@@ -179,16 +178,14 @@ def _resolve_attachments(thread_id: str, artifacts: list[str]) -> list[ResolvedA
                 continue
             mime, _ = mimetypes.guess_type(str(actual))
             mime = mime or "application/octet-stream"
-            attachments.append(
-                ResolvedAttachment(
-                    virtual_path=virtual_path,
-                    actual_path=actual,
-                    filename=actual.name,
-                    mime_type=mime,
-                    size=actual.stat().st_size,
-                    is_image=mime.startswith("image/"),
-                )
-            )
+            attachments.append(ResolvedAttachment(
+                virtual_path=virtual_path,
+                actual_path=actual,
+                filename=actual.name,
+                mime_type=mime,
+                size=actual.stat().st_size,
+                is_image=mime.startswith("image/"),
+            ))
         except (ValueError, OSError) as exc:
             logger.warning("[Manager] failed to resolve artifact %s: %s", virtual_path, exc)
     return attachments
@@ -208,7 +205,6 @@ class ChannelManager:
         store: ChannelStore,
         *,
         max_concurrency: int = 5,
-        max_queue_size: int = DEFAULT_QUEUE_MAXSIZE,
         langgraph_url: str = DEFAULT_LANGGRAPH_URL,
         gateway_url: str = DEFAULT_GATEWAY_URL,
         assistant_id: str = DEFAULT_ASSISTANT_ID,
@@ -218,7 +214,6 @@ class ChannelManager:
         self.bus = bus
         self.store = store
         self._max_concurrency = max_concurrency
-        self._max_queue_size = max_queue_size
         self._langgraph_url = langgraph_url
         self._gateway_url = gateway_url
         self._assistant_id = assistant_id
@@ -226,7 +221,6 @@ class ChannelManager:
         self._channel_sessions = dict(channel_sessions or {})
         self._client = None  # lazy init — langgraph_sdk async client
         self._semaphore: asyncio.Semaphore | None = None
-        self._dispatch_queue: asyncio.Queue[InboundMessage] | None = None
         self._running = False
         self._task: asyncio.Task | None = None
 
@@ -239,7 +233,12 @@ class ChannelManager:
     def _resolve_run_params(self, msg: InboundMessage, thread_id: str) -> tuple[str, dict[str, Any], dict[str, Any]]:
         channel_layer, user_layer = self._resolve_session_layer(msg)
 
-        assistant_id = user_layer.get("assistant_id") or channel_layer.get("assistant_id") or self._default_session.get("assistant_id") or self._assistant_id
+        assistant_id = (
+            user_layer.get("assistant_id")
+            or channel_layer.get("assistant_id")
+            or self._default_session.get("assistant_id")
+            or self._assistant_id
+        )
         if not isinstance(assistant_id, str) or not assistant_id.strip():
             assistant_id = self._assistant_id
 
@@ -278,16 +277,11 @@ class ChannelManager:
             return
         self._running = True
         self._semaphore = asyncio.Semaphore(self._max_concurrency)
-        self._dispatch_queue = asyncio.Queue(maxsize=self._max_queue_size)
         self._task = asyncio.create_task(self._dispatch_loop())
-        logger.info(
-            "ChannelManager started (max_concurrency=%d, queue_maxsize=%d)",
-            self._max_concurrency,
-            self._max_queue_size,
-        )
+        logger.info("ChannelManager started (max_concurrency=%d)", self._max_concurrency)
 
     async def stop(self) -> None:
-        """Stop the dispatch loop and drain the queue."""
+        """Stop the dispatch loop."""
         self._running = False
         if self._task:
             self._task.cancel()
@@ -296,27 +290,12 @@ class ChannelManager:
             except asyncio.CancelledError:
                 pass
             self._task = None
-        if self._dispatch_queue:
-            pending = self._dispatch_queue.qsize()
-            while not self._dispatch_queue.empty():
-                self._dispatch_queue.get_nowait()
-            self._dispatch_queue = None
-            if pending:
-                logger.info("ChannelManager stopped, drained %d queued messages", pending)
         logger.info("ChannelManager stopped")
 
     # -- dispatch loop -----------------------------------------------------
 
     async def _dispatch_loop(self) -> None:
-        """Single-loop producer: enqueues inbound messages to a bounded queue.
-
-        The queue provides backpressure when full (producer blocks), limiting
-        queue depth independent of the concurrency semaphore.
-        """
-        logger.info(
-            "[Manager] dispatch loop started (queue_maxsize=%d), waiting for inbound messages",
-            self._max_queue_size,
-        )
+        logger.info("[Manager] dispatch loop started, waiting for inbound messages")
         while self._running:
             try:
                 msg = await asyncio.wait_for(self.bus.get_inbound(), timeout=1.0)
@@ -332,34 +311,6 @@ class ChannelManager:
                 msg.msg_type.value,
                 msg.text[:100] if msg.text else "",
             )
-
-            try:
-                self._dispatch_queue.put_nowait(msg)
-            except asyncio.QueueFull:
-                queue_size = self._dispatch_queue.qsize()
-                logger.warning(
-                    "[Manager] dispatch queue full (size=%d, maxsize=%d) — backpressuring %s:%s",
-                    queue_size,
-                    self._max_queue_size,
-                    msg.channel_name,
-                    msg.chat_id,
-                )
-                try:
-                    await asyncio.wait_for(self._dispatch_queue.put(msg), timeout=30.0)
-                    logger.info(
-                        "[Manager] message enqueued after backpressure: %s:%s (queue_size=%d)",
-                        msg.channel_name,
-                        msg.chat_id,
-                        self._dispatch_queue.qsize(),
-                    )
-                except asyncio.TimeoutError:
-                    logger.error(
-                        "[Manager] dropped message after 30s backpressure: %s:%s",
-                        msg.channel_name,
-                        msg.chat_id,
-                    )
-                    continue
-
             task = asyncio.create_task(self._handle_message(msg))
             task.add_done_callback(self._log_task_error)
 

@@ -50,52 +50,22 @@ def _run_judge(
     """Synchronous judge execution — runs inside a background daemon thread."""
     try:
         from src.models import create_chat_model
-        from src.observability.langfuse import _get_client, score_trace_by_id  # noqa: PLC2701
+        from src.observability import get_managed_prompt
+        from src.observability.langfuse import score_trace_by_id
 
         truncated = content[:_MAX_CONTENT_CHARS]
-
-        # Fetch prompt via Langfuse client directly so we can pass prompt=prompt_client
-        # to the LangChain callback — this links the generation to the prompt version.
-        prompt_text = _JUDGE_PROMPT
-        prompt_client = None
-        lf_client = _get_client()
-        if lf_client is not None:
-            try:
-                prompt_client = lf_client.get_prompt(
-                    "maestroflow.judge.eval",
-                    label="production",
-                    type="text",
-                    fallback=_JUDGE_PROMPT,
-                    cache_ttl_seconds=300,
-                    fetch_timeout_seconds=2,
-                    max_retries=1,
-                )
-                prompt_text = str(prompt_client.prompt)
-            except Exception as exc:
-                logger.debug("Failed to fetch judge prompt from Langfuse: %s", exc)
-
-        prompt = prompt_text.format(
+        prompt_template = get_managed_prompt(
+            "maestroflow.judge.eval",
+            fallback=_JUDGE_PROMPT,
+            cache_ttl_seconds=300,
+        )
+        prompt = prompt_template.format(
             subagent_type=subagent_type,
             content=truncated,
         )
 
-        # Build callback that nests under the parent trace and links to the prompt version
-        callbacks = []
-        try:
-            from langfuse.langchain import CallbackHandler
-            from langfuse.types import TraceContext
-            cb_kwargs: dict = {"trace_context": TraceContext(trace_id=trace_id)}
-            if prompt_client is not None:
-                cb_kwargs["prompt"] = prompt_client
-            callbacks.append(CallbackHandler(**cb_kwargs))
-        except Exception as exc:
-            logger.debug("Could not create Langfuse CallbackHandler for judge: %s", exc)
-
         model = create_chat_model(thinking_enabled=False)
-        invoke_kwargs: dict = {}
-        if callbacks:
-            invoke_kwargs["config"] = {"callbacks": callbacks}
-        response = model.invoke(prompt, **invoke_kwargs)
+        response = model.invoke(prompt)
         raw = str(response.content).strip()
 
         # Strip markdown code fences if present

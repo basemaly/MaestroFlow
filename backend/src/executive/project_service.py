@@ -216,9 +216,7 @@ async def approve_checkpoint(project_id: str, checkpoint_id: str, notes: str = "
     if project is None:
         raise ValueError(f"Project {project_id!r} not found.")
 
-    # Dict-based O(1) lookup instead of O(n) linear search
-    checkpoint_map = {c.checkpoint_id: c for c in project.checkpoints}
-    cp = checkpoint_map.get(checkpoint_id)
+    cp = next((c for c in project.checkpoints if c.checkpoint_id == checkpoint_id), None)
     if cp is None:
         raise ValueError(f"Checkpoint {checkpoint_id!r} not found.")
     if cp.status != "pending":

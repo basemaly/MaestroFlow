@@ -6,7 +6,7 @@
 # to ensure compatibility across different container runtimes.
 #
 
-set -euo pipefail
+set -e
 
 PREFIX="${1:-deer-flow-sandbox}"
 

@@ -26,7 +26,6 @@ from src.config.subagents_config import get_subagents_app_config
 from src.executive.runtime_overrides import get_default_model_override, get_subagent_concurrency_override
 from src.config.summarization_config import get_summarization_config
 from src.models import create_chat_model
-from src.models.factory import get_model_capabilities
 from src.models.routing import is_rate_limited_model
 from src.observability import make_trace_id
 from src.sandbox.middleware import SandboxMiddleware
@@ -219,8 +218,6 @@ Being proactive with task management demonstrates thoroughness and ensures all r
 
 
 # ThreadDataMiddleware must be before SandboxMiddleware to ensure thread_id is available
-# MessageNormalizationMiddleware should run early so downstream middleware always sees
-# provider-safe LangChain message objects instead of raw dict payloads.
 # UploadsMiddleware should be after ThreadDataMiddleware to access thread_id
 # DanglingToolCallMiddleware patches missing ToolMessages before model sees the history
 # SummarizationMiddleware should be early to reduce context before other processing
@@ -228,6 +225,7 @@ Being proactive with task management demonstrates thoroughness and ensures all r
 # TitleMiddleware generates title after first exchange
 # MemoryMiddleware queues conversation for memory update (after TitleMiddleware)
 # ViewImageMiddleware should be before ClarificationMiddleware to inject image details before LLM
+# MessageNormalizationMiddleware should run late so all prior middleware output is provider-safe
 # ClarificationMiddleware should be last to intercept clarification requests after model calls
 def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_name: str | None = None):
     """Build middleware chain based on runtime configuration.
@@ -242,7 +240,6 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     middlewares = [
         TurnTracingMiddleware(),
         ThreadDataMiddleware(),
-        MessageNormalizationMiddleware(),
         UploadsMiddleware(),
         SandboxMiddleware(),
         ExternalServiceFallbackMiddleware(),
@@ -268,14 +265,10 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
 
     # Add ViewImageMiddleware only if the current model supports vision.
     # Use the resolved runtime model_name from make_lead_agent to avoid stale config values.
-    if model_name:
-        try:
-            capabilities = get_model_capabilities(model_name)
-            if capabilities["supports_vision"]:
-                middlewares.append(ViewImageMiddleware())
-        except ValueError:
-            # Model not found, skip vision middleware
-            pass
+    app_config = get_app_config()
+    model_config = app_config.get_model_config(model_name) if model_name else None
+    if model_config is not None and model_config.supports_vision:
+        middlewares.append(ViewImageMiddleware())
 
     # Truncate excess task() calls to the concurrency limit (prevents runaway subagent queues).
     subagent_enabled = config.get("configurable", {}).get("subagent_enabled", False)
@@ -285,6 +278,8 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
             get_subagent_concurrency_override() or get_subagents_app_config().max_concurrent,
         )
         middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
+
+    middlewares.append(MessageNormalizationMiddleware())
 
     # AgentTagMiddleware stamps AI messages with agent_id when agent_id_override is set
     middlewares.append(AgentTagMiddleware())
@@ -313,7 +308,6 @@ def make_lead_agent(config: RunnableConfig):
     is_bootstrap = cfg.get("is_bootstrap", False)
     agent_name = cfg.get("agent_name")
     knowledge_source = cfg.get("knowledge_source")
-    surfsense_search_space_id: int | None = cfg.get("surfsense_search_space_id") or None
     # research_tools: opt-in group names the user enabled in the UI
     # e.g. ["opt:exa", "opt:serper", "opt:jina-deepresearch", "opt:factcheck"]
     research_tools: list[str] = cfg.get("research_tools") or []
@@ -374,7 +368,6 @@ def make_lead_agent(config: RunnableConfig):
             max_concurrent_subagents=max_concurrent_subagents,
             available_skills=set(["bootstrap"]),
             knowledge_source=knowledge_source,
-            surfsense_search_space_id=surfsense_search_space_id,
         )
 
         return create_agent(
@@ -408,7 +401,6 @@ def make_lead_agent(config: RunnableConfig):
             max_concurrent_subagents=max_concurrent_subagents,
             agent_name=effective_agent_name,
             knowledge_source=knowledge_source,
-            surfsense_search_space_id=surfsense_search_space_id,
         ),
         state_schema=ThreadState,
     )
