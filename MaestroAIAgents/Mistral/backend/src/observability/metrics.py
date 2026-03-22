@@ -123,6 +123,31 @@ class MetricsRegistry:
             "process_memory_usage_bytes", "Process RSS memory usage in bytes"
         )
 
+        self.process_memory_rss_bytes = Gauge(
+            "process_memory_rss_bytes", "Process RSS (Resident Set Size) in bytes"
+        )
+
+        self.process_memory_vms_bytes = Gauge(
+            "process_memory_vms_bytes", "Process VMS (Virtual Memory Size) in bytes"
+        )
+
+        self.process_memory_percent = Gauge(
+            "process_memory_percent", "Process memory usage as percent of system memory"
+        )
+
+        self.process_memory_growth_rate_mb_per_minute = Gauge(
+            "process_memory_growth_rate_mb_per_minute",
+            "Memory growth rate in MB/minute (negative = shrinking)",
+        )
+
+        self.process_page_faults_major_total = Counter(
+            "process_page_faults_major_total", "Total major page faults"
+        )
+
+        self.process_page_faults_minor_total = Counter(
+            "process_page_faults_minor_total", "Total minor page faults"
+        )
+
         # ============ HTTP REQUEST METRICS ============
         self.http_request_duration_seconds = Histogram(
             "http_request_duration_seconds",

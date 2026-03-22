@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    service: maestroflow
+    environment: production
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093  # AlertManager default port
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  - job_name: maestroflow
+    static_configs:
+      - targets:
+          - localhost:8000  # FastAPI app metrics endpoint
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+    metrics_path: /metrics
+    scrape_interval: 15s

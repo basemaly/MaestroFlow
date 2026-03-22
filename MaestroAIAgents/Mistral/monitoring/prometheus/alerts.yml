@@ -1,0 +1,187 @@
+groups:
+  - name: maestroflow_alerts
+    interval: 15s
+    rules:
+      # Memory Alerts
+      - alert: HighMemoryGrowthRate
+        expr: process_memory_growth_rate_mb_per_minute > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: memory
+        annotations:
+          summary: "High memory growth detected ({{ $value | humanize }}MB/min)"
+          description: "Process memory growing at {{ $value | humanize }}MB/min, possible leak"
+          runbook_url: "docs/runbooks/high-memory-growth.md"
+
+      - alert: MemoryThresholdExceeded
+        expr: process_memory_rss_bytes > 1073741824  # 1GB
+        for: 2m
+        labels:
+          severity: critical
+          component: memory
+        annotations:
+          summary: "Process memory exceeds threshold ({{ $value | humanize }}B)"
+          description: "RSS memory {{ humanize $value }}B exceeds configured threshold"
+          runbook_url: "docs/runbooks/memory-threshold.md"
+
+      # Cache Alerts
+      - alert: CacheThrashing
+        expr: cache_evictions_total > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Cache thrashing detected (>100 evictions/min)"
+          description: "Cache {{ $labels.cache_name }} has {{ $value }} evictions"
+          runbook_url: "docs/runbooks/cache-thrashing.md"
+
+      - alert: LowCacheHitRatio
+        expr: cache_hit_ratio < 0.2
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Low cache hit ratio ({{ $value | humanizePercentage }})"
+          description: "Cache {{ $labels.cache_name }} hit ratio is {{ $value | humanizePercentage }}"
+          runbook_url: "docs/runbooks/low-cache-hit-ratio.md"
+
+      # Queue Alerts
+      - alert: QueueDepthHigh
+        expr: queue_depth > 800
+        for: 2m
+        labels:
+          severity: warning
+          component: queue
+        annotations:
+          summary: "Queue depth near capacity ({{ $value }} items)"
+          description: "Queue {{ $labels.queue_name }} has {{ $value }} items pending"
+          runbook_url: "docs/runbooks/queue-depth-high.md"
+
+      - alert: QueueProcessingLatencySLA
+        expr: histogram_quantile(0.95, queue_processing_latency_seconds) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: queue
+        annotations:
+          summary: "Queue p95 latency exceeds SLA ({{ $value | humanizeDuration }})"
+          description: "Queue {{ $labels.queue_name }} p95 latency {{ $value | humanizeDuration }} exceeds 10s SLA"
+          runbook_url: "docs/runbooks/queue-latency-sla.md"
+
+      - alert: QueueErrorRateHigh
+        expr: (rate(queue_errors_total[5m]) / rate(queue_processed_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: queue
+        annotations:
+          summary: "Queue error rate exceeds threshold ({{ $value | humanizePercentage }})"
+          description: "Queue {{ $labels.queue_name }} error rate is {{ $value | humanizePercentage }}"
+          runbook_url: "docs/runbooks/queue-error-rate.md"
+
+      # WebSocket Alerts
+      - alert: WebSocketErrorRateHigh
+        expr: (rate(websocket_errors_total[5m]) / rate(websocket_messages_sent_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "WebSocket error rate high ({{ $value | humanizePercentage }})"
+          description: "WebSocket error rate is {{ $value | humanizePercentage }}"
+          runbook_url: "docs/runbooks/websocket-errors.md"
+
+      - alert: WebSocketHeartbeatFailures
+        expr: rate(websocket_heartbeat_failures_total[5m]) > 10
+        for: 3m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "High WebSocket heartbeat failures ({{ $value }} failures/min)"
+          description: "WebSocket heartbeat failing at {{ $value }} failures/min"
+          runbook_url: "docs/runbooks/websocket-heartbeat.md"
+
+      # Database Alerts
+      - alert: SlowDatabaseQueries
+        expr: histogram_quantile(0.99, db_query_duration_seconds) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Database queries slow (p99: {{ $value | humanizeDuration }})"
+          description: "Database {{ $labels.query_type }} p99 latency is {{ $value | humanizeDuration }}"
+          runbook_url: "docs/runbooks/slow-queries.md"
+
+      - alert: HighDBConnectionWaitTime
+        expr: histogram_quantile(0.95, db_connection_wait_seconds) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High DB connection wait time ({{ $value | humanizeDuration }})"
+          description: "p95 connection wait time is {{ $value | humanizeDuration }}"
+          runbook_url: "docs/runbooks/db-connection-pool.md"
+
+      # Exception/Error Alerts
+      - alert: HighExceptionRate
+        expr: rate(exceptions_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+          component: exceptions
+        annotations:
+          summary: "High exception rate ({{ $value | humanize }}/sec)"
+          description: "{{ $labels.exception_type }} exceptions at {{ $value | humanize }}/sec"
+          runbook_url: "docs/runbooks/exception-rate.md"
+
+      - alert: CriticalErrorsDetected
+        expr: rate(critical_errors_total[1m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: errors
+        annotations:
+          summary: "Critical errors detected ({{ $labels.exception_type }})"
+          description: "{{ $labels.exception_type }} critical errors detected"
+          runbook_url: "docs/runbooks/critical-errors.md"
+
+      # HTTP Request Alerts
+      - alert: HighHTTPErrorRate
+        expr: (rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: http
+        annotations:
+          summary: "High HTTP 5xx error rate ({{ $value | humanizePercentage }})"
+          description: "{{ $labels.endpoint }} 5xx error rate {{ $value | humanizePercentage }}"
+          runbook_url: "docs/runbooks/http-errors.md"
+
+      - alert: SlowHTTPResponses
+        expr: histogram_quantile(0.95, http_request_duration_seconds) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: http
+        annotations:
+          summary: "Slow HTTP responses (p95: {{ $value | humanizeDuration }})"
+          description: "{{ $labels.endpoint }} p95 latency {{ $value | humanizeDuration }}"
+          runbook_url: "docs/runbooks/slow-http.md"
+
+      # LLM Cost Alerts
+      - alert: HighLLMCosts
+        expr: rate(llm_cost_usd_total[1h]) > 100
+        for: 10m
+        labels:
+          severity: info
+          component: llm
+        annotations:
+          summary: "High LLM costs ({{ $value | humanize }}USD/hour)"
+          description: "LLM {{ $labels.model }} cost rate {{ $value | humanize }}USD/hour"
+          runbook_url: "docs/runbooks/llm-cost-anomaly.md"
