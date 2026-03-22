@@ -10,7 +10,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_LANGGRAPH_URL = "http://langgraph:8000"
+_DEFAULT_LANGGRAPH_URL = "http://localhost:2024"
 
 
 def _get_langgraph_url() -> str:
@@ -51,7 +51,6 @@ async def run_lead_agent(
     thinking_enabled: bool = False,
     subagent_enabled: bool = False,
     agent_name: str | None = None,
-    trace_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Spawn a lead_agent run on the LangGraph server and wait for the final result.
@@ -90,13 +89,12 @@ async def run_lead_agent(
     try:
         thread = await client.threads.create()
         thread_id = thread["thread_id"]
-        configurable["thread_id"] = thread_id
 
         result = await client.runs.wait(
             thread_id,
             "lead_agent",
             input={"messages": [{"role": "human", "content": prompt}]},
-            config={"configurable": configurable, "metadata": {"trace_id": trace_id} if trace_id else {}},
+            config={"configurable": configurable},
         )
 
         response = _extract_last_ai_message(result.get("messages", []))

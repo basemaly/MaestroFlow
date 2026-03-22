@@ -1,24 +1,11 @@
 from __future__ import annotations
 
-import logging
-
-from src.autoresearch.service import (
-    approve_experiment,
-    get_experiment_detail,
-    get_registry_payload as get_autoresearch_registry,
-    list_experiment_summaries,
-    reject_experiment,
-    rollback_role_prompt,
-    stop_experiment,
-)
 from src.executive.actions import confirm_approval, execute_action, preview_action, reject_approval
 from src.executive.advisory import build_advisory
-from src.executive.models import ExecutiveActionDefinition, ExecutiveBlueprint
+from src.executive.models import ExecutiveActionDefinition
 from src.executive.registry import get_component_registry, list_action_definitions
 from src.executive.status import collect_component_status, collect_system_status
-from src.executive.storage import list_approvals, list_audit_entries, list_blueprints, list_blueprint_runs, list_heartbeats, record_blueprint_heartbeat, upsert_blueprint
-
-logger = logging.getLogger(__name__)
+from src.executive.storage import list_approvals, list_audit_entries
 
 
 def get_registry_payload() -> dict:
@@ -27,34 +14,6 @@ def get_registry_payload() -> dict:
         "components": [component.model_dump(mode="json") for component in registry.values()],
         "actions": [action.model_dump(mode="json") for action in list_action_definitions()],
     }
-
-
-def get_autoresearch_registry_payload() -> dict:
-    return get_autoresearch_registry()
-
-
-def list_autoresearch_experiments_payload(limit: int = 50) -> list[dict]:
-    return [item.model_dump(mode="json") for item in list_experiment_summaries(limit=limit)]
-
-
-def get_autoresearch_experiment_payload(experiment_id: str) -> dict:
-    return get_experiment_detail(experiment_id)
-
-
-def approve_autoresearch_experiment_payload(experiment_id: str, actor_id: str = "executive") -> dict:
-    return approve_experiment(experiment_id, approved_by=actor_id)
-
-
-def reject_autoresearch_experiment_payload(experiment_id: str, reason: str | None = None) -> dict:
-    return reject_experiment(experiment_id, reason=reason)
-
-
-def rollback_autoresearch_prompt_payload(role: str, prompt_text: str, actor_id: str = "executive") -> dict:
-    return {"champion": rollback_role_prompt(role, prompt_text, actor_id=actor_id).model_dump(mode="json")}
-
-
-def stop_autoresearch_experiment_payload(experiment_id: str, reason: str | None = None) -> dict:
-    return stop_experiment(experiment_id, reason=reason)
 
 
 async def get_status_payload() -> dict:
@@ -131,8 +90,8 @@ def get_capabilities_payload() -> dict:
                 "supports_thinking": getattr(m, "supports_thinking", False),
                 "supports_vision": getattr(m, "supports_vision", False),
             })
-    except Exception as e:
-        logger.warning("Failed to load models for capabilities: %s", e, exc_info=False)
+    except Exception:
+        pass
 
     try:
         from src.tools import get_available_tools
@@ -142,8 +101,8 @@ def get_capabilities_payload() -> dict:
             {"name": t.name, "description": (t.description or "")[:120]}
             for t in tools
         ]
-    except Exception as e:
-        logger.warning("Failed to load tools for capabilities: %s", e, exc_info=False)
+    except Exception:
+        pass
 
     try:
         from src.skills import load_skills
@@ -153,14 +112,13 @@ def get_capabilities_payload() -> dict:
                 "description": s.description,
                 "enabled": s.enabled,
             })
-    except Exception as e:
-        logger.warning("Failed to load skills for capabilities: %s", e, exc_info=False)
+    except Exception:
+        pass
 
     try:
         from src.subagents.registry import get_subagent_names
         capabilities["subagent_types"] = get_subagent_names()
-    except Exception as e:
-        logger.warning("Failed to load subagent names, using defaults: %s", e, exc_info=False)
+    except Exception:
         capabilities["subagent_types"] = ["general-purpose", "bash"]
 
     return capabilities
@@ -225,8 +183,6 @@ async def run_agent_payload(
     mode: str = "standard",
     thinking_enabled: bool = False,
     subagent_enabled: bool = False,
-    agent_name: str | None = None,
-    trace_id: str | None = None,
 ) -> dict:
     """Spawn a lead_agent run and return its result."""
     from src.executive.orchestrator import run_lead_agent
@@ -236,28 +192,4 @@ async def run_agent_payload(
         mode=mode,
         thinking_enabled=thinking_enabled,
         subagent_enabled=subagent_enabled,
-        agent_name=agent_name,
-        trace_id=trace_id,
     )
-
-
-def list_blueprints_payload(limit: int = 50) -> list[dict]:
-    return [item.model_dump(mode="json") for item in list_blueprints(limit=limit)]
-
-
-def list_blueprint_runs_payload(blueprint_id: str, limit: int = 50) -> list[dict]:
-    return [item.model_dump(mode="json") for item in list_blueprint_runs(blueprint_id, limit=limit)]
-
-
-def register_blueprint_payload(blueprint: dict) -> dict:
-    model = ExecutiveBlueprint.model_validate(blueprint)
-    return {"blueprint": upsert_blueprint(model).model_dump(mode="json")}
-
-
-def record_heartbeat_payload(scope_type: str, scope_id: str, payload: dict | None = None, lease_seconds: int = 3600) -> dict:
-    heartbeat = record_blueprint_heartbeat(scope_type=scope_type, scope_id=scope_id, payload=payload or {}, lease_seconds=lease_seconds)
-    return {"heartbeat": heartbeat.model_dump(mode="json")}
-
-
-def list_heartbeats_payload(limit: int = 50, scope_type: str | None = None, scope_id: str | None = None) -> list[dict]:
-    return [item.model_dump(mode="json") for item in list_heartbeats(limit=limit, scope_type=scope_type, scope_id=scope_id)]
