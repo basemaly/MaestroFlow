@@ -16,7 +16,6 @@ import time
 import threading
 from unittest.mock import patch, MagicMock, Mock
 from typing import List
-import psutil
 import os
 
 # Handle optional dependencies
@@ -26,6 +25,11 @@ try:
 except ImportError:
     FastAPI = None
     TestClient = None
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 
 class TestObservabilityUnderLoad(unittest.TestCase):
