@@ -71,4 +71,15 @@ This ensures Mozart scales efficiently with demand while protecting system stabi
 
 ## Deployment & Production
 
+### Graceful Shutdown
+
+Mozart handles shutdown gracefully through signal handlers and cleanup hooks:
+
+- **SIGTERM/SIGINT:** Initiates graceful shutdown, allows in-flight tasks to complete
+- **Task completion timeout:** Default 30 seconds to finish pending tasks
+- **Force termination:** After timeout, remaining tasks are cancelled
+- **Resource cleanup:** Connections and executor pools closed properly
+
+This is essential for Kubernetes and Docker deployments to prevent request loss.
+
 ## Advanced Topics
