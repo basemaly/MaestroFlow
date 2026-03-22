@@ -69,6 +69,33 @@ This ensures Mozart scales efficiently with demand while protecting system stabi
 
 ## Monitoring & Observability
 
+### Metrics & Observability
+
+Mozart collects comprehensive metrics on circuit breaker behavior and executor pool performance.
+
+#### Circuit Breaker Metrics
+- **Request counts:** total, successful, failed, rejected, timeout
+- **Response times:** min, max, average (milliseconds)
+- **State changes:** history with timestamps
+- **Pool status:** connection count, health status
+
+#### Executor Pool Metrics
+- **Task status breakdown:** pending, running, completed, failed
+- **Queue metrics:** wait times from submission to execution
+- **Execution times:** per-task duration distribution
+- **Resource usage:** CPU percentage, memory percentage
+
+Metrics are maintained in a sliding window (default: last 100 events) for performance.
+
+#### Accessing Metrics
+```python
+circuit_breaker = manager.get_circuit_breaker(ServiceName.SURFSENSE)
+metrics = circuit_breaker.metrics
+
+print(f"Success rate: {metrics.successful}/{metrics.total}")
+print(f"Avg response time: {metrics.average_response_time}ms")
+```
+
 ## Deployment & Production
 
 ### Graceful Shutdown
