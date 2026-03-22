@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from src.config.observability import load_config
 from src.observability.middleware import MetricsMiddleware
 from src.routers import health
+from src.executive.storage import _close_all_connections
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +48,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down MaestroFlow application...")
+    _close_all_connections()
+    logger.info("Closed all database connections")
 
 
 # Create FastAPI app with lifespan
