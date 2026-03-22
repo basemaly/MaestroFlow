@@ -54,6 +54,13 @@ class MetricsRegistry:
             buckets=(0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0),
         )
 
+        # ============ LLM CALL METRICS ============
+        self.llm_cost_usd_total = Counter(
+            "llm_cost_usd_total",
+            "Total cost of LLM API calls in USD",
+            labelnames=["model"],
+        )
+
         # ============ QUEUE METRICS ============
         self.queue_depth = Gauge(
             "queue_depth", "Current number of items in queue", labelnames=["queue_name"]
@@ -128,6 +135,17 @@ class MetricsRegistry:
             "http_requests_total",
             "Total HTTP requests",
             labelnames=["method", "endpoint", "status"],
+        )
+
+        # ============ ERROR & EXCEPTION METRICS ============
+        self.exceptions_total = Counter(
+            "exceptions_total", "Total exceptions caught", labelnames=["exception_type"]
+        )
+
+        self.critical_errors_total = Counter(
+            "critical_errors_total",
+            "Total critical errors",
+            labelnames=["exception_type"],
         )
 
     @contextmanager

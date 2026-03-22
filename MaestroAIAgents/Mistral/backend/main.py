@@ -4,8 +4,9 @@ MaestroFlow FastAPI Application Entry Point.
 Sets up the FastAPI application with:
 - Observability configuration (loaded at startup)
 - Prometheus metrics middleware
+- Langfuse distributed tracing
 - Health check endpoints
-- Request tracking
+- Request tracking and context propagation
 """
 
 import logging
@@ -16,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from src.config.observability import load_config
 from src.observability.middleware import MetricsMiddleware
+from src.observability.langfuse_client import initialize_langfuse, flush_traces
 from src.routers import health
 from src.executive.storage import _close_all_connections
 
@@ -44,10 +46,24 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Metrics collection disabled")
 
+    if config.LANGFUSE_ENABLED:
+        langfuse_client = initialize_langfuse()
+        if langfuse_client:
+            logger.info("Langfuse distributed tracing initialized successfully")
+        else:
+            logger.warning("Langfuse initialization failed or is disabled")
+    else:
+        logger.info("Langfuse tracing is disabled")
+
     yield
 
     # Shutdown
     logger.info("Shutting down MaestroFlow application...")
+
+    # Flush any pending traces
+    flush_traces()
+
+    # Close database connections
     _close_all_connections()
     logger.info("Closed all database connections")
 
@@ -61,7 +77,7 @@ app = FastAPI(
 )
 
 # Add Prometheus middleware FIRST (before other middleware)
-# This ensures it captures all requests
+# This ensures it captures all requests and initializes request context
 app.add_middleware(MetricsMiddleware)
 
 

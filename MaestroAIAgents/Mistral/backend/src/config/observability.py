@@ -8,6 +8,11 @@ Configurable via environment variables:
 - MEMORY_THRESHOLD_MB: Memory usage threshold in MB (default: 1024)
 - DB_POOL_MAX_SIZE: Maximum database pool size (default: 10)
 - DB_POOL_IDLE_TIMEOUT_SECONDS: Idle connection timeout (default: 300)
+- LANGFUSE_ENABLED: Enable/disable Langfuse distributed tracing (default: true)
+- LANGFUSE_PUBLIC_KEY: Langfuse public API key
+- LANGFUSE_SECRET_KEY: Langfuse secret API key
+- LANGFUSE_HOST: Langfuse API host (default: https://cloud.langfuse.io)
+- LANGFUSE_TIMEOUT_SECONDS: Timeout for trace batching (default: 30)
 """
 
 import os
@@ -35,6 +40,16 @@ class ObservabilityConfig:
             os.getenv("DB_POOL_IDLE_TIMEOUT_SECONDS", "300")
         )
 
+        # Langfuse distributed tracing configuration
+        self.LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "true").lower() == "true"
+        self.LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+        self.LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+        self.LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.io")
+        self.LANGFUSE_TIMEOUT_SECONDS = int(os.getenv("LANGFUSE_TIMEOUT_SECONDS", "30"))
+        self.LANGFUSE_SAMPLE_RATE = float(
+            os.getenv("LANGFUSE_SAMPLE_RATE", "1.0")
+        )  # 1.0 = 100% sampling
+
     def __repr__(self) -> str:
         """String representation of configuration."""
         return (
@@ -44,7 +59,10 @@ class ObservabilityConfig:
             f"health_check_interval={self.HEALTH_CHECK_INTERVAL_SECONDS}s, "
             f"memory_threshold={self.MEMORY_THRESHOLD_MB}MB, "
             f"db_pool_max_size={self.DB_POOL_MAX_SIZE}, "
-            f"db_pool_idle_timeout={self.DB_POOL_IDLE_TIMEOUT_SECONDS}s"
+            f"db_pool_idle_timeout={self.DB_POOL_IDLE_TIMEOUT_SECONDS}s, "
+            f"langfuse_enabled={self.LANGFUSE_ENABLED}, "
+            f"langfuse_host={self.LANGFUSE_HOST}, "
+            f"langfuse_sample_rate={self.LANGFUSE_SAMPLE_RATE}"
             f")"
         )
 
