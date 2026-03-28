@@ -1,0 +1,8 @@
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy drop;
+    ether saddr 00:11:22:33:44:55 accept;
+    ether saddr AA:BB:CC:DD:EE:FF accept;
+    iif "lo" accept;
+  }
+}
