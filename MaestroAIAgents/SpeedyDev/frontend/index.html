@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razer Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans leading-normal tracking-normal">
+    <div x-data="dashboard()" x-init="fetchStatus()" class="container mx-auto mt-8 p-4">
+        <header class="bg-white shadow-md rounded-lg p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Razer Control Center</h1>
+            <p class="text-gray-600">Modern Dashboard for Razer Hardware</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Docker Status Card -->
+            <div class="bg-white p-6 rounded-lg shadow-lg border-t-4 border-green-500">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Docker Status</h2>
+                <ul class="space-y-2">
+                    <template x-for="item in status.docker" :key="item">
+                        <li class="p-2 bg-gray-50 rounded border border-gray-200 text-sm" x-text="item"></li>
+                    </template>
+                </ul>
+                <div x-show="!status.docker || status.docker.length === 0" class="text-gray-400 italic">No running containers</div>
+            </div>
+
+            <!-- Systemd Status Card -->
+            <div class="bg-white p-6 rounded-lg shadow-lg border-t-4 border-blue-500">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Systemd Status</h2>
+                <div class="flex items-center space-x-2">
+                    <span :class="status.systemd === 'active' ? 'bg-green-500' : 'bg-red-500'" class="h-3 w-3 rounded-full"></span>
+                    <span x-text="status.systemd || 'Unknown'" class="uppercase font-bold tracking-wider text-sm"></span>
+                </div>
+            </div>
+
+            <!-- Dashboard Actions Card -->
+            <div class="bg-white p-6 rounded-lg shadow-lg border-t-4 border-purple-500">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Actions</h2>
+                <button @click="fetchStatus()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    Refresh Status
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function dashboard() {
+            return {
+                status: {
+                    docker: [],
+                    systemd: 'Checking...'
+                },
+                fetchStatus() {
+                    fetch('/status')
+                        .then(res => res.json())
+                        .then(data => {
+                            this.status = data;
+                        })
+                        .catch(err => {
+                            console.error('Failed to fetch status:', err);
+                            this.status.systemd = 'Error';
+                        });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
