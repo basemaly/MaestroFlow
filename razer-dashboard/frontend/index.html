@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razer Unified Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        [x-cloak] { display: none !important; }
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .service-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .service-card:hover { transform: translateY(-4px); border-color: rgba(56, 189, 248, 0.5); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-200 selection:bg-sky-500/30">
+
+    <div x-data="dashboard()" x-init="init()" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+            <div>
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="w-10 h-10 bg-sky-500 rounded-lg flex items-center justify-center shadow-lg shadow-sky-500/20">
+                        <i class="fas fa-rocket text-white text-xl"></i>
+                    </div>
+                    <h1 class="text-4xl font-extrabold tracking-tight text-white">Razer Dashboard</h1>
+                </div>
+                <p class="text-slate-400 max-w-2xl text-lg">
+                    Real-time orchestrator for <span class="text-sky-400 font-semibold">razer.local</span> services.
+                </p>
+            </div>
+            
+            <nav class="flex p-1 bg-slate-900/50 rounded-xl border border-slate-800">
+                <button @click="tab = 'services'" :class="tab === 'services' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'" class="px-6 py-2.5 rounded-lg text-sm font-bold transition-all duration-200">
+                    <i class="fas fa-layer-group mr-2"></i>Services
+                </button>
+                <button @click="tab = 'security'" :class="tab === 'security' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'" class="px-6 py-2.5 rounded-lg text-sm font-bold transition-all duration-200">
+                    <i class="fas fa-shield-halved mr-2"></i>Security
+                </button>
+                <button @click="tab = 'discover'" :class="tab === 'discover' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'" class="px-6 py-2.5 rounded-lg text-sm font-bold transition-all duration-200">
+                    <i class="fas fa-magnifying-glass mr-2"></i>Discover
+                </button>
+            </nav>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Services Grid -->
+            <div x-show="tab === 'services'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <template x-for="service in services" :key="service.name">
+                    <div class="service-card glass-panel rounded-2xl p-6 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-start justify-between mb-6">
+                                <div class="p-3 rounded-xl bg-slate-800 border border-slate-700">
+                                    <i :class="getIcon(service.type)" class="text-2xl text-sky-400"></i>
+                                </div>
+                                <div class="flex flex-col items-end gap-2">
+                                    <span :class="getStatusClass(service.status)" class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5" x-text="service.status"></span>
+                                    <span class="text-[10px] text-slate-500 uppercase font-bold tracking-tighter" x-text="service.type"></span>
+                                </div>
+                            </div>
+                            
+                            <h3 class="text-xl font-bold text-white mb-1" x-text="service.name"></h3>
+                            <p class="text-slate-500 text-xs font-medium truncate mb-6" x-text="service.url || service.path || service.service_name"></p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="flex gap-2">
+                                <button @click="control(service.name, 'start')" :disabled="isUp(service.status)" class="flex-1 bg-slate-800 hover:bg-emerald-600/20 hover:text-emerald-400 disabled:opacity-30 disabled:hover:bg-slate-800 disabled:hover:text-inherit border border-slate-700 hover:border-emerald-500/50 p-2.5 rounded-xl text-xs font-bold transition-all duration-200">
+                                    <i class="fas fa-play mr-2"></i>Start
+                                </button>
+                                <button @click="control(service.name, 'stop')" :disabled="!isUp(service.status)" class="flex-1 bg-slate-800 hover:bg-rose-600/20 hover:text-rose-400 disabled:opacity-30 disabled:hover:bg-slate-800 disabled:hover:text-inherit border border-slate-700 hover:border-rose-500/50 p-2.5 rounded-xl text-xs font-bold transition-all duration-200">
+                                    <i class="fas fa-stop mr-2"></i>Stop
+                                </button>
+                                <button @click="control(service.name, 'restart')" class="w-12 bg-slate-800 hover:bg-sky-600/20 hover:text-sky-400 border border-slate-700 hover:border-sky-500/50 p-2.5 rounded-xl text-xs font-bold transition-all duration-200">
+                                    <i class="fas fa-rotate-right"></i>
+                                </button>
+                            </div>
+                            
+                            <a x-show="service.url" :href="service.url" target="_blank" class="flex items-center justify-center w-full py-2.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-black shadow-lg shadow-sky-500/20 transition-all">
+                                OPEN DASHBOARD <i class="fas fa-external-link-alt ml-2"></i>
+                            </a>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Add New Empty State -->
+                <div x-show="services.length === 0" class="col-span-full py-24 glass-panel rounded-3xl flex flex-col items-center justify-center text-center">
+                    <div class="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-6">
+                        <i class="fas fa-ghost text-4xl text-slate-600"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white mb-2">No active services</h2>
+                    <p class="text-slate-500 mb-8">Ready to deploy? Use the discover tab to find local configurations.</p>
+                    <button @click="tab = 'discover'" class="px-8 py-3 bg-sky-500 text-white rounded-full font-bold shadow-xl shadow-sky-500/20">
+                        Scan Local FS
+                    </button>
+                </div>
+            </div>
+
+            <!-- Security Tab -->
+            <div x-show="tab === 'security'" x-cloak class="max-w-3xl mx-auto">
+                <div class="glass-panel rounded-2xl p-8 mb-8">
+                    <div class="flex items-center gap-4 mb-8">
+                        <div class="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center border border-emerald-500/30">
+                            <i class="fas fa-lock text-emerald-400 text-xl"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-2xl font-bold text-white">MAC Filtering</h2>
+                            <p class="text-slate-500 text-sm">Restrict dashboard access to trusted hardware.</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <template x-for="dev in devices" :key="dev.mac">
+                            <div class="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                                <div class="flex items-center gap-4">
+                                    <div class="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-slate-400">
+                                        <i class="fas fa-laptop"></i>
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-slate-200" x-text="dev.name"></p>
+                                        <p class="text-xs text-slate-500 font-mono" x-text="dev.mac"></p>
+                                    </div>
+                                </div>
+                                <button class="text-slate-500 hover:text-rose-400 p-2 transition-colors">
+                                    <i class="fas fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </template>
+                        <button class="w-full py-4 border-2 border-dashed border-slate-700 hover:border-sky-500/50 rounded-xl text-slate-500 hover:text-sky-400 text-sm font-bold transition-all">
+                            <i class="fas fa-plus mr-2"></i> Register New Device
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Discover Tab -->
+            <div x-show="tab === 'discover'" x-cloak class="max-w-3xl mx-auto">
+                <div class="glass-panel rounded-2xl p-8">
+                    <div class="flex items-center justify-between mb-8">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-sky-500/20 rounded-xl flex items-center justify-center border border-sky-500/30">
+                                <i class="fas fa-wand-magic-sparkles text-sky-400 text-xl"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-2xl font-bold text-white">Auto-Discovery</h2>
+                                <p class="text-slate-500 text-sm">Scanning <code class="bg-slate-800 px-1.5 py-0.5 rounded text-sky-300">~/dev</code> for active projects.</p>
+                            </div>
+                        </div>
+                        <button @click="discover()" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold border border-slate-700 transition-all">
+                            <i class="fas fa-arrows-rotate mr-2"></i> Refresh
+                        </button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <template x-for="item in discovered" :key="item.path">
+                            <div class="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                                <div>
+                                    <p class="font-bold text-slate-200" x-text="item.name"></p>
+                                    <p class="text-[10px] text-slate-500 font-mono truncate max-w-sm" x-text="item.path"></p>
+                                </div>
+                                <button class="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-black shadow-lg shadow-sky-600/20 transition-all">
+                                    ADD TO DASHBOARD
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer / Status Bar -->
+        <footer class="mt-16 pt-8 border-t border-slate-900 flex justify-between items-center text-[10px] font-black tracking-widest text-slate-600 uppercase">
+            <div>Node.js v25 • Hono Framework • Alpine.js</div>
+            <div class="flex items-center gap-2">
+                <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                Backend Connected
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        function dashboard() {
+            return {
+                tab: 'services',
+                services: [],
+                devices: [],
+                discovered: [],
+                API_BASE: '/api',
+
+                init() {
+                    this.fetchData();
+                    setInterval(() => this.fetchData(), 5000);
+                },
+
+                async fetchData() {
+                    try {
+                        const [sRes, dRes] = await Promise.all([
+                            fetch(`${this.API_BASE}/services`),
+                            fetch(`${this.API_BASE}/devices`)
+                        ]);
+                        this.services = await sRes.json();
+                        this.devices = await dRes.json();
+                    } catch (e) { console.error('Data sync failed', e); }
+                },
+
+                async control(name, action) {
+                    try {
+                        await fetch(`${this.API_BASE}/services/${name}/control`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action })
+                        });
+                        setTimeout(() => this.fetchData(), 800);
+                    } catch (e) { console.error('Control failed', e); }
+                },
+
+                async discover() {
+                    const res = await fetch(`${this.API_BASE}/discover`);
+                    this.discovered = await res.json();
+                },
+
+                getIcon(type) {
+                    return {
+                        'docker-compose': 'fab fa-docker',
+                        'systemd': 'fas fa-gears',
+                        'process': 'fas fa-terminal',
+                        'http': 'fas fa-globe'
+                    }[type] || 'fas fa-cube';
+                },
+
+                getStatusClass(status) {
+                    const s = status?.toLowerCase() || '';
+                    if (['running', 'active', 'healthy'].includes(s)) return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                    if (['stopped', 'inactive', 'unhealthy'].includes(s)) return 'bg-rose-500/10 text-rose-400 border border-rose-500/20';
+                    return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+                },
+
+                isUp(status) {
+                    const s = status?.toLowerCase() || '';
+                    return ['running', 'active', 'healthy'].includes(s);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

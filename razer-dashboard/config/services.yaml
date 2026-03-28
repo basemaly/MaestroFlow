@@ -1,0 +1,57 @@
+services:
+  - name: "Linkwarden"
+    type: "docker-compose"
+    path: "/home/basemaly/linkwarden/docker-compose.yml"
+    port: 3000
+    url: "http://razer.local:3000"
+    health_endpoint: "/api/health"
+    auto_login: true
+
+  - name: "SurfSense"
+    type: "docker-compose"
+    path: "/home/basemaly/dev/SurfSense/docker/docker-compose.yml"
+    port: 3004
+    url: "http://razer.local:3004"
+    health_endpoint: "/api/health"
+    auto_login: true
+
+  - name: "Langfuse"
+    type: "docker-compose"
+    path: "/home/basemaly/dev/Langfuse/docker-compose.yml"
+    port: 3100
+    url: "http://razer.local:3100"
+    health_endpoint: "/api/health"
+    auto_login: false
+
+  - name: "Wiki.js"
+    type: "docker-compose"
+    path: "/opt/wikijs/docker-compose.yml"
+    port: 3001
+    url: "https://razer.local:3001"
+    health_endpoint: "/health"
+    auto_login: false
+
+  - name: "ActivePieces"
+    type: "docker-compose"
+    path: "/home/basemaly/dev/MaestroFlow/docker/docker-compose-dev.yaml"
+    port: 18080
+    url: "http://razer.local:18080"
+    health_endpoint: "/health"
+    auto_login: false
+
+  - name: "Ollama"
+    type: "systemd"
+    service_name: "ollama.service"
+    port: 11434
+    url: "http://localhost:11434"
+    health_endpoint: "/api/tags"
+    auto_login: false
+
+  - name: "Litellm"
+    type: "process"
+    path: "/home/basemaly/.litellm/main.sh"
+    pid_file: "/home/basemaly/.litellm/pid"
+    port: 4000
+    url: "http://localhost:4000"
+    health_endpoint: "/health"
+    auto_login: false

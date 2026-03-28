@@ -1,0 +1,19 @@
+{
+  "name": "razer-dashboard",
+  "version": "1.0.0",
+  "description": "Unified dashboard for razer.local",
+  "main": "src/server.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs",
+    "render-filters": "node ../scripts/render-mac-filter.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "hono": "^4.7.2",
+    "docker-modem": "^5.0.3",
+    "playwright": "^1.50.1",
+    "yaml": "^2.7.0"
+  }
+}

@@ -1,0 +1,12 @@
+devices: []
+# Add trusted devices like this:
+# devices:
+#   - name: "MacBook Pro"
+#     mac: "XX:XX:XX:XX:XX:XX"
+#     ip: "192.168.1.100"
+#     description: "Work laptop"
+#
+#   - name: "iPhone"
+#     mac: "YY:YY:YY:YY:YY:YY"
+#     ip: "192.168.1.101"
+#     description: "Personal phone"

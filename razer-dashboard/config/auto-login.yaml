@@ -1,0 +1,23 @@
+# Playwright Auto-Login Configuration
+# This file defines the credentials and selectors for each service
+
+services:
+  linkwarden:
+    url: "http://linkwarden:3000/login"
+    username_selector: "#username"
+    password_selector: "#password"
+    submit_selector: "button[type='submit']"
+    env_user: "LINKWARDEN_USER"
+    env_pass: "LINKWARDEN_PASS"
+    cookie_name: "linkwarden_session"
+    success_indicator: ".dashboard-header"
+
+  wikijs:
+    url: "http://wikijs:3001/login"
+    username_selector: "input[name='email']"
+    password_selector: "input[name='password']"
+    submit_selector: ".is-primary"
+    env_user: "WIKIJS_USER"
+    env_pass: "WIKIJS_PASS"
+    cookie_name: "wikijs_session"
+    success_indicator: ".wiki-sidebar"
